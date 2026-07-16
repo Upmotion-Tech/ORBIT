@@ -1,0 +1,255 @@
+from datetime import date
+from typing import Optional
+
+from app.core.time import now_pkt
+from app.models.lead import Lead
+from app.repositories.lead_repository import LeadRepository
+from app.repositories.activity_repository import ActivityRepository
+from app.schemas.lead import LeadResponse, LeadListResponse
+from app.schemas.lead_activity import ActivityResponse, ActivityListResponse
+from app.services.storage_service import storage_service
+
+
+VALID_STAGES = ["New", "Contacted", "Proposal", "Negotiation", "Won", "Lost"]
+
+STAGE_WORKFLOW = {
+    "New": ["Contacted", "Won", "Lost"],
+    "Contacted": ["Proposal", "Lost"],
+    "Proposal": ["Negotiation", "Lost"],
+    "Negotiation": ["Won", "Lost"],
+    "Won": [],
+    "Lost": [],
+}
+
+
+class LeadService:
+    def __init__(self, lead_repo: LeadRepository, activity_repo: ActivityRepository):
+        self.lead_repo = lead_repo
+        self.activity_repo = activity_repo
+
+    async def list_leads(
+        self,
+        search: Optional[str] = None,
+        stage: Optional[str] = None,
+        source: Optional[str] = None,
+        assigned_rep: Optional[str] = None,
+        date_from: Optional[date] = None,
+        date_to: Optional[date] = None,
+        overdue_only: bool = False,
+        sort_by: str = "created_at",
+        sort_dir: str = "desc",
+        page: int = 1,
+        page_size: int = 50,
+    ) -> LeadListResponse:
+        total = await self.lead_repo.count(search, stage, source, assigned_rep, date_from, date_to, overdue_only)
+        leads = await self.lead_repo.find_all(
+            search, stage, source, assigned_rep, date_from, date_to, overdue_only,
+            sort_by, sort_dir, page, page_size,
+        )
+        total_pages = max(1, (total + page_size - 1) // page_size)
+
+        return LeadListResponse(
+            items=[self._to_response(l) for l in leads],
+            total=total,
+            page=page,
+            page_size=page_size,
+            total_pages=total_pages,
+        )
+
+    async def get_lead(self, lead_id: str) -> Optional[LeadResponse]:
+        lead = await self.lead_repo.find_by_id(lead_id)
+        if not lead:
+            return None
+        return self._to_response(lead)
+
+    async def create_lead(self, data: dict, user: str = "anonymous") -> tuple[LeadResponse, Optional[str]]:
+        data["created_by"] = user
+        data["updated_by"] = user
+        data["created_at"] = now_pkt()
+        data["updated_at"] = now_pkt()
+
+        warning = None
+        duplicates = await self.lead_repo.find_duplicates(
+            company_name=data.get("company_name"),
+            client_contact_name=data.get("client_contact_name"),
+        )
+        if duplicates:
+            warning = f"Similar lead(s) already exist: {', '.join(d.company_name for d in duplicates[:3])}"
+
+        lead = await self.lead_repo.create(data)
+
+        await self.activity_repo.create({
+            "lead_id": lead.id,
+            "type": "create",
+            "note": f"Lead created in stage '{lead.stage}'",
+            "created_by": user,
+        })
+
+        return self._to_response(lead), warning
+
+    async def update_lead(self, lead_id: str, data: dict, user: str = "anonymous") -> tuple[Optional[LeadResponse], Optional[str], Optional[str]]:
+        lead = await self.lead_repo.find_by_id(lead_id)
+        if not lead:
+            return None, None, "Lead not found"
+
+        data["updated_by"] = user
+
+        warning = None
+        if data.get("company_name") or data.get("client_contact_name"):
+            duplicates = await self.lead_repo.find_duplicates(
+                company_name=data.get("company_name"),
+                client_contact_name=data.get("client_contact_name"),
+                exclude_id=lead_id,
+            )
+            if duplicates:
+                warning = f"Similar lead(s) already exist: {', '.join(d.company_name for d in duplicates[:3])}"
+
+        if data.get("stage") in ("Won", "Lost"):
+            pass
+        elif lead.stage in ("Won", "Lost") and data.get("stage") and data["stage"] != lead.stage:
+            pass
+
+        old_stage = lead.stage
+        lead = await self.lead_repo.update(lead, data)
+
+        if "stage" in data and data["stage"] != old_stage:
+            await self.activity_repo.create({
+                "lead_id": lead.id,
+                "type": "stage_change",
+                "note": f"Stage changed from '{old_stage}' to '{lead.stage}'",
+                "created_by": user,
+            })
+
+        return self._to_response(lead), warning, None
+
+    async def change_stage(self, lead_id: str, stage: str, user: str = "anonymous", is_owner: bool = False) -> tuple[Optional[LeadResponse], Optional[str]]:
+        lead = await self.lead_repo.find_by_id(lead_id)
+        if not lead:
+            return None, "Lead not found"
+
+        if not is_owner and stage not in STAGE_WORKFLOW.get(lead.stage, []):
+            return None, f"Cannot move from '{lead.stage}' to '{stage}'. Valid transitions: {STAGE_WORKFLOW.get(lead.stage, [])}"
+
+        if stage == "Won" and not is_owner:
+            return None, "Only owners can move a lead directly to 'Won'. Valid transitions: Contacted, Lost"
+
+        old_stage = lead.stage
+        lead = await self.lead_repo.update_stage(lead, stage)
+
+        await self.activity_repo.create({
+            "lead_id": lead.id,
+            "type": "stage_change",
+            "note": f"Stage changed from '{old_stage}' to '{stage}'",
+            "created_by": user,
+        })
+
+        return self._to_response(lead), None
+
+    async def delete_lead(self, lead_id: str, user: str = "anonymous") -> bool:
+        lead = await self.lead_repo.find_by_id(lead_id)
+        if not lead:
+            return False
+
+        await self.activity_repo.create({
+            "lead_id": lead.id,
+            "type": "delete",
+            "note": f"Lead '{lead.company_name}' deleted",
+            "created_by": user,
+        })
+
+        await self.lead_repo.soft_delete(lead)
+        return True
+
+    async def search_leads(self, query: str, limit: int = 20) -> LeadListResponse:
+        leads = await self.lead_repo.search_global(query, limit)
+        return LeadListResponse(
+            items=[self._to_response(l) for l in leads],
+            total=len(leads),
+            page=1,
+            page_size=limit,
+            total_pages=1,
+        )
+
+    async def upload_document(self, lead_id: str, doc_type: str, url: str, user: str = "anonymous") -> tuple[Optional[LeadResponse], Optional[str]]:
+        lead = await self.lead_repo.find_by_id(lead_id)
+        if not lead:
+            return None, "Lead not found"
+
+        update_data = {}
+        if doc_type == "scope_document":
+            update_data["scope_document_url"] = url
+        elif doc_type == "signed_contract":
+            update_data["signed_contract_url"] = url
+        else:
+            return None, f"Unknown document type: {doc_type}"
+
+        lead = await self.lead_repo.update(lead, update_data)
+
+        if lead.scope_document_url and lead.signed_contract_url:
+            await self.lead_repo.update(lead, {"is_locked_revenue": True})
+            lead.is_locked_revenue = True
+
+        await self.activity_repo.create({
+            "lead_id": lead.id,
+            "type": "file_upload",
+            "note": f"{doc_type.replace('_', ' ').title()} uploaded",
+            "created_by": user,
+        })
+
+        return self._to_response(lead), None
+
+    async def remove_document(self, lead_id: str, doc_type: str, user: str = "anonymous") -> tuple[Optional[LeadResponse], Optional[str]]:
+        lead = await self.lead_repo.find_by_id(lead_id)
+        if not lead:
+            return None, "Lead not found"
+
+        url_field = {"scope_document": "scope_document_url", "signed_contract": "signed_contract_url"}.get(doc_type)
+        if not url_field:
+            return None, f"Unknown document type: {doc_type}"
+
+        existing_url = getattr(lead, url_field)
+        if not existing_url:
+            return None, f"{doc_type.replace('_', ' ').title()} is not attached"
+
+        filename = existing_url.rsplit("/", 1)[-1]
+        await storage_service.delete(filename)
+
+        lead = await self.lead_repo.update(lead, {url_field: None, "is_locked_revenue": False})
+
+        await self.activity_repo.create({
+            "lead_id": lead.id,
+            "type": "file_remove",
+            "note": f"{doc_type.replace('_', ' ').title()} removed",
+            "created_by": user,
+        })
+
+        return self._to_response(lead), None
+
+    async def get_activities(self, lead_id: str, page: int = 1, page_size: int = 50) -> ActivityListResponse:
+        total = await self.activity_repo.count_by_lead(lead_id)
+        activities = await self.activity_repo.find_by_lead(lead_id, page, page_size)
+        return ActivityListResponse(
+            items=[ActivityResponse.model_validate(a) for a in activities],
+            total=total,
+        )
+
+    async def create_activity(self, lead_id: str, data: dict, user: str = "anonymous") -> tuple[Optional[ActivityResponse], Optional[str]]:
+        lead = await self.lead_repo.find_by_id(lead_id)
+        if not lead:
+            return None, "Lead not found"
+
+        data["lead_id"] = lead_id
+        data["created_by"] = user
+        activity = await self.activity_repo.create(data)
+        return ActivityResponse.model_validate(activity), None
+
+    def _to_response(self, lead: Lead) -> LeadResponse:
+        today = now_pkt().date()
+        is_overdue = (
+            lead.follow_up_date is not None
+            and lead.follow_up_date < today
+            and lead.stage not in ("Won", "Lost")
+        )
+        resp = LeadResponse.model_validate(lead)
+        resp.is_overdue_follow_up = is_overdue
+        return resp

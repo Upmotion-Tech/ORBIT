@@ -1,0 +1,93 @@
+from datetime import date, datetime
+from typing import Optional
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+from app.core.time import to_pkt
+
+
+class LeadCreate(BaseModel):
+    company_name: str = Field(..., min_length=1, max_length=255)
+    client_contact_name: str = Field(..., min_length=1, max_length=255)
+    assigned_rep: Optional[str] = Field(None, max_length=255)
+    source: Optional[str] = Field(None, max_length=100)
+    medium: Optional[str] = Field(None, max_length=100)
+    value: float = Field(default=0.0, ge=0)
+    stage: str = Field(default="New", pattern=r"^(New|Contacted|Proposal|Negotiation|Won|Lost)$")
+    description: Optional[str] = None
+
+    date_received: Optional[date] = None
+    expected_closure_date: Optional[date] = None
+    actual_closure_date: Optional[date] = None
+    follow_up_date: Optional[date] = None
+
+    @model_validator(mode="after")
+    def validate_dates(self):
+        if (self.expected_closure_date and self.date_received and
+                self.expected_closure_date < self.date_received):
+            raise ValueError("expected_closure_date must be on or after date_received")
+        return self
+
+
+class LeadUpdate(BaseModel):
+    company_name: Optional[str] = Field(None, min_length=1, max_length=255)
+    client_contact_name: Optional[str] = Field(None, min_length=1, max_length=255)
+    assigned_rep: Optional[str] = Field(None, max_length=255)
+    source: Optional[str] = Field(None, max_length=100)
+    medium: Optional[str] = Field(None, max_length=100)
+    value: Optional[float] = Field(None, ge=0)
+    description: Optional[str] = None
+
+    date_received: Optional[date] = None
+    expected_closure_date: Optional[date] = None
+    actual_closure_date: Optional[date] = None
+    follow_up_date: Optional[date] = None
+
+
+class LeadStageUpdate(BaseModel):
+    stage: str = Field(
+        ...,
+        pattern=r"^(New|Contacted|Proposal|Negotiation|Won|Lost)$",
+    )
+
+
+class LeadResponse(BaseModel):
+    id: str
+    company_name: str
+    client_contact_name: str
+    assigned_rep: Optional[str] = None
+    source: Optional[str] = None
+    medium: Optional[str] = None
+    value: float
+    stage: str
+    description: Optional[str] = None
+
+    date_received: Optional[date] = None
+    expected_closure_date: Optional[date] = None
+    actual_closure_date: Optional[date] = None
+    follow_up_date: Optional[date] = None
+
+    scope_document_url: Optional[str] = None
+    signed_contract_url: Optional[str] = None
+    is_locked_revenue: bool = False
+
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    created_by: Optional[str] = None
+    updated_by: Optional[str] = None
+
+    is_overdue_follow_up: bool = False
+
+    model_config = {"from_attributes": True}
+
+    @field_validator("created_at", "updated_at", mode="before")
+    @classmethod
+    def _normalize_to_pkt(cls, v):
+        return to_pkt(v) if isinstance(v, datetime) else v
+
+
+class LeadListResponse(BaseModel):
+    items: list[LeadResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int

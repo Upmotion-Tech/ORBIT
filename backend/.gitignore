@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.env
+orbit.db
+app/storage/*
+!app/storage/.gitkeep
+.venv/
+venv/
+*.db
