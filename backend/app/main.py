@@ -8,7 +8,19 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.core.database import engine, Base
-from app.routers import leads, settings as settings_router, preferences
+from app.routers import (
+    leads,
+    settings as settings_router,
+    preferences,
+    projects,
+    tasks,
+    notifications,
+    time_entries,
+    employees,
+    leaves,
+    job_openings,
+    settings_hr,
+)
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
 
@@ -52,6 +64,15 @@ app.mount("/api/storage", StaticFiles(directory=settings.storage_path), name="st
 app.include_router(leads.router)
 app.include_router(settings_router.router)
 app.include_router(preferences.router)
+app.include_router(projects.router)
+app.include_router(tasks.router)
+app.include_router(notifications.router)
+app.include_router(time_entries.router)
+app.include_router(employees.router)
+app.include_router(leaves.router)
+app.include_router(job_openings.router)
+app.include_router(settings_hr.router)
+
 
 
 @app.get("/api/health")

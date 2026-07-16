@@ -13,12 +13,20 @@ from app.schemas.lead_activity import ActivityCreate, ActivityResponse, Activity
 from app.schemas.common import ErrorResponse, WarningResponse
 from app.services.lead_service import LeadService
 from app.services.storage_service import storage_service
+from app.repositories.project_repository import ProjectRepository
+from app.repositories.notification_repository import NotificationRepository
 
 router = APIRouter(prefix="/api/leads", tags=["Leads"])
 
 
 def get_lead_service(db: AsyncSession = Depends(get_db)) -> LeadService:
-    return LeadService(LeadRepository(db), ActivityRepository(db))
+    return LeadService(
+        LeadRepository(db),
+        ActivityRepository(db),
+        ProjectRepository(db),
+        NotificationRepository(db),
+    )
+
 
 
 @router.get("", response_model=LeadListResponse)

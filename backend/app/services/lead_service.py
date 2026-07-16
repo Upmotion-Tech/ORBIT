@@ -23,9 +23,17 @@ STAGE_WORKFLOW = {
 
 
 class LeadService:
-    def __init__(self, lead_repo: LeadRepository, activity_repo: ActivityRepository):
+    def __init__(
+        self,
+        lead_repo: LeadRepository,
+        activity_repo: ActivityRepository,
+        project_repo = None,
+        notification_repo = None,
+    ):
         self.lead_repo = lead_repo
         self.activity_repo = activity_repo
+        self.project_repo = project_repo
+        self.notification_repo = notification_repo
 
     async def list_leads(
         self,
@@ -119,6 +127,8 @@ class LeadService:
                 "note": f"Stage changed from '{old_stage}' to '{lead.stage}'",
                 "created_by": user,
             })
+            
+        await self._check_auto_project(lead, user)
 
         return self._to_response(lead), warning, None
 
@@ -142,6 +152,8 @@ class LeadService:
             "note": f"Stage changed from '{old_stage}' to '{stage}'",
             "created_by": user,
         })
+        
+        await self._check_auto_project(lead, user)
 
         return self._to_response(lead), None
 
@@ -195,6 +207,8 @@ class LeadService:
             "note": f"{doc_type.replace('_', ' ').title()} uploaded",
             "created_by": user,
         })
+        
+        await self._check_auto_project(lead, user)
 
         return self._to_response(lead), None
 
@@ -253,3 +267,9 @@ class LeadService:
         resp = LeadResponse.model_validate(lead)
         resp.is_overdue_follow_up = is_overdue
         return resp
+
+    async def _check_auto_project(self, lead: Lead, user: str) -> None:
+        if self.project_repo and lead.stage == "Won" and lead.scope_document_url and lead.signed_contract_url:
+            from app.services.project_service import ProjectService
+            project_service = ProjectService(self.project_repo, self.lead_repo, self.notification_repo)
+            await project_service.check_and_create_project_from_lead(lead.id, user)

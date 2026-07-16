@@ -21,3 +21,4 @@ backend/app/storage/*
 .idea/
 Thumbs.db
 .DS_Store
+unpacked/

@@ -349,3 +349,54 @@ production-feeling page:
   validated ad hoc with FastAPI's `TestClient` against a throwaway SQLite DB
   (`DATABASE_URL=sqlite+aiosqlite:///./test_x.db`, deleted after). Prefer
   that over trusting code review alone for anything touching persistence.
+
+---
+
+## Phase 2 Implementation Details (as of 2026-07-16)
+
+The second phase involved building out the **Software Development module** (Projects and Tasks) and connecting it to the database, implementing RBAC controls, threaded comments, multi-file attachments, view persistence, automatic CRM integration, notifications, and real-time frontend-backend synchronization.
+
+### 1. Database and Models
+Created and registered the following tables in the SQLite database (served by SQLAlchemy):
+- **Projects (`projects`)**: Links to CRM Leads (`lead_id`), containing fields for name, client, status, deadline, budget, description, and team assignments (stored as a JSON string array).
+- **Tasks (`tasks`)**: Subtasks belonging to a project. Contains title, status, description, deadline, and assignee.
+- **ProjectComments (`project_comments`)**: Threaded comments belonging to projects or tasks, containing `parent_id` for recursive replies, author, and PKT timestamp.
+- **ProjectAttachments (`project_attachments`)**: Storage references for files uploaded to projects, containing filename, URL, size in bytes, and creator name.
+- **Notifications (`notifications`)**: Real database-backed notification tray containing `user_id` (e.g. `'devmember'`, `'owner'`), message, and read/unread status.
+- **TimeEntries (`time_entries`)**: Work hours logged on projects and tasks.
+
+### 2. Frontend-Backend Integrations
+- **Live Sync**: Updated `setScreen` to fetch fresh records (Leads, Projects, Tasks, Notifications, Time Entries) from the FastAPI backend whenever you switch tabs.
+- **Auto-save on Drawer Edits**: Removed all manual "Save/Done" buttons from the Project Details Drawer and Task Details Drawer. Editing any text fields or selects auto-saves immediately with a debounced delay (600ms) and toast confirmation.
+- **Details Drawer Loaders**: Defined `loadProjectDetails` and `loadTaskDetails` which trigger upon drawer opening to fetch fresh lists of comments and attachments from the backend.
+- **Case-Insensitive Uniqueness**: Configured project name validation to compare names case-insensitively using `func.lower`.
+- **Duplicate Suffixing**: Leads marked `Won` automatically append a counter (e.g., `Hash — Project 2`) if a project of that name already exists.
+- **New Task Assignee Constraint**: Added an Assignee dropdown selector to the New Task dialog, dynamically listing only the team members currently assigned to the selected project.
+- **Staging / Compiling**: Packaged code into `ORBIT.html` and `backend/static/index.html` with correct `<\/` script tag escaping to prevent premature browser parsing truncation.
+- **Delete Project**: Added a **Delete Project** footer button in the project details drawer (styled as `variant="danger"` via the Healer Design System) available only to Owners, Finance Heads, etc. (controlled via the `showProjectFinance` check).
+
+### 3. File Map & Overview
+Here is a guide to the key files for the next agent:
+
+#### Database Models (`backend/app/models/`)
+- [project.py](file:///c:/Users/hashi/OneDrive/Desktop/Orbit/backend/app/models/project.py): The `Project` model, referencing `lead_id` and storing the `team` member list as a JSON array.
+- [task.py](file:///c:/Users/hashi/OneDrive/Desktop/Orbit/backend/app/models/task.py): The `Task` model, containing project relationships, status, deadline, and assignee.
+- [project_comment.py](file:///c:/Users/hashi/OneDrive/Desktop/Orbit/backend/app/models/project_comment.py): The `ProjectComment` model, supporting threaded parent-child relations.
+- [project_attachment.py](file:///c:/Users/hashi/OneDrive/Desktop/Orbit/backend/app/models/project_attachment.py): The `ProjectAttachment` model, storing file upload links.
+- [notification.py](file:///c:/Users/hashi/OneDrive/Desktop/Orbit/backend/app/models/notification.py): The `Notification` model, powering the live notification bell.
+- [time_entry.py](file:///c:/Users/hashi/OneDrive/Desktop/Orbit/backend/app/models/time_entry.py): The `TimeEntry` model, tracking project hours.
+
+#### Repositories (`backend/app/repositories/`)
+- [project_repository.py](file:///c:/Users/hashi/OneDrive/Desktop/Orbit/backend/app/repositories/project_repository.py): DB queries for projects, search matching, filtering, attachments, and comments. Includes case-insensitive name uniqueness checks.
+- [task_repository.py](file:///c:/Users/hashi/OneDrive/Desktop/Orbit/backend/app/repositories/task_repository.py): DB queries for tasks.
+- [notification_repository.py](file:///c:/Users/hashi/OneDrive/Desktop/Orbit/backend/app/repositories/notification_repository.py): DB queries to read/write/mark notifications read.
+- [time_entry_repository.py](file:///c:/Users/hashi/OneDrive/Desktop/Orbit/backend/app/repositories/time_entry_repository.py): DB queries for logging time.
+
+#### Services & Routers (`backend/app/services/` & `backend/app/routers/`)
+- [project_service.py](file:///c:/Users/hashi/OneDrive/Desktop/Orbit/backend/app/services/project_service.py) & [projects.py](file:///c:/Users/hashi/OneDrive/Desktop/Orbit/backend/app/routers/projects.py): Manages projects lifecycle, deadline checks, team picker mapping, attachments and comment operations.
+- [task_service.py](file:///c:/Users/hashi/OneDrive/Desktop/Orbit/backend/app/services/task_service.py) & [tasks.py](file:///c:/Users/hashi/OneDrive/Desktop/Orbit/backend/app/routers/tasks.py): Handles task assignments and updates.
+- [notification_service.py](file:///c:/Users/hashi/OneDrive/Desktop/Orbit/backend/app/services/notification_service.py) & [notifications.py](file:///c:/Users/hashi/OneDrive/Desktop/Orbit/backend/app/routers/notifications.py): Handles notification updates and reading.
+
+#### Repackaging Utilities
+- [unpack.py](file:///C:/Users/hashi/.gemini/antigravity-ide/brain/68b521ad-7423-4ad3-a5d0-69f831c61449/scratch/unpack.py): Python tool to decode `ORBIT.html` bundle manifest and extract the template HTML (`unpacked/template.html`) for editing.
+- [pack.py](file:///C:/Users/hashi/.gemini/antigravity-ide/brain/68b521ad-7423-4ad3-a5d0-69f831c61449/scratch/pack.py): Re-serializes the updated `template.html` back into `ORBIT.html` and copies it to `backend/static/index.html`. Handles correct `<\/` script tag escaping so the HTML parser does not truncate content.
