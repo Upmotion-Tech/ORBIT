@@ -1,4 +1,5 @@
 import os
+import re
 from pydantic_settings import BaseSettings
 from typing import Optional
 
@@ -25,6 +26,7 @@ class Settings(BaseSettings):
             url = url.strip()
             if "postgres" in url and "+" not in url:
                 url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+            url = re.sub(r'&?sslmode=[^&]+', '', url).rstrip('?&')
             return url
         return "sqlite+aiosqlite:///./orbit.db"
 
