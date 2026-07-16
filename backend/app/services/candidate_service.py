@@ -5,6 +5,7 @@ from fastapi import HTTPException, status
 from app.repositories.candidate_repository import CandidateRepository
 from app.schemas.candidate import CandidateCreate, CandidateUpdate, CandidateResponse
 from app.models.hiring_candidate import HiringCandidate
+from app.core.permissions import has_role
 
 
 class CandidateService:
@@ -14,8 +15,8 @@ class CandidateService:
     ):
         self.candidate_repo = candidate_repo
 
-    async def list_candidates(self, opening_id: str, persona="owner") -> list[CandidateResponse]:
-        if persona not in ("owner", "hr", "hr_admin"):
+    async def list_candidates(self, opening_id: str, persona=None) -> list[CandidateResponse]:
+        if not has_role(persona, "owner", "hr", "hr_admin"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied.",
@@ -24,9 +25,9 @@ class CandidateService:
         return [CandidateResponse.model_validate(c) for c in candidates]
 
     async def create_candidate(
-        self, opening_id: str, data: dict, persona="owner",
+        self, opening_id: str, data: dict, persona=None,
     ) -> CandidateResponse:
-        if persona not in ("hr", "hr_admin"):
+        if not has_role(persona, "hr", "hr_admin"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only HR can add candidates.",
@@ -37,9 +38,9 @@ class CandidateService:
         return CandidateResponse.model_validate(candidate)
 
     async def update_candidate(
-        self, candidate_id: str, data: dict, persona="owner",
+        self, candidate_id: str, data: dict, persona=None,
     ) -> CandidateResponse:
-        if persona not in ("hr", "hr_admin"):
+        if not has_role(persona, "hr", "hr_admin"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only HR can update candidates.",

@@ -11,6 +11,7 @@ from app.schemas.leave import LeaveCreate, LeaveResponse, LeaveBalanceResponse
 from app.models.leave_request import LeaveRequest
 from app.models.employee import Employee
 from app.core.time import now_pkt
+from app.core.permissions import has_role
 
 
 class LeaveService:
@@ -44,7 +45,7 @@ class LeaveService:
             return None
         return self._to_response(leave)
 
-    async def create_leave(self, data: dict, user="anonymous", persona="owner") -> LeaveResponse:
+    async def create_leave(self, data: dict, user="anonymous", persona=None) -> LeaveResponse:
         employee_id = data.get("employee_id")
 
         employee = await self.employee_repo.find_by_id(employee_id) if self.employee_repo else None
@@ -94,7 +95,7 @@ class LeaveService:
 
     async def approve_leave(
         self, leave_id: str, note: Optional[str] = None,
-        approved_by="HR Admin", persona="owner",
+        approved_by="HR Admin", persona=None,
     ) -> LeaveResponse:
         leave = await self.leave_repo.find_by_id(leave_id)
         if not leave:
@@ -103,7 +104,7 @@ class LeaveService:
                 detail="Leave request not found.",
             )
 
-        if persona not in ("hr", "hr_admin", "owner"):
+        if not has_role(persona, "hr", "hr_admin", "owner"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only HR can approve leave requests.",
@@ -133,14 +134,15 @@ class LeaveService:
                 user_id=emp.id if emp else "all",
                 notif_type="Leave Approved",
                 title="Leave request approved",
-                message=f"Your {leave.leave_type} leave has been approved.",
+                message=f"Your {leave.leave_type} leave has been approved."
+                         + (f" Note: {note}" if note else ""),
             )
 
         return self._to_response(leave)
 
     async def reject_leave(
         self, leave_id: str, rejection_reason: Optional[str] = None,
-        rejected_by="HR Admin", persona="owner",
+        rejected_by="HR Admin", persona=None,
     ) -> LeaveResponse:
         leave = await self.leave_repo.find_by_id(leave_id)
         if not leave:
@@ -149,7 +151,7 @@ class LeaveService:
                 detail="Leave request not found.",
             )
 
-        if persona not in ("hr", "hr_admin", "owner"):
+        if not has_role(persona, "hr", "hr_admin", "owner"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only HR can reject leave requests.",

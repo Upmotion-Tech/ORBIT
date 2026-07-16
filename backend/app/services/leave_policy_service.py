@@ -5,6 +5,7 @@ from fastapi import HTTPException, status
 from app.repositories.leave_policy_repository import LeavePolicyRepository
 from app.schemas.leave_policy import LeavePolicyUpdate, LeavePolicyResponse
 from app.core.time import now_pkt
+from app.core.permissions import has_role
 
 
 class LeavePolicyService:
@@ -33,9 +34,9 @@ class LeavePolicyService:
         return LeavePolicyResponse.model_validate(policy)
 
     async def update_policy(
-        self, data: dict, user="anonymous", persona="owner",
+        self, data: dict, user="anonymous", persona=None,
     ) -> LeavePolicyResponse:
-        if persona not in ("hr", "hr_admin", "owner"):
+        if not has_role(persona, "hr", "hr_admin", "owner"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only HR or Owner can update leave policy.",

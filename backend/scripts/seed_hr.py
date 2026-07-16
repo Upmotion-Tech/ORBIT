@@ -13,32 +13,31 @@ from app.models.job_opening import JobOpening
 from app.models.hiring_candidate import HiringCandidate
 from app.models.leave_policy import LeavePolicy
 from app.models.holiday import Holiday
-from app.models.notification import Notification
 from app.core.security import get_password_hash
 from app.core.time import now_pkt
 
 
 EMPLOYEES = [
-    {"id": "emp_owner", "name": "Jordan Blake", "role": "Finance Lead / Co-founder", "department": "Finance", "email": "jordan@theupmotion.online", "manager": None, "employment_type": "Full-time", "start_date": date(2024, 1, 15), "salary": 250000.0, "status": "Active", "probation_end": None, "contract_file": True},
-    {"id": "emp_sales1", "name": "Tom Reyes", "role": "Sales Lead / Co-founder", "department": "Sales", "email": "tom@theupmotion.online", "manager": None, "employment_type": "Full-time", "start_date": date(2024, 1, 15), "salary": 220000.0, "status": "Active", "probation_end": None, "contract_file": True},
-    {"id": "emp_hr1", "name": "Maya Torres", "role": "HR Lead / Co-founder", "department": "HR", "email": "maya@theupmotion.online", "manager": None, "employment_type": "Full-time", "start_date": date(2024, 1, 15), "salary": 200000.0, "status": "Active", "probation_end": None, "contract_file": True},
-    {"id": "emp_hr2", "name": "Ingrid Halvorsen", "role": "HR Coordinator", "department": "HR", "email": "ingrid@theupmotion.online", "manager": "Maya Torres", "employment_type": "Full-time", "start_date": date(2024, 3, 1), "salary": 75000.0, "status": "Active", "probation_end": date(2024, 9, 1), "contract_file": True},
-    {"id": "emp_hr3", "name": "Elliot Park", "role": "Recruiter", "department": "HR", "email": "elliot@theupmotion.online", "manager": "Maya Torres", "employment_type": "Full-time", "start_date": date(2024, 6, 1), "salary": 65000.0, "status": "Active", "probation_end": date(2024, 12, 1), "contract_file": True},
-    {"id": "emp_dev1", "name": "Kofi Mensah", "role": "Engineer", "department": "Software Dev", "email": "kofi@theupmotion.online", "manager": None, "employment_type": "Full-time", "start_date": date(2024, 2, 1), "salary": 120000.0, "status": "Active", "probation_end": None, "contract_file": True},
-    {"id": "emp_dev2", "name": "Aisha Khan", "role": "Senior Engineer", "department": "Software Dev", "email": "aisha@theupmotion.online", "manager": None, "employment_type": "Full-time", "start_date": date(2024, 2, 15), "salary": 140000.0, "status": "Active", "probation_end": None, "contract_file": True},
-    {"id": "emp_dev3", "name": "Diego Fuentes", "role": "Backend Engineer", "department": "Software Dev", "email": "diego@theupmotion.online", "manager": None, "employment_type": "Full-time", "start_date": date(2024, 4, 1), "salary": 110000.0, "status": "Active", "probation_end": date(2024, 10, 1), "contract_file": True},
-    {"id": "emp_dev4", "name": "Owen Blackwell", "role": "QA Engineer", "department": "Software Dev", "email": "owen@theupmotion.online", "manager": None, "employment_type": "Full-time", "start_date": date(2024, 5, 1), "salary": 90000.0, "status": "Active", "probation_end": date(2024, 11, 1), "contract_file": True},
-    {"id": "emp_design1", "name": "Leah Novak", "role": "Product Designer", "department": "Design", "email": "leah@theupmotion.online", "manager": None, "employment_type": "Full-time", "start_date": date(2024, 3, 15), "salary": 100000.0, "status": "Active", "probation_end": None, "contract_file": True},
-    {"id": "emp_fin1", "name": "Priya Shah", "role": "Accountant", "department": "Finance", "email": "priya@theupmotion.online", "manager": "Jordan Blake", "employment_type": "Full-time", "start_date": date(2024, 4, 15), "salary": 70000.0, "status": "Active", "probation_end": date(2024, 10, 15), "contract_file": True},
-    {"id": "emp_fin2", "name": "Carlos Mendez", "role": "Financial Analyst", "department": "Finance", "email": "carlos@theupmotion.online", "manager": "Jordan Blake", "employment_type": "Full-time", "start_date": date(2024, 5, 1), "salary": 85000.0, "status": "Active", "probation_end": None, "contract_file": True},
-    {"id": "emp_ops1", "name": "Sofia Marchetti", "role": "Operations Manager", "department": "Operations", "email": "sofia@theupmotion.online", "manager": None, "employment_type": "Full-time", "start_date": date(2024, 2, 1), "salary": 95000.0, "status": "Active", "probation_end": None, "contract_file": True},
-    {"id": "emp_ops2", "name": "Liam O'Brien", "role": "Operations Coordinator", "department": "Operations", "email": "liam@theupmotion.online", "manager": "Sofia Marchetti", "employment_type": "Full-time", "start_date": date(2024, 6, 1), "salary": 55000.0, "status": "Active", "probation_end": date(2024, 12, 1), "contract_file": True},
-    {"id": "emp_sales2", "name": "Ana Reyes", "role": "Sales Representative", "department": "Sales", "email": "ana@theupmotion.online", "manager": "Tom Reyes", "employment_type": "Full-time", "start_date": date(2024, 3, 1), "salary": 60000.0, "status": "Active", "probation_end": date(2024, 9, 1), "contract_file": True},
-    {"id": "emp_sales3", "name": "Marcus Chen", "role": "Sales Development Rep", "department": "Sales", "email": "marcus@theupmotion.online", "manager": "Tom Reyes", "employment_type": "Full-time", "start_date": date(2024, 7, 1), "salary": 50000.0, "status": "Active", "probation_end": date(2025, 1, 1), "contract_file": True},
-    {"id": "emp_mkt1", "name": "Yuki Tanaka", "role": "Marketing Lead", "department": "Marketing", "email": "yuki@theupmotion.online", "manager": None, "employment_type": "Full-time", "start_date": date(2024, 4, 1), "salary": 95000.0, "status": "Active", "probation_end": None, "contract_file": True},
-    {"id": "emp_mkt2", "name": "Zara Ahmed", "role": "Content Strategist", "department": "Marketing", "email": "zara@theupmotion.online", "manager": "Yuki Tanaka", "employment_type": "Contractor", "start_date": date(2024, 5, 15), "salary": 60000.0, "status": "Active", "probation_end": date(2024, 11, 15), "contract_file": True},
-    {"id": "emp_dev5", "name": "Ravi Patel", "role": "Frontend Engineer", "department": "Software Dev", "email": "ravi@theupmotion.online", "manager": None, "employment_type": "Full-time", "start_date": date(2024, 6, 15), "salary": 105000.0, "status": "Active", "probation_end": date(2024, 12, 15), "contract_file": True},
-    {"id": "emp_dev6", "name": "Nina Kowalski", "role": "Data Engineer", "department": "Software Dev", "email": "nina@theupmotion.online", "manager": None, "employment_type": "Full-time", "start_date": date(2024, 7, 1), "salary": 115000.0, "status": "Active", "probation_end": date(2025, 1, 1), "contract_file": True},
+    {"id": "emp_owner", "name": "Ahmad Raza", "role": "Finance Lead / Co-founder", "department": "Finance", "email": "ahmad@theupmotion.online", "manager": None, "employment_type": "Full-time", "start_date": date(2024, 1, 15), "salary": 450000.0, "access_levels": ["owner"], "status": "Active", "probation_end": None, "contract_file": True},
+    {"id": "emp_sales1", "name": "Bilal Chaudhry", "role": "Sales Lead / Co-founder", "department": "Sales", "email": "bilal@theupmotion.online", "manager": None, "employment_type": "Full-time", "start_date": date(2024, 1, 15), "salary": 400000.0, "access_levels": ["employee"], "status": "Active", "probation_end": None, "contract_file": True},
+    {"id": "emp_hr1", "name": "Sana Malik", "role": "HR Lead / Co-founder", "department": "HR", "email": "sana@theupmotion.online", "manager": None, "employment_type": "Full-time", "start_date": date(2024, 1, 15), "salary": 380000.0, "access_levels": ["hr_admin"], "status": "Active", "probation_end": None, "contract_file": True},
+    {"id": "emp_hr2", "name": "Mahnoor Aslam", "role": "HR Coordinator", "department": "HR", "email": "mahnoor@theupmotion.online", "manager": "Sana Malik", "employment_type": "Full-time", "start_date": date(2024, 3, 1), "salary": 120000.0, "access_levels": ["hr_admin"], "status": "Active", "probation_end": date(2024, 9, 1), "contract_file": True},
+    {"id": "emp_hr3", "name": "Usman Tariq", "role": "Recruiter", "department": "HR", "email": "usman@theupmotion.online", "manager": "Sana Malik", "employment_type": "Full-time", "start_date": date(2024, 6, 1), "salary": 100000.0, "access_levels": ["hr_admin"], "status": "Active", "probation_end": date(2024, 12, 1), "contract_file": True},
+    {"id": "emp_dev1", "name": "Hamza Farooq", "role": "Engineer", "department": "Software Dev", "email": "hamzafarooq@theupmotion.online", "manager": None, "employment_type": "Full-time", "start_date": date(2024, 2, 1), "salary": 180000.0, "access_levels": ["devmember"], "status": "Active", "probation_end": None, "contract_file": True},
+    {"id": "emp_dev2", "name": "Ayesha Siddiqui", "role": "Senior Engineer", "department": "Software Dev", "email": "ayesha@theupmotion.online", "manager": None, "employment_type": "Full-time", "start_date": date(2024, 2, 15), "salary": 250000.0, "access_levels": ["devmember"], "status": "Active", "probation_end": None, "contract_file": True},
+    {"id": "emp_dev3", "name": "Fahad Iqbal", "role": "Backend Engineer", "department": "Software Dev", "email": "fahad@theupmotion.online", "manager": None, "employment_type": "Full-time", "start_date": date(2024, 4, 1), "salary": 170000.0, "access_levels": ["devmember"], "status": "Active", "probation_end": date(2024, 10, 1), "contract_file": True},
+    {"id": "emp_dev4", "name": "Zainab Hussain", "role": "QA Engineer", "department": "Software Dev", "email": "zainab@theupmotion.online", "manager": None, "employment_type": "Full-time", "start_date": date(2024, 5, 1), "salary": 140000.0, "access_levels": ["devmember"], "status": "Active", "probation_end": date(2024, 11, 1), "contract_file": True},
+    {"id": "emp_design1", "name": "Hassan Sheikh", "role": "Product Designer", "department": "Design", "email": "hassan@theupmotion.online", "manager": None, "employment_type": "Full-time", "start_date": date(2024, 3, 15), "salary": 150000.0, "access_levels": ["employee"], "status": "Active", "probation_end": None, "contract_file": True},
+    {"id": "emp_fin1", "name": "Mariam Yousaf", "role": "Accountant", "department": "Finance", "email": "mariam@theupmotion.online", "manager": "Ahmad Raza", "employment_type": "Full-time", "start_date": date(2024, 4, 15), "salary": 110000.0, "access_levels": ["financehead"], "status": "Active", "probation_end": date(2024, 10, 15), "contract_file": True},
+    {"id": "emp_fin2", "name": "Adeel Khan", "role": "Financial Analyst", "department": "Finance", "email": "adeel@theupmotion.online", "manager": "Ahmad Raza", "employment_type": "Full-time", "start_date": date(2024, 5, 1), "salary": 130000.0, "access_levels": ["financehead"], "status": "Active", "probation_end": None, "contract_file": True},
+    {"id": "emp_ops1", "name": "Nadia Baig", "role": "Operations Manager", "department": "Operations", "email": "nadia@theupmotion.online", "manager": None, "employment_type": "Full-time", "start_date": date(2024, 2, 1), "salary": 150000.0, "access_levels": ["employee"], "status": "Active", "probation_end": None, "contract_file": True},
+    {"id": "emp_ops2", "name": "Waqas Ahmed", "role": "Operations Coordinator", "department": "Operations", "email": "waqas@theupmotion.online", "manager": "Nadia Baig", "employment_type": "Full-time", "start_date": date(2024, 6, 1), "salary": 90000.0, "access_levels": ["employee"], "status": "Active", "probation_end": date(2024, 12, 1), "contract_file": True},
+    {"id": "emp_sales2", "name": "Sara Abbasi", "role": "Sales Representative", "department": "Sales", "email": "sara@theupmotion.online", "manager": "Bilal Chaudhry", "employment_type": "Full-time", "start_date": date(2024, 3, 1), "salary": 95000.0, "access_levels": ["employee"], "status": "Active", "probation_end": date(2024, 9, 1), "contract_file": True},
+    {"id": "emp_sales3", "name": "Imran Latif", "role": "Sales Development Rep", "department": "Sales", "email": "imran@theupmotion.online", "manager": "Bilal Chaudhry", "employment_type": "Full-time", "start_date": date(2024, 7, 1), "salary": 80000.0, "access_levels": ["employee"], "status": "Active", "probation_end": date(2025, 1, 1), "contract_file": True},
+    {"id": "emp_mkt1", "name": "Rabia Nasir", "role": "Marketing Lead", "department": "Marketing", "email": "rabia@theupmotion.online", "manager": None, "employment_type": "Full-time", "start_date": date(2024, 4, 1), "salary": 150000.0, "access_levels": ["employee"], "status": "Active", "probation_end": None, "contract_file": True},
+    {"id": "emp_mkt2", "name": "Talha Mehmood", "role": "Content Strategist", "department": "Marketing", "email": "talha@theupmotion.online", "manager": "Rabia Nasir", "employment_type": "Contractor", "start_date": date(2024, 5, 15), "salary": 90000.0, "access_levels": ["employee"], "status": "Active", "probation_end": date(2024, 11, 15), "contract_file": True},
+    {"id": "emp_dev5", "name": "Kiran Javed", "role": "Frontend Engineer", "department": "Software Dev", "email": "kiran@theupmotion.online", "manager": None, "employment_type": "Full-time", "start_date": date(2024, 6, 15), "salary": 160000.0, "access_levels": ["devmember"], "status": "Active", "probation_end": date(2024, 12, 15), "contract_file": True},
+    {"id": "emp_dev6", "name": "Danish Qureshi", "role": "Data Engineer", "department": "Software Dev", "email": "danish@theupmotion.online", "manager": None, "employment_type": "Full-time", "start_date": date(2024, 7, 1), "salary": 175000.0, "access_levels": ["devmember"], "status": "Active", "probation_end": date(2025, 1, 1), "contract_file": True},
 ]
 
 LEAVE_REQUESTS = [
@@ -62,20 +61,20 @@ OPENINGS = [
 
 CANDIDATES = {
     "pos1": [
-        {"name": "Elena Voss", "stage": "Interview", "rating": 4, "notes": "Strong React experience."},
-        {"name": "David Kim", "stage": "Screening", "rating": 3, "notes": "Good portfolio."},
-        {"name": "Sarah Mitchell", "stage": "Applied", "rating": 0, "notes": ""},
+        {"name": "Hania Malik", "stage": "Interview", "rating": 4, "notes": "Strong React experience."},
+        {"name": "Umer Sheikh", "stage": "Screening", "rating": 3, "notes": "Good portfolio."},
+        {"name": "Areeba Khan", "stage": "Applied", "rating": 0, "notes": ""},
     ],
     "pos2": [
-        {"name": "Alex Rivera", "stage": "Screening", "rating": 3, "notes": "Has PMP certification."},
-        {"name": "Fatima Al-Rashid", "stage": "Applied", "rating": 0, "notes": ""},
+        {"name": "Junaid Aslam", "stage": "Screening", "rating": 3, "notes": "Has PMP certification."},
+        {"name": "Sadia Rehman", "stage": "Applied", "rating": 0, "notes": ""},
     ],
     "pos3": [
-        {"name": "James Okafor", "stage": "Interview", "rating": 5, "notes": "Excellent AWS knowledge."},
+        {"name": "Faisal Nawaz", "stage": "Interview", "rating": 5, "notes": "Excellent AWS knowledge."},
     ],
     "pos4": [
-        {"name": "Hannah Lee", "stage": "Offer", "rating": 4, "notes": "Great communication skills."},
-        {"name": "Omar Hassan", "stage": "Applied", "rating": 0, "notes": ""},
+        {"name": "Noor Fatima", "stage": "Offer", "rating": 4, "notes": "Great communication skills."},
+        {"name": "Bilawal Shah", "stage": "Applied", "rating": 0, "notes": ""},
     ],
     "pos5": [],  # Filled, no active candidates
 }
@@ -89,13 +88,6 @@ HOLIDAYS = [
     {"name": "Independence Day", "date": date(2026, 8, 14)},
     {"name": "Iqbal Day", "date": date(2026, 11, 9)},
     {"name": "Christmas Day", "date": date(2026, 12, 25)},
-]
-
-NOTIFICATIONS = [
-    {"user_id": "hr", "notif_type": "Leave Submitted", "title": "Leave request pending", "message": "Leah Novak submitted a sick leave request.", "is_read": False},
-    {"user_id": "hr", "notif_type": "Leave Submitted", "title": "Leave request pending", "message": "Owen Blackwell submitted an annual leave request.", "is_read": False},
-    {"user_id": "hr", "notif_type": "Leave Submitted", "title": "Leave request pending", "message": "Priya Shah submitted a casual leave request.", "is_read": True},
-    {"user_id": "all", "notif_type": "Probation Ending", "title": "Probation ending soon", "message": "Owen Blackwell's probation ends on November 1, 2026.", "is_read": False},
 ]
 
 
@@ -127,6 +119,7 @@ async def seed():
                 start_date=emp_data["start_date"],
                 salary=emp_data["salary"],
                 password_hash=default_password_hash,
+                access_levels=emp_data["access_levels"],
                 status=emp_data["status"],
                 probation_end=emp_data["probation_end"],
                 contract_file=emp_data["contract_file"],
@@ -142,11 +135,12 @@ async def seed():
             role="HR Admin",
             department="HR",
             email="hamzashafiq@theupmotion.online",
-            manager="Maya Torres",
+            manager="Sana Malik",
             employment_type="Full-time",
             start_date=date(2024, 1, 1),
             salary=80000.0,
             password_hash=get_password_hash("1234"),
+            access_levels=["hr_admin"],
             status="Active",
             probation_end=None,
             contract_file=True,
@@ -218,23 +212,11 @@ async def seed():
             )
             session.add(holiday)
 
-        # Create notifications
-        for n_data in NOTIFICATIONS:
-            notif = Notification(
-                id=str(uuid.uuid4()),
-                user_id=n_data["user_id"],
-                type=n_data["notif_type"],
-                title=n_data["title"],
-                message=n_data["message"],
-                is_read=n_data["is_read"],
-            )
-            session.add(notif)
-
         await session.commit()
         print(f"Seeded: {len(EMPLOYEES)} employees + 1 HR admin, 1 leave policy, "
               f"{len(LEAVE_REQUESTS)} leave requests, {len(OPENINGS)} openings, "
               f"{sum(len(c) for c in CANDIDATES.values())} candidates, "
-              f"{len(HOLIDAYS)} holidays, {len(NOTIFICATIONS)} notifications")
+              f"{len(HOLIDAYS)} holidays")
 
 
 if __name__ == "__main__":

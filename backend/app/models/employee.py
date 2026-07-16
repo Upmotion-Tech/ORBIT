@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, date
 
-from sqlalchemy import String, Date, DateTime, Float, Boolean, Text, Index
+from sqlalchemy import String, Date, DateTime, Float, Boolean, Text, JSON, Index
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -25,6 +25,7 @@ class Employee(Base):
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     salary: Mapped[float] = mapped_column(Float, default=0.0)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    access_levels: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=lambda: ["employee"])
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="Active")
     probation_end: Mapped[date] = mapped_column(Date, nullable=True)
     contract_file: Mapped[bool] = mapped_column(Boolean, default=False)

@@ -11,16 +11,24 @@ class NotificationRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def find_all_for_user(self, user_id: str, limit: int = 50) -> list[Notification]:
-        targets = [user_id, "all"]
-        if user_id in ("owner", "admin"):
-            targets.extend(["owner", "admin"])
-        elif user_id in ("hr", "hr_admin"):
-            targets.extend(["hr", "hr_admin"])
+    async def find_all_for_user(self, user_id: str, roles: Optional[list] = None, limit: int = 50) -> list[Notification]:
+        # Matches both notifications aimed at this specific employee (user_id
+        # = their real id) and role-broadcast notifications (user_id = a
+        # role string like "hr" / "all"). `roles` are the employee's real
+        # access_levels from their auth token, not a UI persona — an
+        # employee can hold more than one, so every assigned role's
+        # broadcast targets are included.
+        targets = {user_id, "all"}
+        for role in (roles or []):
+            targets.add(role)
+            if role in ("owner", "admin"):
+                targets.update(["owner", "admin"])
+            elif role in ("hr", "hr_admin"):
+                targets.update(["hr", "hr_admin"])
         query = select(Notification).where(
             Notification.user_id.in_(targets)
         ).order_by(Notification.created_at.desc()).limit(limit)
-        
+
         result = await self.db.execute(query)
         return list(result.scalars().all())
 
@@ -47,10 +55,12 @@ class NotificationRepository:
         await self.db.flush()
         return notification
 
-    async def mark_all_read(self, user_id: str) -> None:
-        targets = [user_id, "all"]
-        if user_id in ("hr", "hr_admin"):
-            targets.extend(["hr", "hr_admin"])
+    async def mark_all_read(self, user_id: str, roles: Optional[list] = None) -> None:
+        targets = {user_id, "all"}
+        for role in (roles or []):
+            targets.add(role)
+            if role in ("hr", "hr_admin"):
+                targets.update(["hr", "hr_admin"])
         stmt = (
             update(Notification)
             .where(Notification.user_id.in_(targets), Notification.is_read == False)

@@ -400,3 +400,114 @@ Here is a guide to the key files for the next agent:
 #### Repackaging Utilities
 - [unpack.py](file:///C:/Users/hashi/.gemini/antigravity-ide/brain/68b521ad-7423-4ad3-a5d0-69f831c61449/scratch/unpack.py): Python tool to decode `ORBIT.html` bundle manifest and extract the template HTML (`unpacked/template.html`) for editing.
 - [pack.py](file:///C:/Users/hashi/.gemini/antigravity-ide/brain/68b521ad-7423-4ad3-a5d0-69f831c61449/scratch/pack.py): Re-serializes the updated `template.html` back into `ORBIT.html` and copies it to `backend/static/index.html`. Handles correct `<\/` script tag escaping so the HTML parser does not truncate content.
+
+---
+
+# ⚠️ Update (2026-07-16, later same day) — read this before trusting anything above about auth/HR
+
+**Note for future agents:** the "Phase 2 Implementation Details" section right above this one was written by a *different* AI tool working on this same repo (Gemini's Antigravity IDE — note the `C:\Users\hashi\.gemini\...` paths in its pack/unpack utility links, which won't exist in a Claude Code environment; use the extract/edit/repackage workflow documented earlier in this file instead). Between sessions, that tool (or the user directly) also built out a **substantial HR + real-authentication backend** that predates none of the "Implementation Status" claims above — specifically, the line "There is no real authentication" and "`get_current_user` always resolves to anonymous/owner" **are now false**. Verified by reading the actual code, not assumed.
+
+## HR backend now exists (built outside this session, verified by direct code review)
+
+Full model → schema → repository → service → router stack for:
+- **Employee** (`models/employee.py`) — includes `password_hash`, `access_level` (`owner`/`hr_admin`/`financehead`/`devmember`/`employee`), soft-delete via `deleted_at`.
+- **LeaveRequest** / **LeavePolicy** — create, balance calculation (casual/sick/annual vs policy), approve/reject workflow with notifications.
+- **JobOpening** / **HiringCandidate** — openings CRUD + candidates as a sub-resource.
+- **Holiday** — simple CRUD under HR settings.
+- **Notification** — extended to serve HR events (leave submitted/approved/rejected, employee added/updated) alongside the Software Dev notifications from Phase 2.
+
+Routers: `routers/employees.py`, `routers/leaves.py`, `routers/job_openings.py`, `routers/settings_hr.py` (`/api/settings/hr/leave-policy`, `/api/settings/hr/holidays`), all registered in `main.py`.
+
+Permission model (enforced server-side in the service layer, not just UI): create/update employee → `owner`/`hr`/`hr_admin`; delete employee → `hr`/`hr_admin`; leave approve/reject → `hr`/`hr_admin`/`owner`. Salary is redacted in `EmployeeResponse` for personas outside `owner`/`hr`/`hr_admin`/`financehead`.
+
+## Real authentication now exists
+
+- `POST /api/auth/login` — bcrypt password check (`core/security.py`), issues a JWT (`sub`=email, `user_id`, `name`, `role`=access_level).
+- `GET /api/auth/me` — **added in this session** (Phase 1 work below); validates the token server-side and returns fresh employee data, used for auto-login on page refresh instead of trusting a client-decoded token.
+- `core/dependencies.py`: `get_current_user` was changed (by the other tool/session) to **require** a valid bearer token — it now raises 401 instead of defaulting to `{"sub": "anonymous", "role": "owner"}`. This is a breaking change from what's documented earlier in this file. `get_hr_user` (owner/hr_admin only) and `get_persona_role` (any authenticated user, just extracts role) also exist.
+- **Regression this caused, not yet fixed**: `GET /api/settings/currency` was deliberately built public (see the Currency Settings section above) — it now 401s along with everything else, because `get_current_user`'s new strict behavior applies globally. Confirmed via a live no-token request. Needs an endpoint-by-endpoint public/authenticated/role-gated audit (this is literally "Phase 4" in the roadmap below) rather than a blanket fix.
+
+## Seed data / temporary account
+
+`backend/scripts/seed_hr.py` — seeds 21 employees (default password `password123`) plus one explicit temp HR admin account:
+- **Email:** `hamzashafiq@theupmotion.online`
+- **Password:** `1234`
+- **access_level:** `hr_admin`
+
+**This has already been run against the live dev `orbit.db`** — confirmed by querying it directly (21 employees present, including this account). Don't re-run assuming it's a no-op-if-already-seeded check exists (it does — `seed()` skips if `Employee` count > 0 — but no harm double-checking before assuming it needs running).
+
+No Alembic migrations exist for HR (or anything else) — same `Base.metadata.create_all`-only situation as documented earlier in this file.
+
+## The user's 8-phase roadmap (given 2026-07-16) — Phase 1 done, 2-8 pending
+
+The user laid out this explicit sequence and said nothing past Phase 1 should proceed until it's done:
+
+1. **Finish Authentication** ✅ **done this session** — see below.
+2. **Remove Persona System** — replace `this.state.persona`, `PERSONA_META`/`ACCESS`/`PERSONA_LANDING`, `personaToEmp`-style lookups with the authenticated employee's id/role/department everywhere. **Not started** — Phase 1 only bridged the minimum needed (see below); the full sweep is still open.
+3. **Employees as single source of truth** — replace every remaining `D.employees` (mock) read with the real `employeesApi`/`apiEmployees` data. Confirmed split-brain still exists in: Dashboard payroll, Finance payroll/salary slips, Software Dev employee dropdown, CRM Assigned Rep dropdown, global top-bar search. **Not started.**
+4. **Fix Authorization** — endpoint-by-endpoint audit: decide Public (login, currency GET, health, static assets) vs Authenticated (CRM/HR/Finance/Projects/Notifications) vs Role-protected (owner/HR/finance/dev/employee), rather than the current blanket "everything requires a token." **Not started** — this is what will fix the Currency Settings regression above.
+5. **Finish HR UI** — Employees, Leave Requests, Hiring, Notifications, Employee Detail, Opening Detail screens should be fully API-driven, no mock arrays. Partially done (list screens load from `apiEmployees`/`apiLeaves`/`apiOpenings` — see Phase 2 section above and the original HR review report), but at least one known gap: the Employee form's "Access level" dropdown (`accessLevelOptions`/`efoAccessLevel`/`onEfoAccessLevel`) references render keys that don't exist in script.js — scaffolded, not wired. Found via a systematic template-binding-vs-renderVals cross-check; there may be others like it in less-exercised screens — worth re-running that check (see "Workflow notes" below) before Phase 5 work.
+6. **Login-aware navigation** — role-driven menus (Owner → everything, Dev → My Projects/Tasks/Leave, HR → Employees/Hiring/Leave). **Not started.**
+7. **Alembic migrations** — before building more modules. **Not started.**
+8. **Update CLAUDE.md** — this entry is partial progress on that.
+
+**Also requested, not yet done:** a technical-debt cleanup pass once the above lands — remove dead persona code, delete obsolete helpers/state, consolidate duplicate API-call patterns, remove `window.ORBIT_APP_DATA` references where a backend equivalent exists, confirm every timestamp uses the PKT helpers, verify no prototype-only paths remain in "completed" modules.
+
+## Phase 1 implementation details (this session, 2026-07-16)
+
+- **Backend**: added `GET /api/auth/me` (see above) — the login screen's HTML/CSS already existed (built by the other tool) but had **zero** corresponding JS — no state, no handler, nothing ever set `orbit_token`. It was completely non-functional; found this via a systematic check (see below).
+- **Frontend state added**: `authChecking`, `currentUser`, `loginEmail`, `loginPassword`, `loginLoading`, `loginError`.
+- **Auto-login**: `componentDidMount` → `checkAuth()` — if `orbit_token` exists in localStorage, calls `GET /api/auth/me` before rendering the real app (a full-screen splash covers everything during this check, so there's no flash of stale/wrong-persona UI); invalid/expired token → cleared, login screen shown.
+- **Login**: `handleLogin` → `POST /api/auth/login` → stores JWT → `onAuthenticated(user)` → `bootAppData(user)` (the renamed/refactored former body of `componentDidMount` — all the `loadXxx()` calls now happen only after real auth succeeds, never before).
+- **Logout**: the sidebar already had a `<button class="sidebar-logout-btn">` wired to `{{ handleLogoutClick }}` and gated by `{{ authUser }}` — neither key existed in script.js. Added both (`handleLogoutClick: this.handleLogout`, `authUser: !!this.state.currentUser`) rather than adding a second logout button.
+- **Session expiry**: `apiFetch` already stripped the token from localStorage on any 401; added a module-level `onSessionExpired` hook (set in `componentDidMount`) so a 401 anywhere now also flips `currentUser` back to `null` (→ login screen) and shows a toast, instead of just failing that one silent request.
+- **Identity replacing persona (the concrete part of "every backend request uses the logged-in user")**: `loadCurrencyPrefs`/`setModuleCurrency` and `loadMyLeaveData` now key off `this.state.currentUser.id` — the latter used to guess via a hardcoded `personaToEmp = {owner: 'emp_owner', ...}` map, which is gone. **Deliberately not done in Phase 1** (this is Phase 2's job): the sidebar/screen access gating still runs through `PERSONA_META`/`ACCESS`/`this.state.persona` — bridged by setting `PERSONA_META[access_level] = {name, role}` from the real logged-in user on auth success, so existing gating logic shows correct info without a full rewrite yet.
+- **Bug fixed along the way**: the scaffolded login button used `dc-attr-disabled="{{ loginLoading }}"` — not a real directive in this template runtime (confirmed by checking the loader source), so it would never have actually disabled the button. Changed to the correct `disabled="{{ loginLoading }}"`.
+- **Verification**: `GET /api/auth/me` tested end-to-end with `TestClient` (valid token → 200 with fresh employee data; bad/missing token → 401). Frontend logic was verified by static/structural checks only (syntax check + a systematic scan comparing every `{{ ident }}` in the template against renderVals() keys) — **not** exercised in an actual browser, per this project's usual "batch edits, repackage once, no browser testing unless asked" workflow.
+
+## Workflow addition: checking for scaffolded-but-unwired template bindings
+
+Because more than one tool/session has touched this codebase, it's become a real failure mode: template markup gets added (or half-ported) with render keys that don't exist in script.js — they silently render as empty/no-op rather than erroring, so it's easy to miss. Before assuming a screen "works," cross-check it:
+
+```python
+import re
+tpl = open('template.html', encoding='utf-8').read()
+script = open('script.js', encoding='utf-8').read()
+idents = set(re.findall(r'\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}', tpl))
+missing = [n for n in sorted(idents) if not re.search(r'(?<![A-Za-z0-9_.])' + re.escape(n) + r'\s*[:,]', script)]
+print(missing)
+```
+This caught the entire login screen being dead code, and separately flagged the Employee form's access-level dropdown as the same issue.
+
+## ⚠️ Update (2026-07-16, later same day): HR bug-fix pass (backend crash + 5-item frontend list)
+
+After Phase 1, the user reported a live 500 traceback on `GET /api/job-openings/` plus a combined list of HR bugs/gaps, ending with an explicit "No mock data. All real data." All items below are done and the bundle has been repackaged once (see verification at the end).
+
+**Backend fixes:**
+- `job_opening_repository.py`: `find_all`/`find_by_id` used `joinedload(JobOpening.candidates)` (a one-to-many collection) without `.unique()` on the `Result` — SQLAlchemy 2.x raises on this. Added `.unique()` to both. This was the crash in the traceback.
+- Notification identity bug: `notifications.py`/`notification_service.py`/`notification_repository.py` were keyed off the fake UI `persona` role string, so an employee's own notifications (`user_id=emp.id`) never reached them. Switched both endpoints (`GET /api/notifications/`, `POST /api/notifications/read-all`) to depend on `get_current_user` (real JWT id + role) and updated the repo/service signatures to accept `role` and expand it to broadcast targets (`hr`/`hr_admin`, `owner`/`admin`, `all`). Verified end-to-end via TestClient: HR gets "Leave Submitted" when an employee applies; the employee gets "Leave Approved"/"Leave Rejected" (with the reason baked into the message) after HR actions it.
+- Root cause of "Add employee is not working": the Employee form's Access Level `<Select>` referenced `accessLevelOptions`/`efoAccessLevel`/`onEfoAccessLevel` — none existed in script.js (same scaffolded-but-unwired class of bug as the dead login screen). The design-system `Select` does `options.map(...)` with no null-check, so opening "Add Employee" crashed the whole render tree instantly. Added the missing constant (`ACCESS_LEVEL_OPTIONS`), state field, handler, and render-vals keys; `access_level` is now actually sent on create (previously always silently defaulted server-side to `"employee"`).
+
+**Frontend fixes (template.html + script.js, repackaged once at the end):**
+- HR persona (`hr_admin`) no longer has `dashboard` access in `ACCESS` — HR now lands on Employees, not the revenue Dashboard.
+- Global search now covers HR: employees, leave requests, and job openings are searched (previously it only ever searched stale mock `D.employees` and had zero leave/hiring coverage). Clicking a result switches to the HR screen, sets the right `hrTab` (`'employees' | 'leave' | 'hiring'`), and opens the relevant record.
+- Employee Detail modal: removed the "Documents / Signed contract on file" section entirely (no backing feature existed); relabeled salary to "Monthly salary (PKR)" everywhere (new `moneyPKR()` formatter replaces the old generic `money()` for this field) — this reflects the DB's `salary` field now meaning **PKR per month**, not a USD annual figure; start-date inputs (both the New Employee form and the existing-employee edit field) now have `max={today}` plus a client-side guard in `onEmpStartDate`/`submitNewEmployee` rejecting future dates; leave balance was previously hardcoded to `0/0/0` — now loads real data via the existing `leavesApi.balance(id)` endpoint (`loadEmployeeLeaveBalance`, fired from `selectEmployee`).
+- **Change password**: HR can now set a new password for any employee straight from the Employee Detail modal (`changePasswordDraft` state + `submitChangePassword` → `employeesApi.update(id, {password})` → success toast "Password changed successfully."). Verified end-to-end (TestClient): password changed by HR, old password rejected, new password logs in.
+- **Leave approve/reject**: replaced the native `prompt()` for rejection with a proper small modal (`leaveActionModal` state, `crm-pop`/`crm-overlay-fade` animation classes) that lets HR add a note on approve (optional) or a reason on reject (required) — both flow through to the employee's notification message (backend already supported `note`/`rejection_reason`, just wasn't exposed well in the UI). Same success-toast pattern as password change.
+- Leave request rows: already had a working `onOpen` row-click plus `cursor:pointer`, just no visual cue — added a "Click for details →" hint in the actions column for non-pending rows (pending rows already show Approve/Reject there).
+- New Opening creation now validates all fields (title, department, salary bracket, experience, description) before allowing submit — previously only checked `title`.
+- Animation polish: added `crm-overlay-fade`/`crm-panel-slide` (existing CSS classes, already used by CRM Leads) to the Employee, Leave, and Opening drawers/modals, which previously popped in with no transition at all.
+
+**Data:** DB was wiped and reseeded with Pakistani names top-to-bottom (`backend/scripts/seed_hr.py`) — 20 employees + the `hamzashafiq@theupmotion.online` / `1234` HR admin account (kept as-is, already a Pakistani name) + matching candidates/notifications. Salaries in the seed are now realistic **PKR/month** figures (e.g. owner ~450,000/mo) instead of the old USD-annual numbers, consistent with the Monthly-salary-PKR relabel above. Added `backend/scripts/wipe_hr.py` (delete-all for the 7 HR tables, FK-order-safe) since no such utility existed before — reseeding required wiping first (`seed_hr.py` no-ops if `employees` is non-empty). **The live `orbit.db` was backed up first** to `backend/orbit.db.bak-before-hr-reseed-<timestamp>` before wiping, per this project's standing safety practice.
+
+**Verification method** (same as always — no browser, no formal test suite): FastAPI `TestClient` against the real seeded `orbit.db` for read-only checks, and a throwaway `sqlite+aiosqlite` DB (`DATABASE_URL` override) for anything that mutates data, so no test artifacts leak into the live DB. Confirmed in one pass: HR login → employees list (21) → job-openings (200, no crash) → leave reject with reason (creates employee notification with reason text) → leave approve with note → employee login → employee sees "Leave request approved" notification → HR changes employee password (PUT, not PATCH — `/api/employees/{id}` only supports PUT) → employee logs in with the new password.
+
+**Still open / explicitly deferred** (not part of this message's ask; the user's own Phase 2–8 roadmap above still governs sequencing): full persona removal, single-source-of-truth employees everywhere else in the app (Dashboard payroll, Finance, Dev dropdowns, CRM assigned-rep), the Currency-Settings-GET auth regression, role-driven navigation, Alembic migrations, and the broader technical-debt sweep.
+
+### Follow-up fix (same day): a second, different 500 crash on `POST /api/job-openings/`
+
+After the fix above, creating a new opening from the UI still crashed with `sqlalchemy.exc.MissingGreenlet` inside `job_opening_service.py`'s `_to_response()`, at `len(opening.candidates)`. Different root cause from the `.unique()` bug: `job_opening_repository.py`'s `create()` and `update()` built/mutated the `JobOpening` object and then called `await self.db.refresh(opening)` — plain `refresh()` only reloads column attributes, so `opening.candidates` (a relationship) is left unloaded/expired. Accessing it afterward in a synchronous method triggers an async lazy-load outside an active greenlet context, which raises instead of silently working (as it would in sync SQLAlchemy). `find_all`/`find_by_id` never hit this because they eager-load `candidates` via `joinedload(...).unique()` in the same query.
+
+**Fix**: changed both `create()` and `update()` to `await self.db.flush()` then `return await self.find_by_id(opening.id)` instead of `db.refresh(opening)` — reuses the already-correct eager-loading path so `candidates` is always populated before `_to_response` touches it. This also silently fixes the same latent risk in `update_opening` (e.g. closing an opening), which had the identical bug but hadn't been hit yet.
+
+Verified via TestClient against a throwaway DB: create → 201 with `candidate_count: 0`; update (`status: "Closed"`) → 200. Also confirmed the live `orbit.db` has no stray row from the user's failed attempt — the whole request is one transaction, so the crash's implicit `ROLLBACK` discarded the INSERT along with the notification it had already written.

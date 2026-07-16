@@ -36,7 +36,7 @@ class JobOpeningRepository:
         order = sort_col.asc() if sort_dir == "asc" else sort_col.desc()
         query = query.order_by(order)
         result = await self.db.execute(query)
-        return list(result.scalars().all())
+        return list(result.unique().scalars().all())
 
     async def find_by_id(self, opening_id: str) -> Optional[JobOpening]:
         query = (
@@ -45,18 +45,16 @@ class JobOpeningRepository:
             .where(JobOpening.id == opening_id)
         )
         result = await self.db.execute(query)
-        return result.scalar_one_or_none()
+        return result.unique().scalar_one_or_none()
 
     async def create(self, data: dict) -> JobOpening:
         opening = JobOpening(**data)
         self.db.add(opening)
         await self.db.flush()
-        await self.db.refresh(opening)
-        return opening
+        return await self.find_by_id(opening.id)
 
     async def update(self, opening: JobOpening, data: dict) -> JobOpening:
         for key, value in data.items():
             setattr(opening, key, value)
         await self.db.flush()
-        await self.db.refresh(opening)
-        return opening
+        return await self.find_by_id(opening.id)

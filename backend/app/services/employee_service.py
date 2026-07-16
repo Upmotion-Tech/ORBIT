@@ -8,6 +8,7 @@ from app.schemas.employee import EmployeeCreate, EmployeeUpdate, EmployeeRespons
 from app.models.employee import Employee
 from app.core.security import get_password_hash, verify_password
 from app.core.time import now_pkt
+from app.core.permissions import has_role
 
 
 class EmployeeService:
@@ -22,7 +23,7 @@ class EmployeeService:
     async def list_employees(
         self, search=None, department=None, status_filter=None,
         sort_by="created_at", sort_dir="desc",
-        page=1, page_size=100, persona="owner",
+        page=1, page_size=100, persona=None,
     ) -> list[EmployeeResponse]:
         employees = await self.employee_repo.find_all(
             search=search, department=department, status_filter=status_filter,
@@ -31,16 +32,16 @@ class EmployeeService:
         )
         return [self._to_response(e, persona) for e in employees]
 
-    async def get_employee(self, employee_id: str, persona="owner") -> Optional[EmployeeResponse]:
+    async def get_employee(self, employee_id: str, persona=None) -> Optional[EmployeeResponse]:
         employee = await self.employee_repo.find_by_id(employee_id)
         if not employee:
             return None
         return self._to_response(employee, persona)
 
     async def create_employee(
-        self, data: dict, user="anonymous", persona="owner",
+        self, data: dict, user="anonymous", persona=None,
     ) -> EmployeeResponse:
-        if persona not in ("owner", "hr", "hr_admin"):
+        if not has_role(persona, "owner", "hr", "hr_admin"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only HR can create employees.",
@@ -77,7 +78,7 @@ class EmployeeService:
         return self._to_response(employee, persona)
 
     async def update_employee(
-        self, employee_id: str, data: dict, user="anonymous", persona="owner",
+        self, employee_id: str, data: dict, user="anonymous", persona=None,
     ) -> EmployeeResponse:
         employee = await self.employee_repo.find_by_id(employee_id)
         if not employee:
@@ -86,7 +87,7 @@ class EmployeeService:
                 detail="Employee not found.",
             )
 
-        if persona not in ("owner", "hr", "hr_admin"):
+        if not has_role(persona, "owner", "hr", "hr_admin"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only HR can update employees.",
@@ -128,7 +129,7 @@ class EmployeeService:
         return self._to_response(employee, persona)
 
     async def delete_employee(
-        self, employee_id: str, persona="owner",
+        self, employee_id: str, persona=None,
     ) -> None:
         employee = await self.employee_repo.find_by_id(employee_id)
         if not employee:
@@ -137,7 +138,7 @@ class EmployeeService:
                 detail="Employee not found.",
             )
 
-        if persona not in ("hr", "hr_admin"):
+        if not has_role(persona, "hr", "hr_admin"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only HR can deactivate employees.",
@@ -145,8 +146,8 @@ class EmployeeService:
 
         await self.employee_repo.soft_delete(employee)
 
-    def _to_response(self, employee: Employee, persona: str) -> EmployeeResponse:
+    def _to_response(self, employee: Employee, persona) -> EmployeeResponse:
         resp = EmployeeResponse.model_validate(employee)
-        if persona not in ("owner", "hr", "hr_admin", "financehead"):
+        if not has_role(persona, "owner", "hr", "hr_admin", "financehead"):
             resp.salary = None
         return resp

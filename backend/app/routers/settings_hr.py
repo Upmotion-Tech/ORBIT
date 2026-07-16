@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import get_persona_role, get_current_user
+from app.core.dependencies import get_persona_roles, get_current_user
 from app.repositories.leave_policy_repository import LeavePolicyRepository
 from app.repositories.holiday_repository import HolidayRepository
 from app.services.leave_policy_service import LeavePolicyService
@@ -36,7 +36,7 @@ async def get_leave_policy(
 async def update_leave_policy(
     body: LeavePolicyUpdate,
     current_user: dict = Depends(get_current_user),
-    persona: str = Depends(get_persona_role),
+    persona: list = Depends(get_persona_roles),
     service: LeavePolicyService = Depends(get_policy_service),
 ):
     return await service.update_policy(
@@ -56,7 +56,7 @@ async def list_holidays(
 @router.post("/holidays", response_model=HolidayResponse, status_code=status.HTTP_201_CREATED)
 async def create_holiday(
     body: HolidayCreate,
-    persona: str = Depends(get_persona_role),
+    persona: list = Depends(get_persona_roles),
     service: HolidayService = Depends(get_holiday_service),
 ):
     return await service.create_holiday(body.model_dump(), persona=persona)
@@ -65,7 +65,7 @@ async def create_holiday(
 @router.delete("/holidays/{holiday_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_holiday(
     holiday_id: str,
-    persona: str = Depends(get_persona_role),
+    persona: list = Depends(get_persona_roles),
     service: HolidayService = Depends(get_holiday_service),
 ):
     await service.delete_holiday(holiday_id, persona=persona)

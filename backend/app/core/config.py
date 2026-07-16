@@ -20,7 +20,7 @@ class Settings(BaseSettings):
 
     @property
     def db_url(self) -> str:
-        if self.database_url:
+        if self.database_url and self.database_url.strip():
             return self.database_url
         return "sqlite+aiosqlite:///./orbit.db"
 

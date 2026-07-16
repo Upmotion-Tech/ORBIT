@@ -8,6 +8,7 @@ from app.repositories.notification_repository import NotificationRepository
 from app.schemas.job_opening import OpeningCreate, OpeningUpdate, OpeningResponse
 from app.models.job_opening import JobOpening
 from app.core.time import now_pkt
+from app.core.permissions import has_role
 
 
 class JobOpeningService:
@@ -24,7 +25,7 @@ class JobOpeningService:
     async def list_openings(
         self, department=None, status_filter=None,
         sort_by="opened_at", sort_dir="desc",
-        persona="owner",
+        persona=None,
     ) -> list[OpeningResponse]:
         openings = await self.opening_repo.find_all(
             department=department, status_filter=status_filter,
@@ -39,9 +40,9 @@ class JobOpeningService:
         return self._to_response(opening)
 
     async def create_opening(
-        self, data: dict, user="anonymous", persona="owner",
+        self, data: dict, user="anonymous", persona=None,
     ) -> OpeningResponse:
-        if persona not in ("hr", "hr_admin"):
+        if not has_role(persona, "hr", "hr_admin"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only HR can create job openings.",
@@ -63,7 +64,7 @@ class JobOpeningService:
         return self._to_response(opening)
 
     async def update_opening(
-        self, opening_id: str, data: dict, user="anonymous", persona="owner",
+        self, opening_id: str, data: dict, user="anonymous", persona=None,
     ) -> OpeningResponse:
         opening = await self.opening_repo.find_by_id(opening_id)
         if not opening:
@@ -72,7 +73,7 @@ class JobOpeningService:
                 detail="Job opening not found.",
             )
 
-        if persona not in ("hr", "hr_admin"):
+        if not has_role(persona, "hr", "hr_admin"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only HR can update job openings.",
@@ -93,8 +94,8 @@ class JobOpeningService:
 
         return self._to_response(opening)
 
-    async def delete_opening(self, opening_id: str, persona="owner") -> None:
-        if persona not in ("hr", "hr_admin"):
+    async def delete_opening(self, opening_id: str, persona=None) -> None:
+        if not has_role(persona, "hr", "hr_admin"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only HR can delete job openings.",

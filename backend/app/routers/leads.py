@@ -113,7 +113,7 @@ async def change_lead_stage(
     service: LeadService = Depends(get_lead_service),
     current_user: dict = Depends(get_current_user),
 ):
-    is_owner = current_user.get("role") == "owner"
+    is_owner = "owner" in (current_user.get("roles") or [])
     lead, error = await service.change_stage(
         lead_id, data.stage,
         user=current_user.get("sub", "anonymous"),

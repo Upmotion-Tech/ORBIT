@@ -20,15 +20,16 @@ class NotificationService:
         self.notification_repo = notification_repo
         self.task_repo = task_repo
 
-    async def get_notifications(self, user_id: str) -> list[Notification]:
+    async def get_notifications(self, user_id: str, roles: Optional[list] = None) -> list[Notification]:
         # Perform dynamic "Task Due Soon" and "Task Overdue" check if task_repo is available
-        if self.task_repo and user_id == "devmember":
+        roles = roles or []
+        if self.task_repo and "devmember" in roles:
             await self._check_and_create_task_alerts("Kofi Mensah", "devmember")
-        elif self.task_repo and user_id in ("owner", "admin"):
+        elif self.task_repo and any(r in ("owner", "admin") for r in roles):
             # For administrators, check for all employees
             await self._check_and_create_task_alerts(None, "owner")
 
-        return await self.notification_repo.find_all_for_user(user_id)
+        return await self.notification_repo.find_all_for_user(user_id, roles)
 
     async def mark_read(self, notification_id: str, is_read: bool = True) -> Optional[Notification]:
         notification = await self.notification_repo.find_by_id(notification_id)
@@ -36,8 +37,8 @@ class NotificationService:
             return None
         return await self.notification_repo.update_read_status(notification, is_read)
 
-    async def mark_all_read(self, user_id: str) -> None:
-        await self.notification_repo.mark_all_read(user_id)
+    async def mark_all_read(self, user_id: str, roles: Optional[list] = None) -> None:
+        await self.notification_repo.mark_all_read(user_id, roles)
 
     async def create_notification(self, user_id: str, notif_type: str, title: str, message: str) -> Notification:
         return await self.notification_repo.create(user_id, notif_type, title, message)

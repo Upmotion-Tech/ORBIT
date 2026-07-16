@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import get_persona_role, get_current_user
+from app.core.dependencies import get_persona_roles, get_current_user
 from app.repositories.leave_repository import LeaveRepository
 from app.repositories.employee_repository import EmployeeRepository
 from app.repositories.leave_policy_repository import LeavePolicyRepository
@@ -68,7 +68,7 @@ async def get_leave(
 async def create_leave(
     body: LeaveCreate,
     current_user: dict = Depends(get_current_user),
-    persona: str = Depends(get_persona_role),
+    persona: list = Depends(get_persona_roles),
     service: LeaveService = Depends(get_leave_service),
 ):
     return await service.create_leave(
@@ -83,7 +83,7 @@ async def approve_leave(
     leave_id: str,
     body: LeaveApproval,
     current_user: dict = Depends(get_current_user),
-    persona: str = Depends(get_persona_role),
+    persona: list = Depends(get_persona_roles),
     service: LeaveService = Depends(get_leave_service),
 ):
     return await service.approve_leave(
@@ -99,7 +99,7 @@ async def reject_leave(
     leave_id: str,
     body: LeaveApproval,
     current_user: dict = Depends(get_current_user),
-    persona: str = Depends(get_persona_role),
+    persona: list = Depends(get_persona_roles),
     service: LeaveService = Depends(get_leave_service),
 ):
     return await service.reject_leave(

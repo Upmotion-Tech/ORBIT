@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from app.core.config import settings
 from app.core.database import engine, Base
 from app.routers import (
+    auth,
     leads,
     settings as settings_router,
     preferences,
@@ -61,6 +62,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 app.mount("/api/storage", StaticFiles(directory=settings.storage_path), name="storage")
+app.include_router(auth.router)
 app.include_router(leads.router)
 app.include_router(settings_router.router)
 app.include_router(preferences.router)
