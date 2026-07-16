@@ -511,3 +511,50 @@ After the fix above, creating a new opening from the UI still crashed with `sqla
 **Fix**: changed both `create()` and `update()` to `await self.db.flush()` then `return await self.find_by_id(opening.id)` instead of `db.refresh(opening)` — reuses the already-correct eager-loading path so `candidates` is always populated before `_to_response` touches it. This also silently fixes the same latent risk in `update_opening` (e.g. closing an opening), which had the identical bug but hadn't been hit yet.
 
 Verified via TestClient against a throwaway DB: create → 201 with `candidate_count: 0`; update (`status: "Closed"`) → 200. Also confirmed the live `orbit.db` has no stray row from the user's failed attempt — the whole request is one transaction, so the crash's implicit `ROLLBACK` discarded the INSERT along with the notification it had already written.
+
+---
+
+# ⚠️ Update (2026-07-16, Finance Module Integration)
+
+## What is Done (Finance Backend & State wiring)
+
+- **Database Layer**: Implemented full `models`, `schemas`, `repositories`, and `services` for the Finance module:
+  * `Invoice` model / schema / repo / service (includes dynamic ReportLab PDF builder).
+  * `Expense` model / schema / repo / service (with department/category stats).
+  * `SalarySlip` model / schema / repo / service (handles gross, tax, allowance, deduction, bonus).
+  * `Milestone` model / schema / repo / service.
+- **FastAPI Controllers**: Thin routers registered under `backend/app/main.py`:
+  * `/api/finance/invoices` (with PDF download endpoint `/invoices/{invoice_id}/pdf`)
+  * `/api/finance/expenses` (with approve/reject handlers)
+  * `/api/finance/payroll` (resolving or initializing salary slips monthly)
+  * `/api/finance/milestones`
+  * `/api/finance/stats` (dashboard calculations — verified live: 200 OK)
+- **Data Seeding**: Built `backend/scripts/seed_finance.py` that checks for employee presence, inserts a default project if none exists, and populates invoices, expenses, milestones, and salary slips. Seeded successfully on the live SQLite database.
+- **Frontend State & Handlers**:
+  * Linked all backend controllers to the frontend (`invoicesApi`, `expensesApi`, `payrollApi`, `milestonesApi`, `financeStatsApi`).
+  * `loadFinanceData` wired into `bootAppData` — fires on every login.
+  * State handlers (`submitNewInvoice`, `submitNewExpense`, `changeInvoiceStatus`, `changeExpenseStatus`, `submitMilestone`, `changeMilestoneStatus`, `deleteInvoice`, `deleteExpense`, `deleteMilestone`, `togglePayrollPaid`) all talk to real API.
+  * Optimistic UI updates with 500 ms debounced auto-saving for salary slips (`setSalarySlipFieldLive`).
+  * Dashboard statistics now database-driven via `/api/finance/stats`.
+- **Salary Slip Modal**: Conditionally renders editable fields (Gross, Tax, Allowances, Deductions, Bonus, Notes) for `canRunPayroll` (owner/finance), read-only breakdown for other roles.
+- **Invoice PDF Download**: "Download PDF" button fetches `/api/finance/invoices/{id}/pdf` with auth token, auto-triggers browser download via blob URL.
+- **Bug fixed**: `finance_dashboard_service.py` was filtering on `Invoice.deleted_at`, `Expense.deleted_at`, `SalarySlip.deleted_at`, `Milestone.deleted_at` — none of these models have that column. Removed those clauses. `Employee.deleted_at` is valid and kept. Stats endpoint now returns 200 with live data.
+- **Repackaged**: `pack.py` ran successfully — `ORBIT.html`, `backend/static/index.html`, and `frontend/index.html` all updated.
+
+## What is Left (Finance Module) ✅ COMPLETE
+
+All Finance module tasks are done. Remaining project-wide items are governed by the Phase 2–8 roadmap above:
+- **Phase 2**: Remove persona system, use authenticated employee's role everywhere.
+- **Phase 3**: Employees as single source of truth in Dashboard payroll, Finance, Dev dropdowns, CRM.
+- **Phase 4**: Fix authorization (endpoint-by-endpoint audit for public vs authenticated vs role-protected).
+- **Phase 5**: Finish HR UI (all screens fully API-driven, no mock arrays).
+- **Phase 6**: Login-aware navigation (role-driven menus).
+- **Phase 7**: Alembic migrations.
+- **Phase 8**: Technical debt cleanup (dead persona code, obsolete helpers, consolidate API patterns).
+
+## Key Findings
+
+- **Database Counts**: SQLite holds 21 employees, 3 invoices, 3 expenses, 3 payroll slips, 3 milestones (seeded).
+- **Backend Integrity**: All 21 finance routes verified: invoices CRUD + PDF, expenses CRUD, payroll read + update, milestones CRUD, stats — all 200 OK in live smoke test.
+- **Stats live sample**: `{total_outstanding: $25k, total_paid: $25k, monthly_expenses: $470, payroll_cost: $1407/mo, upcoming_milestones: $47k}`
+

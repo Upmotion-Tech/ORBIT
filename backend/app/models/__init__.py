@@ -14,6 +14,10 @@ from app.models.job_opening import JobOpening
 from app.models.hiring_candidate import HiringCandidate
 from app.models.leave_policy import LeavePolicy
 from app.models.holiday import Holiday
+from app.models.invoice import Invoice
+from app.models.expense import Expense
+from app.models.salary_slip import SalarySlip
+from app.models.milestone import Milestone
 
 __all__ = [
     "Lead",
@@ -32,5 +36,9 @@ __all__ = [
     "HiringCandidate",
     "LeavePolicy",
     "Holiday",
+    "Invoice",
+    "Expense",
+    "SalarySlip",
+    "Milestone",
 ]
 

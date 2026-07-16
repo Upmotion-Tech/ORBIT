@@ -20,8 +20,12 @@ class Settings(BaseSettings):
 
     @property
     def db_url(self) -> str:
-        if self.database_url and self.database_url.strip():
-            return self.database_url
+        url = self.database_url
+        if url and url.strip():
+            url = url.strip()
+            if "postgres" in url and "+" not in url:
+                url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+            return url
         return "sqlite+aiosqlite:///./orbit.db"
 
     @property

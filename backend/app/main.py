@@ -21,6 +21,11 @@ from app.routers import (
     leaves,
     job_openings,
     settings_hr,
+    invoices,
+    expenses,
+    payroll,
+    milestones,
+    finance_stats,
 )
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
@@ -74,6 +79,11 @@ app.include_router(employees.router)
 app.include_router(leaves.router)
 app.include_router(job_openings.router)
 app.include_router(settings_hr.router)
+app.include_router(invoices.router)
+app.include_router(expenses.router)
+app.include_router(payroll.router)
+app.include_router(milestones.router)
+app.include_router(finance_stats.router)
 
 
 
