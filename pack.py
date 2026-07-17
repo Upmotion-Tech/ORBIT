@@ -16,7 +16,7 @@ script_tag_close = '\n  </script>'
 new_content = script_tag_open + encoded + script_tag_close
 
 # Update both files
-for path in ['ORBIT.html', 'backend/static/index.html']:
+for path in ['ORBIT.html', 'backend/static/index.html', 'frontend/index.html']:
     with open(path, 'r', encoding='utf-8') as f:
         content = f.read()
 
