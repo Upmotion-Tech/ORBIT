@@ -23,8 +23,12 @@ import tempfile
 import uuid
 from typing import Optional
 
-import docx
-from docx.oxml.ns import qn
+try:
+    import docx
+    from docx.oxml.ns import qn
+    _HAS_DOCX = True
+except ImportError:
+    _HAS_DOCX = False
 
 from app.models.invoice import Invoice
 
@@ -232,6 +236,8 @@ def convert_docx_to_pdf(docx_path: str) -> str:
 
 
 def generate_invoice_pdf_bytes(invoice: Invoice) -> bytes:
+    if not _HAS_DOCX:
+        raise RuntimeError("PDF generation requires python-docx (install with: pip install python-docx)")
     docx_path = generate_invoice_docx(invoice)
     pdf_path: Optional[str] = None
     try:
