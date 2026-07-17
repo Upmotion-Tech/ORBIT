@@ -65,3 +65,19 @@ async def get_hr_user(
             detail="Access denied. HR permissions required.",
         )
     return current_user
+
+
+async def get_audit_user(
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    # "permissions" is one of the real screen-key access levels (see
+    # ACCESS_LEVELS in app/schemas/employee.py) — it's what gates the whole
+    # Setup screen (where Audit Trail lives) on the frontend, so it's the
+    # matching backend check for who may read the audit log.
+    roles = current_user.get("roles") or []
+    if not any(r in ("owner", "permissions") for r in roles):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied. Audit trail requires Setup access.",
+        )
+    return current_user

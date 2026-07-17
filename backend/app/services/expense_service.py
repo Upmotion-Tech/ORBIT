@@ -6,9 +6,14 @@ from app.repositories.expense_repository import ExpenseRepository
 from app.repositories.notification_repository import NotificationRepository
 
 class ExpenseService:
-    def __init__(self, expense_repo: ExpenseRepository, notification_repo: Optional[NotificationRepository] = None):
+    def __init__(self, expense_repo: ExpenseRepository, notification_repo: Optional[NotificationRepository] = None, audit_repo = None):
         self.expense_repo = expense_repo
         self.notification_repo = notification_repo
+        self.audit_repo = audit_repo
+
+    async def _audit(self, actor: str, action: str, label: str, detail: Optional[str] = None) -> None:
+        if self.audit_repo:
+            await self.audit_repo.log(actor, action, "Expense", label, detail)
 
     async def list_expenses(self, **kwargs) -> list[Expense]:
         return await self.expense_repo.find_all(**kwargs)
@@ -35,6 +40,7 @@ class ExpenseService:
                 title="New Expense Logged",
                 message=message
             )
+        await self._audit(user, "Created", f"{expense.currency} {expense.amount:,.2f} — {expense.category}")
         return expense
 
     async def update_expense(self, expense_id: str, data: dict, user: str = "anonymous") -> Expense:
@@ -55,10 +61,17 @@ class ExpenseService:
             await self.notification_repo.create(user_id="finance", notif_type=notif_type, title=title, message=message)
             await self.notification_repo.create(user_id="owner", notif_type=notif_type, title=title, message=message)
 
+        label = f"{updated_expense.currency} {updated_expense.amount:,.2f} — {updated_expense.category}"
+        if old_status != new_status:
+            await self._audit(user, "Status Changed", label, f"'{old_status}' → '{new_status}'")
+        else:
+            await self._audit(user, "Updated", label)
+
         return updated_expense
 
-    async def delete_expense(self, expense_id: str) -> None:
+    async def delete_expense(self, expense_id: str, user: str = "anonymous") -> None:
         expense = await self.expense_repo.find_by_id(expense_id)
         if not expense:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Expense not found.")
+        await self._audit(user, "Deleted", f"{expense.currency} {expense.amount:,.2f} — {expense.category}")
         await self.expense_repo.soft_delete(expense)

@@ -20,6 +20,11 @@ class Project(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     client: Mapped[str] = mapped_column(String(255), nullable=False)
     lead_id: Mapped[str] = mapped_column(String(36), ForeignKey("leads.id"), nullable=True)
+    # For projects auto-created from a Won lead, the date the lead actually
+    # closed (lead.actual_closure_date, falling back to the day the project
+    # was created if that wasn't filled in) — editable afterward from the
+    # project's own details drawer, independent of the lead it came from.
+    start_date: Mapped[date] = mapped_column(Date, nullable=True)
     deadline: Mapped[date] = mapped_column(Date, nullable=True)
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="Not Started")
     at_risk: Mapped[bool] = mapped_column(Boolean, default=False)

@@ -12,7 +12,11 @@ class LeadCreate(BaseModel):
     source: Optional[str] = Field(None, max_length=100)
     medium: Optional[str] = Field(None, max_length=100)
     value: float = Field(default=0.0, ge=0)
-    stage: str = Field(default="New", pattern=r"^(New|Contacted|Proposal|Negotiation|Won|Lost)$")
+    # No longer a fixed enum pattern — Setup > Stages & Sources lets Owners
+    # rename/add/delete pipeline stages, so the set of valid names is
+    # dynamic (frontend-managed), not a fixed backend list. A plain
+    # length-bounded string accepts whatever the current stage list contains.
+    stage: str = Field(default="New", min_length=1, max_length=100)
     description: Optional[str] = None
 
     date_received: Optional[date] = None
@@ -44,10 +48,8 @@ class LeadUpdate(BaseModel):
 
 
 class LeadStageUpdate(BaseModel):
-    stage: str = Field(
-        ...,
-        pattern=r"^(New|Contacted|Proposal|Negotiation|Won|Lost)$",
-    )
+    # Same reasoning as LeadCreate.stage above — dynamic, not a fixed enum.
+    stage: str = Field(..., min_length=1, max_length=100)
 
 
 class LeadResponse(BaseModel):

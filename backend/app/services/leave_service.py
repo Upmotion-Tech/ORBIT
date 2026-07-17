@@ -21,11 +21,17 @@ class LeaveService:
         employee_repo: Optional[EmployeeRepository] = None,
         leave_policy_repo: Optional[LeavePolicyRepository] = None,
         notification_repo: Optional[NotificationRepository] = None,
+        audit_repo = None,
     ):
         self.leave_repo = leave_repo
         self.employee_repo = employee_repo
         self.leave_policy_repo = leave_policy_repo
         self.notification_repo = notification_repo
+        self.audit_repo = audit_repo
+
+    async def _audit(self, actor: str, action: str, label: str, detail: Optional[str] = None) -> None:
+        if self.audit_repo:
+            await self.audit_repo.log(actor, action, "Leave Request", label, detail)
 
     async def list_leave_requests(
         self, employee_id=None, status_filter=None, leave_type=None,
@@ -91,6 +97,8 @@ class LeaveService:
                 message=f"{employee.name} submitted a {leave.leave_type} leave request.",
             )
 
+        await self._audit(user, "Submitted", f"{employee.name if employee else employee_id} — {leave.leave_type}", f"{days} day(s)")
+
         return self._to_response(leave)
 
     async def approve_leave(
@@ -138,6 +146,9 @@ class LeaveService:
                          + (f" Note: {note}" if note else ""),
             )
 
+        emp = leave.employee
+        await self._audit(approved_by, "Approved", f"{emp.name if emp else leave.employee_id} — {leave.leave_type}", note)
+
         return self._to_response(leave)
 
     async def reject_leave(
@@ -181,6 +192,9 @@ class LeaveService:
                          + (f" Reason: {rejection_reason}" if rejection_reason else ""),
             )
 
+        emp = leave.employee
+        await self._audit(rejected_by, "Rejected", f"{emp.name if emp else leave.employee_id} — {leave.leave_type}", rejection_reason)
+
         return self._to_response(leave)
 
     async def get_balance(self, employee_id: str) -> LeaveBalanceResponse:
@@ -192,6 +206,12 @@ class LeaveService:
         sick_total = policy.sick_days if policy else 7
         annual_total = policy.annual_days if policy else 14
 
+        # Balances are an annual allotment — only leave taken/pending *this*
+        # calendar year (PKT) should count against it, otherwise a used day
+        # from a prior year would permanently eat into every future year's
+        # balance.
+        current_year = now_pkt().year
+
         casual_used = 0
         sick_used = 0
         annual_used = 0
@@ -200,8 +220,8 @@ class LeaveService:
         annual_pending = 0
 
         for t in ["Casual", "Sick", "Annual"]:
-            approved = await self.leave_repo.find_approved_by_type(employee_id, t)
-            pending = await self.leave_repo.find_pending_by_type(employee_id, t)
+            approved = await self.leave_repo.find_approved_by_type(employee_id, t, year=current_year)
+            pending = await self.leave_repo.find_pending_by_type(employee_id, t, year=current_year)
             used = sum(lr.days for lr in approved)
             pend = sum(lr.days for lr in pending)
             if t == "Casual":

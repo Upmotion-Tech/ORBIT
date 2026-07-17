@@ -995,3 +995,1227 @@ in the written bundle. Backend re-checked post-repackage (login + employees
 list, 200). Not browser-tested, consistent with this project's standing
 workflow.
 
+---
+
+## Update (2026-07-17, later still) — CRM/Projects transitions, list row-click, project start date, manager rules
+
+**Note for future agents**: `.env`'s `DATABASE_URL` now points at a real
+Neon Postgres instance (production), not local SQLite — this changed
+underneath this session, presumably as part of the deploy work referenced in
+the git log below. Migrations from here on need Postgres-flavored SQL
+(`ALTER TABLE ... ADD COLUMN IF NOT EXISTS`), not SQLite's table-rebuild
+workaround. Also: this sandbox's `TestClient` reliably succeeds on a script's
+*first* request against Neon but frequently raises `RuntimeError: Event loop
+is closed` on a second request in the same script (asyncpg + the TestClient
+async portal don't get on across repeated calls here) — a real, repeatable
+environment quirk, not a sign anything is broken. A direct
+`async_session_factory()` + `asyncio.run()` script (used for the migrations
+below) does not have this problem and is the more reliable way to verify
+multi-step backend behavior against Postgres in this environment.
+
+**Also worth knowing**: earlier the same day, a separate process (three git
+commits authored "Syed Hashim" — same session's user, likely a different
+tool/agent working on deployment) repeatedly regenerated `ORBIT.html` from a
+stale pre-this-session snapshot, silently discarding hours of uncommitted
+frontend work each time it repackaged. Recovered by rebuilding from this
+session's own scratchpad copy of `template.html`/`script.js` (kept
+continuously up to date all session) on top of the *current* bundle's
+manifest, since that other process's real fixes (icon CDN unpkg→jsdelivr)
+live in a compiled manifest asset this session's repack script never
+touches. If frontend changes go missing again, check `git log -- ORBIT.html`
+first before assuming this session's own work was faulty.
+
+### CRM Leads
+- List-view rows are now fully clickable (`sc-camel-on-click="{{ lead.onView }}"`
+  on the `<sc-raw-tr>`, `stopClick` guards added to the stage-select and
+  View-link cells) — previously only the small "View" link worked.
+- Kanban↔List toggle now animates: wrapped the `crmShowKanban` /
+  `crmLeadsLoading` / `crmHasLeadsError` / `crmShowEmptyState` / `crmShowList`
+  alternates (all mutually exclusive, confirmed by their own guard
+  conditions) in a new `<div class="orbit-subview-content">`, with a new CSS
+  rule `.orbit-subview-content > div { animation: screen-enter ...; }`. Unlike
+  the existing Finance `.orbit-subtab-content > div:nth-child(2)` rule (which
+  needs `:nth-child(2)` because a persistent filter row shares the same
+  parent), this wrapper contains *only* the alternates, so a plain `> div`
+  selector is enough and there's nothing fragile about DOM position.
+
+### Software Dev (Projects / Tasks)
+- Same `.orbit-subview-content` treatment applied three times: (1) an outer
+  wrapper around the whole `devTabIsProjects` / `devTabIsTasks` pair, so
+  switching those tabs animates; (2) an inner wrapper around Projects'
+  own `devProjSubViewIsKanban` / `devProjSubViewIsList` pair; (3) the same
+  for Tasks' `devTaskSubViewIsKanban` / `devTaskSubViewIsList` pair. Nesting
+  the class inside itself is safe — each instance's `> div` only matches its
+  own direct children, and an inner wrapper's identity doesn't change when
+  merely toggling kanban/list, so the outer (tab-switch) animation doesn't
+  spuriously refire on every kanban/list toggle. `showDevDashboardWidgets`
+  (a persistent panel below Projects' kanban/list, not itself a toggle
+  alternative) was deliberately left outside the inner wrapper.
+
+### Project start date
+New `Project.start_date` (nullable Date). For a project auto-created from a
+Won lead (`check_and_create_project_from_lead` in `project_service.py`), it's
+set to `lead.actual_closure_date` if the lead had that filled in, else
+`now_pkt().date()` (the day the project happens to be created) — Lead
+doesn't currently auto-populate `actual_closure_date` when a stage moves to
+Won (confirmed by reading the whole stage-change path — it's a manually-set
+field only), so there's no stronger signal available for "the date it came
+into Won" than the project-creation moment itself. For a manually-created
+project (`submitNewProject`, no lead involved), defaults to today. Editable
+afterward from the project details drawer (plain `<input type="date">`, no
+free-text dual variant like the older Deadline field has — matches the
+simpler single-date-input convention established for Invoices/Milestones
+earlier today) via `onProjStartDate` → `setProjectFieldLive` (per-field
+debounce keyed by `id+field` here, unlike the employee one — no clobbering
+risk). Shown on the Kanban card ("Started: ...", under the client/deadline
+line) and as a new "Start date" column in the list view, both via
+`startDateStr` computed in `mergeProject()`.
+
+Migrated the live Postgres `projects` table (`ALTER TABLE ... ADD COLUMN IF
+NOT EXISTS start_date DATE` — safe, additive, no backup needed) and backfilled
+the 2 existing rows that had no lead / no actual_closure_date to their own
+`created_at` date.
+
+### Manager rules
+Employee form (both New Employee and existing-employee edit): the Manager
+dropdown no longer offers "None" — `managerOptions` is now just the plain
+employee list — and the field is hidden entirely (`efoShowManager` /
+`empShowManager`, both `department !== 'Owner'`) for anyone in the Owner
+department, since there's no one above an owner to report to. Setting
+department to Owner clears `manager` on the spot (in `setEmployeeFormField`
+for the draft new-employee form, and in `changeEmpDepartment` for an existing
+employee — folded into the same combined PUT that already exists there for
+the access-level auto-tick, for the same debounce-clobbering reason
+documented in the entry above this one). `submitNewEmployee` now blocks
+creation with a clear error if department isn't Owner and no manager was
+picked, enforcing "everyone has a manager except owners" at creation time;
+no backend-level constraint was added (`manager` stays `Optional[str]` in
+the schema) since retroactively enforcing this against existing employee
+data wasn't asked for.
+
+### Verification
+Backend: `ast.parse` on the three touched Python files, migration + backfill
+run directly against live Postgres via `async_session_factory`, confirmed
+via a follow-up read that both previously-null projects got a sensible
+`start_date`. Frontend: `node --check`, tag-balance, and scaffolded-binding
+checks all clean (same harmless sc-for-alias false positives as always).
+Repackaged into all three bundle copies, byte-identical, JSON round-trips
+correctly. Backend login re-checked post-repackage (200) — see the Neon/
+TestClient note above for why multi-request backend scripts were kept to a
+minimum this round.
+
+---
+
+## Update (2026-07-17, later still) — Invoice close buttons, medium bug, delete/create transitions, currency fade, and a real CRM/Projects permission model
+
+**Correction to the TestClient note above**: found a cleaner way to script
+multi-request backend checks against the live Neon DB in this sandbox —
+`httpx.AsyncClient(transport=ASGITransport(app=app))` driven directly via
+`asyncio.run()`, instead of `fastapi.testclient.TestClient`. Multiple
+sequential requests in one script all succeeded with this approach; the
+"Event loop is closed" flakiness was specific to `TestClient`'s sync-over-
+async portal, not something inherent to scripting against Postgres here.
+Prefer `AsyncClient`/`ASGITransport` from now on for anything needing more
+than one request per script.
+
+### Quick fixes
+- **Invoice drawer had two "Close" buttons** (one per new/existing branch in
+  the footer) when clicking the darkened overlay (or the header's × icon)
+  already closes it — both removed; existing-invoice footer now shows just
+  the auto-save label with nothing else.
+- **Edit Lead's Medium field silently wrote a literal "—"**: `apiLeadToDisplay()`
+  had `medium: l.medium || '—'`, and since this value feeds the *editable*
+  Medium input directly (its only use), the dash was real text sitting in
+  the field, not a read-only placeholder — leave it untouched and save any
+  other field, and "—" could persist as the actual medium value. `source`
+  right next to it already correctly used `|| ''`; `medium` now matches.
+- **`_closeWithAnimation` grabbed the wrong element when overlays nest** — a
+  confirm popup (`.crm-pop`, e.g. "Delete lead") sitting on top of a drawer
+  (`.crm-panel-slide`, e.g. Edit Lead) meant `document.querySelector(...)`
+  returned the *parent* drawer (earlier in the DOM, since nested overlays are
+  always defined after their parent in this codebase) instead of the actual
+  topmost overlay being closed. Switched to `querySelectorAll(...)` + last
+  match, which is always the most-recently-opened/topmost element regardless
+  of nesting. This was a real, silent bug (the wrong panel got the closing
+  animation class while the real target just vanished instantly) — fixed
+  once, benefits every confirm-popup-over-drawer case in the app, not just
+  the one that surfaced it.
+- **Lead/Project delete and create now animate closed + toast**: `confirmDeleteLead`,
+  `deleteSelectedProject`, `submitNewLead`, and `submitNewProject` all
+  already pushed a toast on success but snapped their drawer/dialog shut
+  instantly via a raw `setState`; all four now route the close through
+  `_closeWithAnimation`. New Lead/New Project's *cancel* paths were already
+  correctly wired from an earlier session pass — this was specifically the
+  success/delete paths that were missed.
+- **USD/PKR currency toggle fade**: `setModuleCurrency` now briefly sets a
+  `{module}Switching` flag (150ms) before actually swapping the currency,
+  and Dashboard/Reports' root content divs bind `opacity` + a CSS transition
+  directly to it (`dashboardCurrencyOpacity`/`reportsCurrencyOpacity`) — a
+  quick fade-out/in around the currency swap instead of every figure on
+  screen just snapping to a new value.
+
+### CRM Leads / Software Dev Projects — real permission model
+The ask: anyone who isn't Owner but has been granted CRM/Projects access
+should see everything (Leads: including price; Projects: *except* price) and
+be able to comment, but not create, edit, or delete. Enforced on **both**
+ends — backend so it's real, frontend so the UI doesn't dangle controls that
+just 403:
+
+- **Leads router** (`leads.py`): `create_lead`, `update_lead`,
+  `change_lead_stage`, `delete_lead`, and both attachment upload/remove
+  endpoints switched from `get_current_user` to the existing `get_owner_user`
+  dependency. `create_activity` (which comments also POST through, via
+  `type: "comment"`) deliberately left on `get_current_user` — comments stay
+  open to anyone with view access. Lead `value` was never redacted by
+  persona anywhere in `lead_service.py` — already matches "show price to
+  non-owner", no backend change needed there.
+- **Projects service** (`project_service.py`) — this file still runs on the
+  pre-real-auth mock-persona system (`get_persona_role`, a single string;
+  see the 2026-07-16 entry on Phase 2/3 debt) and was deliberately left that
+  way rather than migrated to real per-user auth as part of this ask — that's
+  a much bigger, separately-flagged rewrite. Instead, tightened the *existing*
+  persona-string checks to the new rule:
+  - `create_project`: was `persona not in ("owner", "admin", "finance")`
+    (`"admin"` was dead — no access level is ever literally that) → now
+    `persona != "owner"`.
+  - `update_project` / `delete_project`: were `persona == "dev"`-only checks
+    (any other non-owner persona could still edit/delete) → now
+    `persona != "owner"`.
+  - `_to_response`: budget/spend redaction was `persona == "dev"` → now
+    `persona != "owner"`, so it actually applies to everyone but the owner,
+    not just the dev persona.
+  - Comments (`add_comment`) intentionally left ungated (any persona can
+    still comment, matching "can just comment").
+- **Frontend — Leads**: every editable field in the Edit Lead drawer (name,
+  POC, assigned rep, source, medium, value, stage, all four date pairs,
+  description) now takes `disabled="{{ isNotOwner }}"`. Attachment
+  upload/remove controls and the "Delete lead" footer link are wrapped in
+  `sc-if value="{{ isOwner }}"` (hidden, not just disabled — an upload
+  `<label>`/`<input type="file">` has no `disabled` equivalent worth trusting).
+  Kanban card dragging is now `draggable="{{ isOwner }}"`; the existing
+  `allowInlineStatusChange` flag (previously just a component-prop hook) now
+  also requires `persona === 'owner'`, with a read-only stage Badge shown
+  otherwise in both Kanban and List (new `stageTone` computed per lead,
+  reusing the same Won/Lost/else → success/danger/info mapping the Edit Lead
+  drawer's own badge already used). "New Lead" button hidden for non-owner.
+- **Frontend — Projects**: `showProjectFinance` (previously `persona !==
+  'devmember'` — a narrower check than the backend's own redaction rule) is
+  now `persona === 'owner'`, matching the backend exactly; it already gated
+  the Team picker's add/remove controls and the Delete Project button, so
+  those became correctly owner-only as a side effect of this one change.
+  Added a parallel `isNotOwner` (couldn't reuse `isDevMember`, which the Task
+  drawer's own fields still legitimately key off — Tasks were out of scope
+  for this pass) and swapped it onto all 7 of the Project drawer's editable
+  fields (name, client, status, start date, deadline, budget, description),
+  which previously only disabled for `isDevMember`. Kanban card and List row
+  status dropdowns now show a read-only Badge for non-owner (`statusTone`
+  added to `mergeProject()`, reusing the `STATUS_TONE` map already used for
+  Tasks). "New Project" button hidden for non-owner.
+- **Deliberately not touched**: Tasks (`tasks.py`/task drawer fields) — the
+  ask was specifically "leads, projects"; Task's own `isDevMember` gating is
+  untouched and now the one remaining place that name still means what it
+  says. Project attachment upload/delete and the dev-only checks inside them
+  — edit-adjacent but not explicitly asked about, left as-is to avoid scope
+  creep beyond what was requested.
+
+### Verification
+Backend: `ast.parse` on the three touched Python files. Live permission
+check via `AsyncClient`/`ASGITransport` against the real Neon DB — logged in
+as a real non-owner employee (`access_levels: ["employee"]`) and confirmed
+`403 "Only owners can perform this action."` / `403 "Only owners can create
+projects."` on lead and project creation respectively; confirmed owner login
+still creates successfully (and cleaned up the test lead via owner delete).
+Frontend: `node --check`, tag-balance, and scaffolded-binding checks all
+clean. Repackaged into all three bundle copies, byte-identical, JSON
+round-trips correctly, spot-checked new keys (`isNotOwner`,
+`dashboardCurrencyOpacity`, `stageTone`) present in the written bundle.
+
+---
+
+## Update (2026-07-17, later still) — real bug: team members invisible on their own dashboard (the "Kofi Mensah" mock-persona identity, finally hit in practice)
+
+User report: added a real employee (Fahad Iqbal) to a project's Team, but
+Fahad couldn't see that project on his own dashboard. Root cause: exactly
+the pre-real-auth mock-persona debt flagged repeatedly throughout this file
+(`projects.py`/`tasks.py` "intentionally still on the single-string
+get_persona_role/mock-persona system") — except this specific piece of it
+wasn't just tech debt, it was an active bug blocking real usage.
+
+`project_service.py.list_projects()` (and the identical pattern in
+`get_project`, `task_service.py`'s equivalents, `add_comment` in both
+routers, attachment/comment author attribution, and the frontend's own
+`visibleProjectsFlat`) all filtered/attributed using the **literal hardcoded
+string `"Kofi Mensah"`** as a stand-in for "whichever employee is logged in
+with the dev persona" — a leftover from the original mock-data prototype.
+Any *real* employee (Fahad, or literally anyone not coincidentally named
+Kofi Mensah) added to a project's `team` list could never match that string,
+so the `persona == "dev"` visibility filter always returned an empty list
+for them, no matter how many real projects they were actually on.
+
+**Fixed** by threading the real logged-in user's name (from the JWT's
+`name` claim, via `get_current_user`, already present since Phase 1 auth
+work) through everywhere this comparison happens, replacing the hardcoded
+name:
+- `project_service.py`: `list_projects`/`get_project` now take a `user_name`
+  param, used instead of `"Kofi Mensah"` in the `persona == "dev"` team-
+  membership check.
+- `task_service.py`: identical fix for `list_tasks`/`get_task`.
+- `routers/projects.py` / `routers/tasks.py`: `add_comment` visibility
+  checks and the comment-author / attachment-uploaded-by attribution both
+  switched from the fake name to `current_user.get("name") or persona`, so
+  a real employee's comments are now attributed to *them*, not a fictional
+  co-founder.
+- `notification_service.py`: `get_notifications`'s automatic "Task Due
+  Soon"/"Task Overdue" check was unconditionally querying
+  `assignee="Kofi Mensah"` for anyone with the "dev" role — meaning no real
+  dev employee's own overdue tasks ever generated an alert for them. Now
+  queries by the real caller's name instead.
+- **Frontend** (`script.js`): `visibleProjectsFlat` re-filtered the
+  *already-correctly-scoped* API response down to `team.includes('Kofi
+  Mensah')` for the `devmember` persona flavor — double-broken, since it
+  both used the wrong stale persona vocabulary (`devmember`, not the current
+  `dev`) and the same phantom name. Removed the re-filter entirely; the
+  backend fix above is now the actual source of truth, so the frontend just
+  trusts `GET /api/projects`'s response as-is instead of re-filtering
+  client-side with logic that could never match a real person.
+- **Deliberately left alone**: the notification *broadcast-target* logic
+  (`target_user = "dev" if member == "Kofi Mensah" else "all"` in a handful
+  of places in `project_service.py`/`routers/projects.py`) still has the
+  same stale-name check, so team-assignment/comment notifications still
+  over-broadcast to "all" for any real team member rather than targeting
+  them specifically — a real but separate, lower-impact issue (notifications
+  still *reach* the person, just less precisely, since "all" includes
+  everyone) than the reported "can't see the project" bug. Would need
+  resolving employee name → real employee ID to target precisely, which
+  needs a new repository dependency in `ProjectService`/`TaskService` — left
+  as a known follow-up rather than folded into this fix.
+
+### Verification
+`ast.parse` on all six touched Python files. Live-verified the actual root
+cause and fix directly against `ProjectService.list_projects()`: confirmed
+the real "Fahad Iqbal" (found via the live employees list, actually on a
+real project's team) is returned when queried with his real name, and
+confirmed the *old* hardcoded-name behavior would have returned nothing —
+i.e., reproduced the exact reported bug and confirmed the fix resolves it,
+without needing his (unknown) password to log in as him directly. Backend
+re-checked post-fix: login, `/api/projects`, `/api/tasks`, `/api/notifications`
+all 200. Frontend: `node --check`, tag-balance, and scaffolded-binding
+checks clean; repackaged into all three bundle copies, byte-identical,
+confirmed the `Kofi Mensah`-keyed re-filter is gone (only an explanatory
+code comment mentioning the old name by way of documentation remains).
+
+---
+
+## Update (2026-07-17, later still) — Finance-only employee still landed on/could see full company Dashboard
+
+User report: logged in as Adeel Khan (access_levels: `["finance"]` only —
+sidebar correctly showed just Invoices & Expenses + Me, no Dashboard link)
+but the screen he actually landed on after login was the full company
+Dashboard (revenue, profitability, resource utilization — everything).
+
+**Root cause**: `LANDING_SCREENS` (the login/goHome/access-redirect landing
+target) was keyed by the *cosmetic single-flavor persona*
+(owner/financehead/devmember/hr_admin/employee — `derivePersonaFlavor()`'s
+output), not by the employee's real granular `access_levels`. Anyone with
+`finance` ticked derives to persona `"financehead"`, and
+`LANDING_SCREENS.financehead` was hardcoded to `"dashboard"` — regardless of
+whether that specific employee actually had `dashboard` *also* ticked. So a
+finance-only employee's sidebar correctly hid Dashboard, but the landing
+logic never actually consulted that — it just trusted the derived flavor,
+which conflates "has finance access" with "should land on the dashboard
+company-wide overview" for no real reason.
+
+This is also why the access-gating redirect safeguard already in
+`renderVals()` (`const screen = access[...] === false ? LANDING_SCREENS[persona] : ...`,
+added by a separate session earlier the same day per the "fix access gating
+for screen-level roles" commit — see the two entries above this one about
+that concurrent-editing collision) didn't actually catch this case:
+redirecting *away* from an unauthorized Dashboard just sent Adeel *back* to
+`LANDING_SCREENS.financehead` — which is `"dashboard"` again. Same broken
+map, used as both the initial landing target and its own fallback.
+
+Separately found while in this code: that same redirect's screen→access-key
+translation map (`{dashboard:'dashboard', crm:'crm', dev:'dev',
+finance:'finance', hr:'hr'}`) had no entry for `setup` (the Setup/Permissions
+screen's real id) → `permissions` (its access key) — so the Setup screen
+wasn't covered by this safeguard at all; anyone without `access.permissions`
+who ended up on `setup` (e.g. via a stale `localStorage`-persisted screen
+after their access changed) would never get redirected off it.
+
+**Fixed**: added `deriveLandingFromAccess(access)` — walks the *real* merged
+access object (`dashboard > crm > dev > finance > hr > permissions(->'setup') >
+'me-leave'` fallback, "me-leave" being the one screen every employee can
+always reach regardless of access) — and replaced all three `LANDING_SCREENS`
+call sites with it: `onAuthenticated` (initial post-login landing),
+`goHome` (clicking the ORBIT logo), and the access-gating redirect's
+fallback. Also added the missing `setup: 'permissions'` entry to the
+redirect's screen→access-key map. `LANDING_SCREENS` itself removed —
+verified zero remaining references (only an explanatory code comment
+mentioning it by name for context).
+
+### Verification
+Isolated logic check (extracted `mergeAccess`/`deriveLandingFromAccess` and
+ran them directly in Node): confirmed `access_levels: ["finance"]` now
+derives to landing screen `"finance"`, not `"dashboard"`; confirmed owner
+still correctly lands on `"dashboard"`; confirmed an employee with literally
+no access levels still safely falls back to `"me-leave"`. `node --check` and
+tag-balance checks clean. Repackaged into all three bundle copies, byte-
+identical, confirmed `deriveLandingFromAccess` present and no functional
+`LANDING_SCREENS[...]` reference remains. Backend unaffected by this fix
+(frontend-only) — re-checked login still 200 regardless.
+
+---
+
+## Update (2026-07-17, later still) — Project comments didn't appear until a full page refresh
+
+Small, clear bug: `addProjectComment(id)` (script.js) only called
+`this.loadProjects()` after successfully posting — that refreshes the
+project *list* (name/status/deadline/team etc.), not the comment thread,
+which lives in separate state (`projectComments`) populated only by
+`loadProjectDetails(id)`'s own `GET .../comments` call. So a comment posted
+fine (toast confirmed it), but nothing on screen changed until a full page
+reload happened to call `loadProjectDetails` fresh from scratch. `addTaskComment`,
+right below it, already correctly called both `loadTasks()` *and*
+`loadTaskDetails(id)` — this was a one-line inconsistency, not a deeper
+issue. **Fixed**: `addProjectComment` now also calls `loadProjectDetails(id)`.
+Checked the equivalent Lead comment flow (`addLeadComment` ->
+`refreshLeadActivities(id)`) while in this area — it was already correct,
+so this was specifically a Projects-only gap, not a systemic one.
+
+Repackaged into all three bundle copies after the usual `node --check` +
+tag-balance checks; confirmed the fix's exact code present in the written
+bundle.
+
+---
+
+## Update (2026-07-17, later still) — Task/subtask due-date picker rejected today and tomorrow; task assignment notification now actually targets the assignee
+
+### The date bug
+`onTfDeadlineDate` (New Task/Subtask form) and `onTaskDeadlineDate` (existing
+task edit) both did:
+```js
+const d = fromISO(e.target.value);              // "17 Jul 2026" (display format)
+if (d && d < todayISO()) { ...reject as past... } // todayISO() returns "2026-07-17" (ISO format)
+```
+Comparing two *different* string formats with `<` is close to meaningless —
+e.g. "17 Jul 2026" vs "2026-07-17" compares on the very first character
+('1' vs '2'), which is why today and tomorrow specifically (day-of-month
+17/18, both starting with '1') got rejected as "in the past" while other
+dates behaved inconsistently depending on what digit the day-of-month
+happened to start with. Every other deadline handler in the app (Project's
+`onProjDeadlineDate`/`onPfDeadlineDate`) either doesn't do inline string
+comparison or goes through `new Date(...)` first (which normalizes format
+differences via actual parsing) — this pair was the only place comparing
+raw strings in mismatched formats. **Fixed**: compare `e.target.value`
+(still ISO, pre-conversion) against `todayISO()`, then convert to display
+format only afterward when storing it. Verified in isolation: old code
+rejected both today and tomorrow; new code accepts both.
+
+### Task assignment notifications now target the actual assignee
+Same underlying issue as the Projects/Tasks visibility bug fixed earlier
+today, in the one place explicitly deferred at the time: `create_task`/
+`update_task`'s "Assigned to task" notification used
+`target_user = "dev" if assignee == "Kofi Mensah" else "all"` — a real
+assignee (anyone not literally named Kofi Mensah) got their notification
+broadcast to `"all"` (every employee) rather than targeted at them
+specifically. Added `TaskService._resolve_assignee_notification_target()`,
+which resolves the assignee's display name to their real employee id via
+`EmployeeRepository.find_by_name()` (exact case-insensitive match over its
+substring-search results) and uses that as the notification's `user_id`,
+falling back to `"all"` only if no exact match is found. `TaskService` now
+takes an `employee_repo` param; `routers/tasks.py`'s `get_task_service`
+factory updated to inject it. Project's equivalent team-assignment/comment
+notification-targeting remains the one still-deferred item from earlier
+(not touched here — today's ask was specifically about task assignment).
+
+### Verification
+`ast.parse` on both touched files. Live end-to-end via `AsyncClient`/
+`ASGITransport`: created a real task assigned to Fahad Iqbal, minted his
+real JWT, confirmed his `/api/notifications` now includes the "Assigned to
+new task" notification (previously would only have arrived via the "all"
+broadcast, indistinguishable from noise); confirmed `/api/tasks` for his
+real identity also returns the task (the visibility fix from earlier today
+holds for tasks specifically, not just projects). Cleaned up the test task
+afterward. Frontend: `node --check` + tag-balance clean; repackaged into all
+three bundle copies, byte-identical, confirmed the fix's code present.
+
+---
+
+## Update (2026-07-17, later still) — Employee form simplification + Setup's Stages/Sources/Expense-Categories made to actually propagate to existing records
+
+The user's ask, in four parts: (1) Employee department should be a fixed
+4-option list — Owner, Finance, Dev Member, Employee — not a free-form/
+derived-from-existing-data list. (2) Selecting Owner as department should
+hide Manager and Access Level entirely (Owner already implies full access,
+no manager needed). (3) Comment out the Setup → User Management tab for now
+(keep the code, don't delete). (4) Setup → Stages & Sources / Expense
+Categories: adding already reflected in dropdowns everywhere, but *renaming
+or deleting* a stage/source/category needs to actually update existing
+leads/expenses currently using it, with a smooth transition on add/delete.
+
+### Employee form (script.js)
+- Added `DEPARTMENT_OPTIONS` (the 4 fixed `{value, label}` entries) and
+  changed `empDeptOptions2` (the dropdown's options list) from
+  `Array.from(new Set(apiEmployees.map(e => e.department)))` — derived from
+  whatever departments happened to already exist on real employee rows — to
+  this fixed list.
+- `openNewEmployee`'s default `dept` changed from `'Software Dev'` to
+  `'Employee'` (no longer a valid option), `accessLevels` default changed
+  from a department-derived single value to `[]` (matches the "Owner needs
+  no access level" rule below — a non-Owner department starts with nothing
+  ticked rather than a guessed default).
+- The existing `efoShowManager`/`empShowManager` flags (`!efoIsOwnerDept` /
+  equivalent, already used to hide the Manager field for Owner) now also
+  wrap the **Access Level tick-box section** in both the New Employee form
+  and the existing-employee edit view (`<sc-if value="{{ efoShowManager }}">`
+  /  `<sc-if value="{{ empShowManager }}">` around the checkbox-row markup in
+  `template.html`) — Owner hides both Manager and Access Level, everyone else
+  sees both.
+
+### Setup → User Management: commented out, not deleted
+The tab button in `template.html` is now inside a plain HTML comment (safe
+since it's a plain `<button>` with only `{{ }}` interpolations, no `sc-if`/
+`sc-for` directives that a comment would break). `setupTabIsUserMgmt` in
+`renderVals()` is hardcoded to `false` (was `this.state.setupTab ===
+'usermgmt'`), with an inline comment on how to re-enable both halves later.
+`setupTab`'s initial state default changed from `'usermgmt'` to `'stages'`
+so Setup doesn't land on a now-hidden blank tab.
+
+### Stages / Sources / Expense Categories now actually propagate
+Confirmed via code reading that `stageOptions`/`sourceOptions`/
+`sourceFilterOptions`/`expCategoryOptions` were already correctly derived
+from reactive state (`crmStagesList`/`crmSourcesList`/
+`crmExpenseCategoriesList`) — so **adding** an entry already showed up in
+every dropdown with zero further work. The real, confirmed gap: **rename**
+and **delete** wrote to a `leadOverrides` state object that was never merged
+back into displayed lead data (dead code — the merge step had been removed
+in an earlier session when Leads went fully live-backend) — so existing
+leads/expenses using a renamed or deleted stage/source/category never
+actually changed. Rewrote all four operations to make real API calls instead:
+
+- **Backend**: `LeadCreate.stage` and `LeadStageUpdate.stage`
+  (`app/schemas/lead.py`) were a hard `pattern=r"^(New|Contacted|Proposal|
+  Negotiation|Won|Lost)$"` regex — even a *correct* frontend rename would
+  have been rejected with a 422 before reaching any business logic, since
+  Stages & Sources lets Owners rename/add/delete pipeline stages, making the
+  valid stage set dynamic rather than a fixed backend enum. Loosened both to
+  a plain `Field(..., min_length=1, max_length=100)`. Confirmed via code
+  reading that `LeadUpdate` has no `stage` field at all (stage changes only
+  ever go through the dedicated `PATCH /{id}/stage` endpoint) and that
+  `lead_service.py`'s sequential-workflow validation (`STAGE_WORKFLOW`, keyed
+  to the original 6 names) is unreachable for real callers regardless — the
+  router requires `get_owner_user` and always passes `is_owner=True` — so no
+  further backend change was needed for renamed/custom stage names to work.
+  `source` (on leads) and `category` (on expenses) were already plain
+  unrestricted strings, no backend change needed for either.
+- **Frontend** (`script.js`): `renameCrmStage`/`deleteCrmStage` now filter
+  `this.state.apiLeads` for every lead currently in the affected stage, fire
+  `Promise.all(...)` over `leadsApi.setStage(id, newNameOrFallback)` for each,
+  then `this.loadLeads()` to refresh from the true backend state, with a
+  success/error toast. `renameCrmSource`/`deleteCrmSource` are the same
+  pattern via `leadsApi.update(id, { source: newNameOrFallback })` (source
+  isn't its own endpoint, just a regular field on `LeadUpdate`).
+  `deleteExpenseCategory` (no rename feature exists for categories — add/
+  delete only, matching the feature's existing scope) does the equivalent
+  over `this.state.apiExpenses` via `expensesApi.update(id, { category:
+  fallback })`, then `this.loadFinanceData()`. The now-fully-dead
+  `leadOverrides` state field and all references to it were removed.
+- **Smooth transitions**: added `class="orbit-settings-row"` to each of the
+  three settings-row `<div>`s (Pipeline Stages, Reporting Sources, Expense
+  Categories) in `template.html`, plus a `settings-row-in` fade+slide-down
+  keyframe in the CSS block already holding the app's other transition rules
+  (`drawer-slide-out`/`pop-fade-out`/`screen-enter`, etc.). Same "animate on
+  every (re)render, not just literally-new rows" convention already
+  established by `screen-enter` elsewhere in this app — add and delete both
+  trigger a full row-list re-render, so this covers both without needing a
+  genuine keyed exit animation (which this template runtime has no
+  precedent for and wasn't worth the added risk to attempt un-browser-tested).
+
+### Verification
+`node --check` on script.js, tag-balance check (`sc-if`/`sc-for`/`sc-raw-*`/
+`div`/`x-import`/`button`/`textarea`/`{{ }}` all balanced), and the
+scaffolded-binding cross-check (only the usual sc-for loop-alias false
+positives — `al`, `e`, `o`, `opt`, `po`, etc. — flagged, no real gaps).
+Backend: `ast.parse` on the schema file, then a live end-to-end check via
+`httpx.AsyncClient`/`ASGITransport` against the real dev SQLite DB, logged in
+as a real owner (minted JWT, no password needed) — created a lead, `PATCH
+.../stage` with a custom non-enum name ("Discovery Call") returned **200**
+(previously would have been a 422), `GET` confirmed the custom stage
+persisted, `PUT .../{id}` with a custom `source` returned 200, test lead
+cleaned up via owner delete afterward. Repackaged into all three bundle
+copies (byte-identical, 998958 bytes each); confirmed in the written bundle
+that the bulk-API rename/delete logic, `DEPARTMENT_OPTIONS`,
+`setupTabIsUserMgmt: false`, and the new CSS class are all present, and that
+`leadOverrides` no longer appears anywhere. **Not** browser-tested (this
+project's standing workflow) — in particular the row fade-in timing and the
+Owner-department Manager/Access-Level hide are worth an actual click-through
+before fully trusting the feel of it.
+
+---
+
+## Update (2026-07-17, later still) — New Task's due-date rejection bug: same format-mismatch class, a different call site
+
+User report: creating a New Task with delivery date "19 Jul 2026" (a future
+date) still got rejected with "Delivery date cannot be in the past." — even
+though `onTfDeadlineDate`'s own onChange-time check (fixed in an earlier
+entry above) was already correct.
+
+**Root cause**: that earlier fix corrected the validation *inside*
+`onTfDeadlineDate`, but the value it then stores into `taskForm.deadline` is
+still `fromISO(e.target.value)` — the **display** format ("19 Jul 2026"), by
+design (matches how every other form field in this app stores dates).
+`submitNewTask` (script.js) does its own **second**, independent
+past-date check at submit time: `if (f.deadline && f.deadline < todayISO())`
+— comparing that display-format string directly against `todayISO()`'s ISO
+string ("2026-07-17"). Identical bug class to the one already documented
+above (raw string comparison across two different date formats — "1" vs "2"
+as the first character decides the comparison, not the actual date), just
+at a call site the earlier pass didn't touch. `submitNewProject`'s
+equivalent check was verified NOT to have this problem — it already runs
+the value through a real `new Date(...)` parse before comparing Date
+objects, not a raw string compare, and `new Date("19 Jul 2026")` parses
+correctly (verified directly in Node) — so nothing else needed changing
+there.
+
+**Fixed**: `submitNewTask` now does `const deadlineISO = toISO(f.deadline);`
+first, compares that (ISO vs ISO) against `todayISO()`, and reuses
+`deadlineISO` directly for the API payload — replacing the previous
+`new Date(f.deadline).toISOString().slice(0, 10)` payload construction with
+the already-correct `toISO()` helper instead of relying on implementation-
+defined free-form Date-string parsing a second time in the same function.
+
+### Verification
+Isolated the exact `toISO`/`todayISO` comparison logic in a standalone Node
+script and ran it against "19 Jul 2026" (tomorrow, relative to today
+2026-07-17), "17 Jul 2026" (today), "18 Jul 2026" (tomorrow), and
+"01 Jan 2020" (a real past date) — confirmed the first three no longer
+trigger the rejection and the real past date still correctly does.
+`node --check` clean. Repackaged into all three bundle copies; confirmed
+the fix's code (`deadlineISO = toISO(f.deadline)`) present in the written
+bundle.
+
+---
+
+## Update (2026-07-17, later still) — UI Beautification pass
+
+Pure CSS + HTML structure pass. **No backend changes. No JS logic changes. No
+button wiring changes.** All changes live in `unpacked/template.html`
+(repackaged into all three bundle copies at the end).
+
+### Login Screen — light glassmorphism
+- Background changed from dark `#0f0f13` to a soft indigo light-gradient
+  (`linear-gradient(135deg, #EEF2FF ... #F0EEFF)`) with two large animated
+  radial "blob" pseudo-elements (`orbit-blob1`/`orbit-blob2` keyframes, 12s
+  and 16s cycles) for subtle depth movement.
+- Login card: white glassmorphism (`rgba(255,255,255,0.80)`,
+  `backdrop-filter: blur(32px)`, soft indigo shadow) with a
+  `orbit-card-in` entrance animation (slide+scale, 0.52s spring).
+- ORBIT logo: orbital SVG mark (identical to the sidebar mark) + gradient
+  text in indigo. A small "OPERATIONAL REVENUE & BUSINESS INTELLIGENCE"
+  eyebrow line added beneath it.
+- Inputs redesigned: icon wrapper (`.login-input-wrap` + `.login-input-icon`)
+  with mail/lock SVG icons in each field; light border that turns indigo on
+  focus with a glow ring.
+- Sign-in button: indigo gradient with a continuous `orbit-shimmer-btn`
+  shimmer animation, lift+glow on hover.
+- Auth-checking splash (loading state): inherits the same light screen with
+  the orbital SVG logo pulsing via `orbit-pulse-glow`.
+
+### Logout Button — round red pill
+- Wrapping `div.orbit-logout-wrap` added (flex center) in the sidebar HTML.
+- Button now: `border-radius: 9999px`, red gradient fill
+  (`#EF4444 → #DC2626`), white text, sign-out SVG icon, `width: auto`
+  (no longer full-width rectangle), lift+glow on hover, squish on active.
+
+### Setup Tabs — pill segmented control + content animation
+- Tab buttons changed from inline-`style` underline buttons to
+  `.orbit-setup-tab` class buttons inside `.orbit-setup-tabs` container.
+- Container styled as a pill segmented control (rounded background, inset
+  shadow). Active tab detected via CSS `[style*="font-weight:700"]` (the
+  template already sets `font-weight:700` on the active tab via
+  `{{ setupTabXxxWeight }}`; no JS change needed) — gets white pill + indigo
+  text + shadow.
+- Tab content panels wrapped in `.orbit-setup-content`; each `sc-if > div`
+  gets `screen-enter` fade+slide animation on tab switch.
+
+### Colour & polish
+- Sidebar: subtle `linear-gradient(180deg, #FFFFFF 0%, #F7F8FF 100%)`.
+- Topbar: `box-shadow` for depth separation from page.
+- Table headers: soft indigo tint gradient.
+- Avatar in topbar: indigo ring border.
+- Badges: richer saturated colours (green/red/amber/indigo).
+- Cards: indigo-tinted shadow on hover.
+- Topbar search: indigo focus ring when typing.
+
+### Font lift
+- `--text-body-size: 14.5px` (was 14px)
+- `--text-h2-size: 20px` (was 19px)
+- `--text-h3-size: 15.5px` (was 15px)
+- `--text-small-size: 13px` (was 12.5px)
+
+### Verification
+`node --check` clean (JS unchanged). `sc-if`/`sc-for` balance: 195/195 and
+86/86 — perfect. Only `{{ }}` mismatch was line 4595's `data-props` JSON
+attribute (the same pre-existing false positive documented on every previous
+pass in this file — not a real issue). Repackaged into all three bundle copies
+(`ORBIT.html`, `backend/static/index.html`, `frontend/index.html`). Spot-
+checked key identifiers in the written bundle: `orbit-card-in`, `orbit-blob1`,
+`orbit-logout-wrap`, `orbit-setup-tabs`, `login-tagline`, `login-input-wrap`,
+`Sign Out` — all confirmed present. Not browser-tested (project standing
+workflow).
+
+---
+
+## Update (2026-07-17, later still) — the "UI Beautification pass" above clobbered several rounds of this session's own work; restored + real merge; then: leave policy year-scoping fix, Holiday Calendar removed, Permissions section removed, real Audit Trail built
+
+### Part 1: the collision, and why this one needed a real merge instead of a straight restore
+
+Picking this session back up after a gap, the user reported things looked
+"disturbed" by another agent. Investigation (`git status`, comparing file
+mtimes, and diffing the live bundle's decoded template against this
+session's own continuously-maintained scratchpad copy) identified the cause
+as the "UI Beautification pass" entry directly above this one — a different
+tool/session that worked from its own `unpacked/template.html` snapshot
+(see its own `unpacked/patch_sidebar.py`) and repackaged `ORBIT.html` (+ both
+synced copies) from that snapshot. Same failure mode as the
+"concurrent-editing collision" documented earlier in this file, recurring
+because that other tool's workspace was never told about this session's
+subsequent rounds of work.
+
+The stale snapshot it worked from was **older than that entry's own
+framing suggests** — not just missing the last few fixes, but missing
+several entire rounds: the "multiple access levels" vocabulary rename, the
+CRM/Projects owner-only permission overhaul's frontend flags, the
+Kofi-Mensah-identity fix's frontend simplification, the landing-screen fix,
+and everything from this session's own most recent work (department
+dropdown, stage/source/category real-API wiring, the task-deadline
+submit-time fix). Confirmed by checking the live bundle's decoded template
+for marker strings from each of those rounds (`deriveLandingFromAccess`,
+`DEPARTMENT_OPTIONS`, `leadsApi.setStage(l.id, newName)`, `deadlineISO =
+toISO(f.deadline)`, etc.) — all absent, despite each being real, verified,
+already-shipped work from earlier the same day.
+
+**But the other tool's own pass really was genuine, well-executed,
+self-contained design work** (as its own entry above describes: the
+glassmorphism login screen with animated gradient blobs, the round red
+"Sign Out" pill button with an icon, the pill-style segmented control for
+Setup tabs) — a blind restore-from-scratchpad would have destroyed that in
+turn. The right move was a real merge, not a pick-one-side.
+
+**How the merge was done**: extracted the live bundle's template HEAD (the
+`</x-dc>`-delimited markup portion, separate from the trailing
+`data-dc-script`/script.js portion) and diffed its **set of CSS class
+names** against this session's scratchpad template — a more reliable
+signal than a raw line diff here, since the two extraction tools
+format/order things differently. This isolated exactly six classes unique
+to the live bundle (`login-input-icon`, `login-input-wrap`, `login-tagline`,
+`orbit-logout-wrap`, `orbit-setup-content`, `orbit-setup-tab(s)`) —
+confirmed by reading their full CSS + the one HTML site each was used at —
+and confirmed everything else in the live bundle's other style blocks (a
+"CRM Leads — motion" block, a "Premium UI" design-token block) was either
+character-for-character already present in this session's scratchpad or an
+older/superseded version of something this session had already fixed (e.g.
+live's copy of the screen-transition rule still had the dead
+`sc-if > div[...]` selector this session had already removed in an earlier
+round — confirmed via a size/line-count comparison, not just spot-checking).
+
+Ported forward, on top of this session's scratchpad (i.e., functional
+correctness kept, visual upgrade re-applied):
+- Login screen: added the `<div class="login-tagline">` under the ORBIT
+  logo, and wrapped both inputs in `<div class="login-input-wrap"><span
+  class="login-input-icon"><svg>...</svg></span><input .../></div>` (mail
+  and lock icons, taken verbatim from the live bundle's markup).
+- Sidebar logout: wrapped the existing button in `<div
+  class="orbit-logout-wrap">` and added the inline SVG "sign out" icon +
+  changed the label text from "Logout" to "Sign Out" to match.
+- Setup tabs: changed the tab-row wrapper to `class="orbit-setup-tabs"`,
+  each button to `class="orbit-setup-tab"` (dropping the now-redundant
+  inline `border-bottom`/`font-size`/`color` styling the pill CSS replaces —
+  kept only the `font-weight:{{ ... }}` inline style, since the pill CSS's
+  active-tab rule keys off that), and wrapped the tab content area in a new
+  `<div class="orbit-setup-content">...</div>`.
+- Added the whole `ORBIT BEAUTIFICATION v2` CSS block as a new final
+  `<style>` block (after this session's own last one), fixing two things
+  while transplanting it rather than reproducing them:
+  1. `.orbit-setup-content > sc-if > div` → `.orbit-setup-content > div` —
+     same "`sc-if` is compile-time-only and never a real DOM node" dead-CSS
+     bug already documented and fixed elsewhere in this file (the other
+     entry's own description above even says "each `sc-if > div` gets
+     `screen-enter`..." — that selector could never actually have matched
+     anything, the animation was silently a no-op).
+  2. The active-tab selector `.orbit-setup-tab[style*="font-weight:700"]`
+     → `[style*="font-weight:600"]` — this app's own `setupTabXWeight`
+     render-vals emit `600`/`400` (not `700`) for active/inactive, an
+     existing, already-correct convention (the other entry's description
+     assumed `700` was already what the template emitted — it wasn't).
+     Adjusting the newly-arrived CSS to match was lower-risk than changing
+     five render-val call sites to match the CSS instead.
+- Added the Google Fonts `@import` line to the "Premium UI" block (the one
+  genuinely-missing line there, confirmed via diff).
+
+#### Verification
+`node --check`, tag-balance, and scaffolded-binding checks all clean.
+Repackaged into all three bundle copies; confirmed via direct JSON-decode of
+the written bundle that every marker from every prior round is present
+again (`deriveLandingFromAccess`, `DEPARTMENT_OPTIONS`, the stage/source
+bulk-API logic, the task-deadline fix, `orbit-settings-row`) **and** all six
+of the other tool's new classes are present (`orbit-logout-wrap`,
+`orbit-setup-tabs`, `login-tagline`, etc.). Backend diff (`git status`/`git
+diff --stat`) was re-checked and confirmed untouched by the other tool this
+time — only this session's own prior uncommitted backend work showed as
+modified. A live login attempt against the running backend confirmed it
+still boots and serves correctly. **Not** browser-tested (standing
+workflow) — the merged visual redesign in particular (icons rendering
+correctly inside the input wraps, the pill tab active-state actually
+lighting up) is worth an eyeballed check before fully trusting the feel of
+it, same caveat as every other frontend round in this file.
+
+### Part 2: Leave policy year-scoping, Holiday Calendar removed, Permissions section removed, real Audit Trail
+
+Four separate asks, tackled in one pass after the restoration above.
+
+**1. Leave balance now actually resets each year.** The Setup > Leave &
+Holidays screen's own copy already said "this allotment minus their
+approved leave for the year" — but `leave_service.py`'s `_compute_balance()`
+summed **every** approved/pending leave request the employee had *ever*
+taken, with no year filter at all, so a used day from a prior calendar year
+would permanently and silently eat into every future year's balance
+forever. Confirmed via code reading (`find_approved_by_type`/
+`find_pending_by_type` in `leave_repository.py` had no date filter
+whatsoever). **Fixed**: both repository methods gained an optional `year`
+param that filters `LeaveRequest.start_date` to `[Jan 1, Dec 31]` of that
+year; `_compute_balance()` now passes `now_pkt().year`. The Leave Policy
+form itself (Casual/Sick/Annual days-per-year inputs, Save Policy button)
+was already correctly pre-filling from the real `GET
+/api/settings/hr/leave-policy` on load (`apiLeavePolicy` state, confirmed by
+reading `renderVals()` and the boot sequence) — no frontend change was
+needed for the "should show what's right now" half of the ask, only the
+calculation itself was broken.
+
+**2. Holiday Calendar removed from Setup (backend untouched).** Per the same
+"comment out, don't delete" convention as User Management/Permissions below
+— the panel's markup in `template.html` is now inside an HTML comment with
+an explanatory note, and the two-column grid that used to hold both panels
+side-by-side is now a single `max-width:480px` column (matching the
+Currency Settings tab's layout convention) holding just the Leave Balances
+form. The backend `Holiday` model/repository/service/router and the
+frontend's `holidayRows`/`addHoliday`/`deleteHoliday`/`nhf*` state and
+methods are all left completely untouched (dead-but-harmless, ready to
+re-enable) — the ask was specifically to hide the Setup-tab panel "for now,"
+not to remove the feature from the data model.
+
+**3. Permissions section removed from Setup.** Same treatment as User
+Management earlier in this file: the "Permissions" tab button and its
+entire content block (Role Templates / Per-Person Overrides tables) are now
+wrapped in HTML comments in `template.html`, with `setupTabIsPermissions`
+hardcoded to `false` in `renderVals()` (was `this.state.setupTab ===
+'permissions'`) and an inline comment on how to re-enable both halves.
+Nothing backend-side was touched — `access.permissions` remains the (oddly
+but harmlessly named) access-level key that gates the whole **Setup
+screen**, unrelated to this specific sub-tab; removing the sub-tab doesn't
+touch that gate.
+
+**4. Audit Trail is now real** (previously `D.auditLog`, 100% frontend
+mock data, per this file's own "Implementation Status" snapshot). Built
+end-to-end:
+
+- **Backend**: new `AuditLog` model (`app/models/audit_log.py` — `actor`,
+  `action`, `entity_type`, `entity_label`, `detail`, PKT `created_at`,
+  registered in `models/__init__.py` so `Base.metadata.create_all` picks it
+  up automatically, same no-Alembic-yet situation as every other table in
+  this project), `AuditLogRepository` (`log()` + `find_all(limit)`,
+  ordered newest-first), a thin `AuditLogService`, and `GET /api/audit/`
+  (`routers/audit_log.py`, registered in `main.py`). Gated by a new
+  `get_audit_user` dependency in `core/dependencies.py` requiring the
+  caller's roles include `owner` or `permissions` — deliberately reusing
+  `permissions` (already one of the seven real screen-key access levels
+  per `ACCESS_LEVELS` in `schemas/employee.py`) rather than inventing a
+  new role name, since that's the same access level that gates the whole
+  Setup screen on the frontend where Audit Trail lives.
+- **Wired into every service the ask named** ("lead movement", "project
+  movement", "employee addition", "created by finance or anyone"): added an
+  optional `audit_repo` param + a small `_audit(actor, action, label,
+  detail)` helper (mirrors the existing optional `notification_repo`
+  pattern already used everywhere in this codebase) to `LeadService`,
+  `ProjectService`, `TaskService`, `EmployeeService`, `InvoiceService`,
+  `ExpenseService`, `MilestoneService`, and `LeaveService`. Logged actions:
+  Lead create/update/stage-change/delete; Project create/update
+  (status-change detail called out specifically)/delete; Task
+  create/update/delete; Employee create/update (password-change called out
+  specifically)/deactivate; Invoice create/update/delete; Expense
+  create/update/delete; Milestone create/update/delete; Leave
+  submit/approve/reject. Every router's service-factory function
+  (`get_lead_service`, `get_project_service`, etc.) now also constructs an
+  `AuditLogRepository(db)` and passes it through; a few delete endpoints
+  (`delete_project`, `delete_task`, `delete_employee`, `delete_invoice`,
+  `delete_expense`, `delete_milestone`) needed a `user`/`current_user` param
+  added since they previously had no identity to attribute the deletion to.
+  Deliberately **not** touched: the Projects/Tasks routers' still-current
+  mock-persona system (`persona` strings) — audit calls there use the real
+  `user`/`current_user.get("name")` value that's already threaded through
+  from the Kofi-Mensah-identity fix earlier in this file, not `persona`.
+- **Frontend**: `auditLogApi.list()` (`GET /api/audit/?limit=200`),
+  `apiAuditLog` state (loaded via new `loadAuditLog()`, called whenever
+  `setScreen` navigates to `'setup'` and once more from `bootAppData` if the
+  user's `localStorage`-persisted screen already *is* `'setup'` on a
+  refresh). `auditRows` in `renderVals()` now maps real records (`ts` via
+  the existing `formatCommentTimestamp()` helper already used for comment
+  timestamps elsewhere in the app, `user`/`action`/`record`/`detail` from
+  `actor`/`action`/`"{entity_type}: {entity_label}"`/`detail`) instead of
+  `D.auditLog`.
+
+#### Verification
+Backend: `ast.parse` on every touched file, then a live end-to-end check via
+`httpx.AsyncClient`/`ASGITransport` against the real dev DB (owner login via
+minted JWT, no password needed) — created a lead (→ "Created" audit entry),
+changed its stage (→ "Stage Changed" entry with the correct `'New' →
+'Contacted'` detail string), confirmed `GET /api/audit/` returns both with
+the correct actor email, confirmed a non-owner/non-`permissions` employee
+gets a real `403` from the same endpoint, cleaned up the test lead
+afterward. Leave balance: confirmed `GET /api/leaves/balance/{id}` and `GET
+/api/settings/hr/leave-policy` both return `200` with the real 12/7/14-day
+policy reflected correctly in a fresh balance computation. Frontend: `node
+--check`, tag-balance, and scaffolded-binding checks all clean (same
+harmless sc-for-alias false positives as always). Repackaged into all three
+bundle copies (byte-identical); confirmed via direct JSON-decode of the
+written bundle that `auditLogApi`, `loadAuditLog`, `apiAuditLog`, and
+`setupTabIsPermissions: false` are all present. **Not** browser-tested
+(standing workflow) — the Audit Trail table's real-data rendering and the
+Setup screen's new single-column Leave layout are worth an eyeballed check
+before fully trusting the feel of it.
+
+**Not done / explicitly out of scope this round**: Alembic migrations for
+the new `audit_logs` table (still `create_all`-only, consistent with every
+other table in this project); a UI filter/search on the Audit Trail table
+(the ask was "should have everything listed," not filtering — kept simple);
+wiring audit logging into JobOpening/Candidate/Holiday services (not named
+in the ask, and Holiday's Setup UI was simultaneously being removed in this
+same round anyway).
+
+---
+
+## Update (2026-07-17, later still) — Notifications overhaul, real Time-logged/Resource-allocation, Reports made fully real + date filter, pill tabs on HR/Finance/Projects
+
+A five-part ask, tackled in the order below.
+
+### 1. Notifications — removed the noise, fixed real targeting bugs, added Mark All Read + animation
+- **Root cause of "just time notifications"**: two separate real bugs compounded.
+  1. `NotificationService.get_notifications()` auto-generated "Task Due Soon"/
+     "Task Overdue" notifications **on every single fetch**, for anyone with
+     a "dev" role or owner/admin — a nonstop stream of deadline noise
+     drowning out everything else. Disabled entirely (the call sites
+     removed, the private `_check_and_create_task_alerts` helper left in
+     place unused in case a real, rate-limited, opt-in reminder feature is
+     wanted later) — matches the ask ("notification should only be of
+     leaves accept/reject... and who assigned u a project").
+  2. Independently, **every notification's body text was rendering
+     blank** — the template bound `{{ n.text }}`, but the frontend mapping
+     in `renderVals()` never produced a `text` field on the mapped
+     notification objects (only `...n, icon, ts, onClick` — the real
+     content lives in the API's `message`/`title` fields). So even the
+     notifications that *did* exist showed nothing but an icon and a
+     timestamp — arguably the more literal reading of "just time
+     notifications." Fixed: `text: n.message || n.title` added to the
+     mapping.
+- **Project-assignment notifications now target the real employee**, not a
+  broadcast to "all" — the same class of bug already fixed for Tasks
+  earlier this file (`_resolve_assignee_notification_target`), this was the
+  one deliberately-deferred instance of it for Projects. Added
+  `ProjectService._resolve_member_notification_target()` (identical
+  pattern: resolve a team-member display name to a real employee id via
+  `EmployeeRepository.find_by_name()`, exact case-insensitive match,
+  fallback to `"all"`), used in `create_project`'s and `update_project`'s
+  assignment/removal notifications and in `routers/projects.py`'s
+  `add_comment` comment-notification loop. `get_project_service` now also
+  constructs an `EmployeeRepository`.
+- **Removed the generic "Project Updated" broadcast** entirely — it fired
+  on *every* project save, including every 600ms-debounced per-field
+  auto-save the Project drawer already does, meaning the whole company got
+  a notification on every keystroke-driven edit to any project. Team
+  assignment-change notifications (added above) already cover what
+  actually matters here.
+- **Leave Approved/Rejected**: confirmed already correctly targets the
+  applicant (`user_id=emp.id`), not the HR/owner who approved — no change
+  needed, matches "except the owner" from the ask (owner/HR are the actors,
+  not the intended recipients of the outcome notification). Leave
+  Submitted (→ HR) intentionally left alone — a different notification for
+  a different audience (HR needs to know something needs action), not
+  something the ask excluded.
+- **Frontend**: added an "Mark all as read" link in the notification
+  dropdown header (shown only when `hasUnreadNotifications`), wired to the
+  `notificationsApi.markAllRead()` endpoint that already existed
+  server-side but was never called from anywhere in the app. Added a real
+  empty state ("No notifications yet.") for when the list is empty — there
+  was none before. **Smooth open/close**: gave the dropdown `class="crm-pop"`
+  (reusing the existing pop-in/pop-out keyframes already defined for
+  confirm popups elsewhere in the app) and routed `toggleNotif`'s *closing*
+  path through the existing `_closeWithAnimation()` helper (opening stays
+  instant, matching how every other `crm-pop` in this app already behaves).
+- Added a `leave` case to the notification icon-mapping switch (was falling
+  through to a generic bell icon for every leave notification).
+
+#### Verification
+`ast.parse` on all four touched backend files. Live end-to-end via
+`httpx.AsyncClient`/`ASGITransport`: created a real project with a real
+employee on the team, minted that employee's JWT, confirmed their
+`/api/notifications` includes the assignment notification (previously
+would only have arrived via the "all" broadcast) and confirmed **zero**
+Task Due Soon/Overdue notifications appear anymore. Frontend: `node
+--check`, tag-balance, and scaffolded-binding checks all clean.
+
+### 2. Time Logged This Week / Resource Allocation — now real and actually scoped to "this week"
+`GET /api/time-entries/` (`routers/time_entries.py`) previously summed
+**every** time entry ever logged, with zero date scoping at all, despite
+both dashboard widgets being explicitly titled "this week" — so the
+numbers only ever grew, and "Resource allocation" (hours ÷ 40 capacity)
+would permanently exceed 100% forever after just a couple of weeks of real
+use. Also returned one row *per raw log entry* rather than one row per
+employee, so the same person could appear many times in "Time logged this
+week." **Fixed**: the endpoint now computes the current Mon–Sun window in
+PKT, filters entries to it, and aggregates hours per employee for both the
+entries list and the allocation percentages — both widgets are now
+genuinely "this week," genuinely real, and (since they share the exact
+same underlying aggregation) automatically stay consistent with each
+other, addressing "keep them equivalent." Allocations gained a raw `pct`
+integer field alongside the existing display string `pctStr`, so the same
+real number is reusable elsewhere (see Reports, below) without re-parsing
+a formatted string.
+
+#### Verification
+Live end-to-end via `AsyncClient`: logged a real 12.5-hour time entry,
+confirmed it aggregates correctly into `time_entries` (one row, correct
+week label) and `allocations` (31% = 12.5/40, correct), then cleaned up the
+test row directly via a DB script (no delete endpoint exists for time
+entries).
+
+### 3. Reports — was entirely mock data end to end; now fully real, plus a date-range filter
+This was the big one. `renderVals()`'s Dashboard/Reports computation block
+opened with `const leads = D.leads || []; const projects = D.projects ||
+[]; const invoices = D.invoices || [];` — **reading the frontend's original
+prototype mock arrays**, despite CRM Leads, Software Dev Projects, and
+Finance Invoices all having been fully backend-live for a long time. Every
+figure on the Management Reports screen (and several on the main Dashboard
+that share this same code — Profitability, the "Delayed Projects" table)
+was silently stale/fabricated regardless of what was actually in the
+database. Confirmed via the same technique used earlier in this file for
+similar gaps: reading the actual variable assignment, not just checking
+whether field names *looked* plausible.
+
+Fixed, systematically:
+- `leads` → `this.state.apiLeads`, `projects` → `this.state.apiProjects`,
+  `invoices` → `this.state.apiInvoices`. This alone made Sales & Pipeline,
+  the Dashboard's Profitability panel, and global search's invoice results
+  all real.
+- Global invoice search referenced a nonexistent `i.due` field (real field
+  is `due_date`) — fixed alongside.
+- `p.atRisk` → `p.at_risk`: `ProjectResponse` already has a real `at_risk`
+  boolean column (not something needing a new heuristic) — the frontend
+  was just reading the wrong (camelCase, never-produced) key, so "At risk"
+  always silently counted zero regardless of real data.
+- **Delayed Projects table**'s "days overdue" was a hardcoded `{ p2: 3, p9:
+  5 }` mock-project-id lookup — meaningless for real projects, which never
+  have ids like `"p2"`. Replaced with a real computation from each
+  project's own `deadline` vs today.
+- **HR section**: `D.employees`/`D.positions`/`D.leaveRequests` → real
+  `apiEmployees`/`apiOpenings`/`apiLeaves`; field names fixed to match the
+  real schemas (`e.dept`→`e.department`, `e.probationEnd`→
+  `e.probation_end`); headcount now also excludes terminated employees,
+  matching the filter already used for other real employee-derived lists
+  elsewhere in the app.
+- **Avg utilization / Dashboard's Utilization panel**: `D.utilization` (a
+  mock array of fabricated names/percentages) replaced with the *same* real
+  `apiTimeAllocations` data source built in item 2 above — one real
+  capacity metric now powers both the Software Dev dashboard's "Resource
+  allocation" widget and Reports' "Avg utilization" figure, rather than two
+  separate numbers (one real, one fake).
+- Found and fixed one more instance of the same bug class while in this
+  code, outside Reports proper: the **Log Expense form's department
+  filter/dropdown** (`expDeptOptions`) was still deriving from `D.employees`
+  (`.dept`) instead of real `apiEmployees` (`.department`) — same
+  stale-mock-department gap already fixed for the CRM Assigned Rep and
+  Project Team pickers earlier this session, just missed for Expenses.
+- **Deliberately left alone**: `budgetRows` ("Department Budgets" panel on
+  the Dashboard) — there is no real backing data model for a per-department
+  *budget target* anywhere in this app (Finance tracks project
+  budget/spent and company-wide expense categories, not planned
+  departmental budgets), so fabricating a "real" computation here would
+  just be a different flavor of fake. Left on its existing mock source
+  rather than inventing a number with nothing real behind it; flagged here
+  as a known gap rather than silently left in an inconsistent
+  half-fixed state. Similarly, `monthlyPayrollTotal` (computed from
+  `D.employees`) was found to be genuinely dead code — computed but never
+  referenced by any render-val or template binding — so left untouched
+  rather than fixing something invisible.
+- **Date-range filter** added: a `<select>` (Last 7 Days / Last 30 Days /
+  This Month — reusing the exact same three options and the existing
+  `resolveDateRangePreset()`/`inDateRange()` helpers already built for the
+  HR Leave Count tab and CRM's own date filters) sits next to the existing
+  USD/PKR toggle on the Management Reports header. Applied to the metrics
+  that are genuinely time-bound: leads (by `date_received`, feeding
+  pipeline value/win rate/deals-won/pipeline-by-stage/leads-by-source) and
+  expenses (by `submitted_date`, feeding "Top expense categories").
+  Deliberately **not** applied to Collected/Outstanding/Monthly-cash-out
+  (these come from a separate finance-stats aggregate endpoint with no
+  date param, and are inherently point-in-time "as of today" figures
+  anyway, not meaningfully "date-ranged"), nor to Delivery/HR headcount
+  figures (also snapshots, not time-series). The Dashboard's own
+  `lockedRevenue`/`expectedRevenue` figures (which share the same `leads`
+  variable) deliberately keep reading the *unfiltered* list — the
+  Reports-specific filter uses a separate `reportsLeads` variable so the
+  two screens' figures don't silently interfere with each other.
+
+#### Verification
+`node --check`, tag-balance, and scaffolded-binding checks all clean.
+Repackaged and confirmed via direct JSON-decode of the written bundle that
+`reportsDateRange`, `REPORTS_DATE_RANGE_OPTIONS`, and the real-data source
+switches are all present. Not separately re-verified against the live
+backend beyond what items 1/2 already exercised (leads/projects/employees/
+openings/leaves/expenses list endpoints were all already confirmed working
+in earlier rounds this session) — this was a frontend-computation-only fix
+reading already-loaded state, no new backend surface.
+
+### 4. HR / Finance / Projects — pill segmented-control tab bars (matching Setup)
+Applied the exact same `.orbit-setup-tabs`/`.orbit-setup-tab` pill classes
+(already built for the Setup screen and confirmed to key off the existing
+`font-weight:600`/`400` active/inactive convention every tab in this app
+already used — no JS changes needed) to: Software Dev's Projects/Tasks tab
+row, Finance's Invoices/Expenses/Payroll/Milestones tab row, and HR's
+Employees/Leave Requests/Hiring/Leave Count tab row. HR's screen wrapper
+gained `class="orbit-subtab-content"` (the same fade/slide transition
+already used for Finance's own sub-tab switches) — Dev/Projects and Finance
+already had their transition wrappers from earlier sessions.
+
+#### Verification
+`node --check` and tag-balance clean. Repackaged; confirmed 16 real
+`orbit-setup-tab` class occurrences present across the three screens in the
+written bundle.
+
+### Overall verification for this round
+Backend: `ast.parse` on every touched file (`notification_service.py`,
+`project_service.py`, `routers/projects.py`, `routers/time_entries.py`),
+plus `from app.main import app` import check. Live `AsyncClient` checks for
+both the notification-targeting fix and the time-entries week-scoping fix
+(see items 1 and 2 above). Frontend: `node --check`, tag-balance
+(`sc-if`/`sc-for`/`sc-raw-select`/`div`/`x-import`/`button`/`textarea`/
+`{{ }}` all balanced), and the scaffolded-binding cross-check (only the
+usual sc-for loop-alias false positives, no real gaps) all clean.
+Repackaged into all three bundle copies — byte-identical (1,019,607 bytes
+each), confirmed via direct JSON-decode that every new key/marker from
+every part of this round is present in the written bundle. **Not**
+browser-tested (this project's standing workflow) — in particular the
+notification dropdown's open/close animation and the new pill tab bars on
+HR/Finance/Projects are worth an actual click-through before fully
+trusting the feel of it.
+
+---
+
+## Update (2026-07-17, later still) — Aesthetic pass: Sign Out button fixed, universal dropdown/toast/sidebar polish, Welcome toast on login
+
+Purely frontend, per the ask ("Dont change the backend though"). No backend
+files touched this round.
+
+### Sign Out button — real root cause, not just a redesign
+The reported symptom ("white background, disappears almost when hovering")
+traced back to **two separate, conflicting `.sidebar-logout-btn` CSS rule
+blocks** that had accumulated across different sessions/tools touching this
+file — an older bordered/transparent variant and a newer red-gradient-pill
+variant (the "ORBIT BEAUTIFICATION v2" one from the previous restoration
+entry above). Per CSS cascade rules the newer block should have won outright
+(later in source order, equal specificity, both `!important`), so the exact
+mechanism behind what the user saw couldn't be fully reproduced statically —
+but having two full, duplicate, disagreeing definitions of the same button
+is a real bug regardless of which one a given browser/cache state happens
+to render, and is exactly the kind of thing that produces inconsistent
+results. **Fixed at the root**: deleted the older block entirely, consolidated
+everything into one authoritative definition, and used the opportunity to
+redesign it properly — full-width (was a small centered pill, easy to miss
+against a big sidebar), refined three-stop red gradient, a top border
+separating it from the nav above, `translateY` + brightness lift on hover,
+scale+dim on press, and a visible `:focus-visible` ring for keyboard nav.
+
+### Sidebar text size increased
+`SidebarSection` (the nav-item list component) is a compiled, unmodifiable
+design-system component — but it renders its labels via
+`fontSize: 'var(--text-body-size)'`, a real CSS custom property. Since CSS
+variables inherit down the DOM tree, adding `--text-body-size: 15px` (was
+14.5px) and `--text-eyebrow-size: 11.5px` (was 11px) to the sidebar
+container's own existing rule scopes the bump to *just* the sidebar —
+nav-item labels and section headings — without touching body text
+anywhere else in the app that happens to read the same variable name.
+
+### Dropdowns modernized app-wide, one CSS rule
+Every `<select>` in this app (every filter, every form) is a native HTML
+element rendering the browser's own default arrow/chrome — the literal
+"old look" the ask called out. Added a global `select { appearance: none;
+background-image: <inline SVG chevron>; ... }` rule (custom chevron icon,
+refined border/hover/focus states, Firefox's own dotted focus ring
+suppressed in favor of the app's real focus ring) — this reaches every
+dropdown in the app instantly with zero per-instance markup changes, since
+they're all plain `<select>` elements already.
+
+### Toasts — consolidated, redesigned, and now actually animate closed
+Same duplicate-CSS-block pattern as the logout button: **three** separate,
+partially-overriding `.crm-toast` rule blocks had accumulated. Consolidated
+into one. Along the way, found that toasts had **no exit animation at
+all** — `pushCrmToast`'s timeout just spliced the toast straight out of
+state, giving the DOM node zero opportunity to animate its own removal, so
+every toast simply vanished instantly. Fixed with the same "mark closing,
+wait, then remove" sequence used elsewhere in this app for drawers/popups
+(`_closeWithAnimation`): added a new `dismissCrmToast(id)` method (marks
+`closing: true`, waits 220ms, then actually removes), a `.crm-toast.orbit-
+closing` exit keyframe, and wired `pushCrmToast`'s auto-dismiss timeout
+through it instead of removing directly. Redesigned the toast itself to be
+more prominent per the ask: bigger icon badge (22px→30px), bolder/larger
+text (500/13.5px → 600/14px), a `--shadow-modal`-strength shadow instead of
+the lighter popover shadow, a subtle backdrop blur, and a manual dismiss
+(×) button that uses the same close sequence.
+
+### Welcome toast on login
+`handleLogin`'s success handler now fires `pushCrmToast('Welcome, ' +
+firstName + '!')` right after `onAuthenticated` — first name only (split on
+space), matching how a toast is meant to read at a glance. Deliberately
+**not** added to the silent auto-login path (`checkAuth`/`GET /api/auth/me`
+on page refresh) — the ask was "upon successful login," and a toast firing
+on every page refresh for an already-logged-in user would be exactly the
+kind of noise this whole session has otherwise been focused on removing
+from notifications.
+
+### Login page
+Added a genuine entrance animation to the login error banner (`sc-if
+value="{{ hasLoginError }}"` — previously popped in with zero transition,
+now fades/slides in). The rest of the login screen (glassmorphism card,
+animated background blobs, icon-wrapped inputs, shimmer button) was already
+built in the earlier "ORBIT BEAUTIFICATION v2" pass merged in during this
+session's restoration work — confirmed still intact, not touched further.
+
+### Buttons — hover lift, app-wide
+The design-system `Button` component (`Button.jsx`, compiled/unmodifiable)
+only ever changes its own background-color on hover — no elevation or
+shadow feedback on any button anywhere in the app. Added a CSS rule
+matched against the exact inline style values the component actually
+renders (`button[style*="border-radius:var(--radius-sm)"]`,
+`button[style*="background:var(--brand-primary)"]`, etc. — real DOM
+attribute-selector matches confirmed by decompressing and reading the
+compiled component source, not a guess) that adds a hover lift + colored
+shadow to primary buttons and a subtle lift to secondary buttons, app-wide,
+with zero changes to the component itself.
+
+### Verification
+`node --check`, tag-balance (`sc-if`/`sc-for`/`sc-raw-select`/`div`/
+`x-import`/`button`/`textarea`/`{{ }}` all balanced), and the
+scaffolded-binding cross-check (only the usual sc-for loop-alias false
+positives, no real gaps) all clean. Confirmed via `git status` that zero
+backend files were touched this round. Repackaged into all three bundle
+copies — byte-identical (1,025,350 bytes each); confirmed via direct
+JSON-decode of the written bundle that every new marker (`toast-slide-out`,
+`dismissCrmToast`, the Welcome-toast string, the select chevron SVG, the
+sidebar `--text-body-size` override, `login-error-in`) is present. **Not**
+browser-tested (this project's standing workflow) — in particular the
+consolidated Sign Out button and the toast enter/exit animation are worth
+an actual click-through given the original bug report couldn't be
+statically reproduced with full certainty; if the button still looks wrong
+after this, it's most likely a stale browser cache serving the old bundle
+rather than a remaining CSS issue, given the two-block conflict is now
+fully resolved.
+
+

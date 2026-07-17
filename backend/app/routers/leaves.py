@@ -9,6 +9,7 @@ from app.repositories.leave_repository import LeaveRepository
 from app.repositories.employee_repository import EmployeeRepository
 from app.repositories.leave_policy_repository import LeavePolicyRepository
 from app.repositories.notification_repository import NotificationRepository
+from app.repositories.audit_log_repository import AuditLogRepository
 from app.services.leave_service import LeaveService
 from app.schemas.leave import LeaveCreate, LeaveApproval, LeaveResponse, LeaveBalanceResponse
 
@@ -21,6 +22,7 @@ def get_leave_service(db: AsyncSession = Depends(get_db)) -> LeaveService:
         employee_repo=EmployeeRepository(db),
         leave_policy_repo=LeavePolicyRepository(db),
         notification_repo=NotificationRepository(db),
+        audit_repo=AuditLogRepository(db),
     )
 
 

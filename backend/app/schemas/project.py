@@ -9,6 +9,7 @@ class ProjectCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     client: str = Field(..., min_length=1, max_length=255)
     lead_id: Optional[str] = Field(None, max_length=36)
+    start_date: Optional[date] = None
     deadline: Optional[date] = None
     status: str = Field(default="Not Started", pattern=r"^(Not Started|In Progress|Delayed|Completed)$")
     at_risk: bool = Field(default=False)
@@ -27,6 +28,7 @@ class ProjectUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     client: Optional[str] = Field(None, min_length=1, max_length=255)
     lead_id: Optional[str] = Field(None, max_length=36)
+    start_date: Optional[date] = None
     deadline: Optional[date] = None
     status: Optional[str] = Field(None, pattern=r"^(Not Started|In Progress|Delayed|Completed)$")
     at_risk: Optional[bool] = None
@@ -40,6 +42,7 @@ class ProjectResponse(BaseModel):
     name: str
     client: str
     lead_id: Optional[str] = None
+    start_date: Optional[date] = None
     deadline: Optional[date] = None
     status: str
     at_risk: bool

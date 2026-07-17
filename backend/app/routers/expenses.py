@@ -7,6 +7,7 @@ from app.core.database import get_db
 from app.core.dependencies import get_current_user, get_owner_user
 from app.repositories.expense_repository import ExpenseRepository
 from app.repositories.notification_repository import NotificationRepository
+from app.repositories.audit_log_repository import AuditLogRepository
 from app.services.expense_service import ExpenseService
 from app.schemas.expense import ExpenseCreate, ExpenseUpdate, ExpenseResponse
 
@@ -15,7 +16,8 @@ router = APIRouter(prefix="/api/finance/expenses", tags=["Expenses"])
 def get_expense_service(db: AsyncSession = Depends(get_db)) -> ExpenseService:
     return ExpenseService(
         expense_repo=ExpenseRepository(db),
-        notification_repo=NotificationRepository(db)
+        notification_repo=NotificationRepository(db),
+        audit_repo=AuditLogRepository(db),
     )
 
 def _map_expense_response(exp) -> ExpenseResponse:
@@ -85,4 +87,4 @@ async def delete_expense(
     service: ExpenseService = Depends(get_expense_service),
     current_user: dict = Depends(get_owner_user),
 ):
-    await service.delete_expense(expense_id)
+    await service.delete_expense(expense_id, user=current_user.get("sub", "anonymous"))

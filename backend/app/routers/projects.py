@@ -6,10 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import get_persona_role
+from app.core.dependencies import get_persona_role, get_current_user
 from app.repositories.project_repository import ProjectRepository
 from app.repositories.lead_repository import LeadRepository
 from app.repositories.notification_repository import NotificationRepository
+from app.repositories.audit_log_repository import AuditLogRepository
+from app.repositories.employee_repository import EmployeeRepository
 from app.services.project_service import ProjectService
 from app.services.storage_service import storage_service
 from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectResponse
@@ -23,6 +25,8 @@ def get_project_service(db: AsyncSession = Depends(get_db)) -> ProjectService:
         ProjectRepository(db),
         LeadRepository(db),
         NotificationRepository(db),
+        AuditLogRepository(db),
+        EmployeeRepository(db),
     )
 
 
@@ -35,6 +39,7 @@ async def list_projects(
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
     persona: str = Depends(get_persona_role),
+    current_user: dict = Depends(get_current_user),
     service: ProjectService = Depends(get_project_service),
 ):
     return await service.list_projects(
@@ -45,6 +50,7 @@ async def list_projects(
         date_from=date_from,
         date_to=date_to,
         persona=persona,
+        user_name=current_user.get("name", ""),
     )
 
 
@@ -52,9 +58,10 @@ async def list_projects(
 async def get_project(
     project_id: str,
     persona: str = Depends(get_persona_role),
+    current_user: dict = Depends(get_current_user),
     service: ProjectService = Depends(get_project_service),
 ):
-    project = await service.get_project(project_id, persona)
+    project = await service.get_project(project_id, persona, current_user.get("name", ""))
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -94,9 +101,11 @@ async def update_project(
 async def delete_project(
     project_id: str,
     persona: str = Depends(get_persona_role),
+    current_user: dict = Depends(get_current_user),
     service: ProjectService = Depends(get_project_service),
 ):
-    success = await service.delete_project(project_id, persona=persona)
+    user_name = current_user.get("name") or persona
+    success = await service.delete_project(project_id, persona=persona, user=user_name)
     if not success:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -112,6 +121,7 @@ async def upload_attachment(
     project_id: str,
     file: UploadFile = File(...),
     persona: str = Depends(get_persona_role),
+    current_user: dict = Depends(get_current_user),
     service: ProjectService = Depends(get_project_service),
 ):
     project = await service.project_repo.find_by_id(project_id)
@@ -158,7 +168,7 @@ async def upload_attachment(
     filename = await storage_service.save(file, prefix=f"proj_{project_id}_")
     url = storage_service.get_url(filename)
     
-    user_name = "Jordan Blake" if persona in ("owner", "finance") else "Kofi Mensah"
+    user_name = current_user.get("name") or persona
     attachment = await service.project_repo.add_attachment(
         project_id=project_id,
         filename=file.filename,
@@ -237,6 +247,7 @@ async def add_comment(
     project_id: str,
     data: CommentCreate,
     persona: str = Depends(get_persona_role),
+    current_user: dict = Depends(get_current_user),
     service: ProjectService = Depends(get_project_service),
 ):
     project = await service.project_repo.find_by_id(project_id)
@@ -246,14 +257,15 @@ async def add_comment(
             detail="Project not found.",
         )
 
+    user_name = current_user.get("name") or persona
+
     # Check dev project visibility
-    if persona == "dev" and "Kofi Mensah" not in project.team:
+    if persona == "dev" and user_name not in project.team:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot comment on projects you are not assigned to.",
         )
 
-    user_name = "Jordan Blake" if persona in ("owner", "finance") else "Kofi Mensah"
     comment = await service.project_repo.add_comment(
         project_id=project_id,
         task_id=data.task_id,
@@ -268,7 +280,7 @@ async def add_comment(
         for member in project.team:
             if member == user_name:
                 continue
-            target_user = "dev" if member == "Kofi Mensah" else "all"
+            target_user = await service._resolve_member_notification_target(member)
             await service.notification_repo.create(
                 user_id=target_user,
                 notif_type="Comment Added",

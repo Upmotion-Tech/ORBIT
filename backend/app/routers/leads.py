@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_user, get_owner_user
 from app.repositories.lead_repository import LeadRepository
 from app.repositories.activity_repository import ActivityRepository
 from app.schemas.lead import LeadCreate, LeadUpdate, LeadStageUpdate, LeadResponse, LeadListResponse
@@ -15,6 +15,7 @@ from app.services.lead_service import LeadService
 from app.services.storage_service import storage_service
 from app.repositories.project_repository import ProjectRepository
 from app.repositories.notification_repository import NotificationRepository
+from app.repositories.audit_log_repository import AuditLogRepository
 
 router = APIRouter(prefix="/api/leads", tags=["Leads"])
 
@@ -25,6 +26,7 @@ def get_lead_service(db: AsyncSession = Depends(get_db)) -> LeadService:
         ActivityRepository(db),
         ProjectRepository(db),
         NotificationRepository(db),
+        AuditLogRepository(db),
     )
 
 
@@ -83,7 +85,7 @@ async def get_lead(
 async def create_lead(
     data: LeadCreate,
     service: LeadService = Depends(get_lead_service),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_owner_user),
 ):
     lead, warning = await service.create_lead(data.model_dump(), user=current_user.get("sub", "anonymous"))
     return WarningResponse(success=True, warning=warning, data=lead.model_dump())
@@ -94,7 +96,7 @@ async def update_lead(
     lead_id: str,
     data: LeadUpdate,
     service: LeadService = Depends(get_lead_service),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_owner_user),
 ):
     update_data = {k: v for k, v in data.model_dump().items() if v is not None}
     if not update_data:
@@ -111,13 +113,12 @@ async def change_lead_stage(
     lead_id: str,
     data: LeadStageUpdate,
     service: LeadService = Depends(get_lead_service),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_owner_user),
 ):
-    is_owner = "owner" in (current_user.get("roles") or [])
     lead, error = await service.change_stage(
         lead_id, data.stage,
         user=current_user.get("sub", "anonymous"),
-        is_owner=is_owner,
+        is_owner=True,
     )
     if error:
         raise HTTPException(status_code=400, detail=error)
@@ -128,7 +129,7 @@ async def change_lead_stage(
 async def delete_lead(
     lead_id: str,
     service: LeadService = Depends(get_lead_service),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_owner_user),
 ):
     deleted = await service.delete_lead(lead_id, user=current_user.get("sub", "anonymous"))
     if not deleted:
@@ -141,7 +142,7 @@ async def upload_scope_document(
     lead_id: str,
     file: UploadFile = File(...),
     service: LeadService = Depends(get_lead_service),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_owner_user),
 ):
     filename = await storage_service.save(file, prefix="scope_")
     url = storage_service.get_url(filename)
@@ -156,7 +157,7 @@ async def upload_signed_contract(
     lead_id: str,
     file: UploadFile = File(...),
     service: LeadService = Depends(get_lead_service),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_owner_user),
 ):
     filename = await storage_service.save(file, prefix="contract_")
     url = storage_service.get_url(filename)
@@ -170,7 +171,7 @@ async def upload_signed_contract(
 async def remove_scope_document(
     lead_id: str,
     service: LeadService = Depends(get_lead_service),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_owner_user),
 ):
     lead, error = await service.remove_document(lead_id, "scope_document", user=current_user.get("sub", "anonymous"))
     if error:
@@ -182,7 +183,7 @@ async def remove_scope_document(
 async def remove_signed_contract(
     lead_id: str,
     service: LeadService = Depends(get_lead_service),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_owner_user),
 ):
     lead, error = await service.remove_document(lead_id, "signed_contract", user=current_user.get("sub", "anonymous"))
     if error:

@@ -29,11 +29,17 @@ class LeadService:
         activity_repo: ActivityRepository,
         project_repo = None,
         notification_repo = None,
+        audit_repo = None,
     ):
         self.lead_repo = lead_repo
         self.activity_repo = activity_repo
         self.project_repo = project_repo
         self.notification_repo = notification_repo
+        self.audit_repo = audit_repo
+
+    async def _audit(self, actor: str, action: str, label: str, detail: Optional[str] = None) -> None:
+        if self.audit_repo:
+            await self.audit_repo.log(actor, action, "Lead", label, detail)
 
     async def list_leads(
         self,
@@ -92,6 +98,7 @@ class LeadService:
             "note": f"Lead created in stage '{lead.stage}'",
             "created_by": user,
         })
+        await self._audit(user, "Created", lead.company_name, f"Stage '{lead.stage}'")
 
         return self._to_response(lead), warning
 
@@ -127,7 +134,10 @@ class LeadService:
                 "note": f"Stage changed from '{old_stage}' to '{lead.stage}'",
                 "created_by": user,
             })
-            
+            await self._audit(user, "Stage Changed", lead.company_name, f"'{old_stage}' → '{lead.stage}'")
+        else:
+            await self._audit(user, "Updated", lead.company_name)
+
         await self._check_auto_project(lead, user)
 
         return self._to_response(lead), warning, None
@@ -152,7 +162,8 @@ class LeadService:
             "note": f"Stage changed from '{old_stage}' to '{stage}'",
             "created_by": user,
         })
-        
+        await self._audit(user, "Stage Changed", lead.company_name, f"'{old_stage}' → '{stage}'")
+
         await self._check_auto_project(lead, user)
 
         return self._to_response(lead), None
@@ -168,6 +179,7 @@ class LeadService:
             "note": f"Lead '{lead.company_name}' deleted",
             "created_by": user,
         })
+        await self._audit(user, "Deleted", lead.company_name)
 
         await self.lead_repo.soft_delete(lead)
         return True

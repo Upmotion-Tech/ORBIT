@@ -28,6 +28,7 @@ async def get_notifications(
     # broadcast to their role (e.g. "hr" sees leave-submitted alerts).
     return await service.get_notifications(
         current_user.get("user_id", ""), current_user.get("roles"),
+        user_name=current_user.get("name", ""),
     )
 
 

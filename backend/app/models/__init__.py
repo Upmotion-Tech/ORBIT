@@ -18,6 +18,7 @@ from app.models.invoice import Invoice
 from app.models.expense import Expense
 from app.models.salary_slip import SalarySlip
 from app.models.milestone import Milestone
+from app.models.audit_log import AuditLog
 
 __all__ = [
     "Lead",
@@ -40,5 +41,6 @@ __all__ = [
     "Expense",
     "SalarySlip",
     "Milestone",
+    "AuditLog",
 ]
 

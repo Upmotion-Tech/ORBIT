@@ -7,6 +7,7 @@ from app.core.database import get_db
 from app.core.dependencies import get_current_user, get_owner_user
 from app.repositories.milestone_repository import MilestoneRepository
 from app.repositories.notification_repository import NotificationRepository
+from app.repositories.audit_log_repository import AuditLogRepository
 from app.services.milestone_service import MilestoneService
 from app.schemas.milestone import MilestoneCreate, MilestoneUpdate, MilestoneResponse
 
@@ -15,7 +16,8 @@ router = APIRouter(prefix="/api/finance/milestones", tags=["Milestones"])
 def get_milestone_service(db: AsyncSession = Depends(get_db)) -> MilestoneService:
     return MilestoneService(
         milestone_repo=MilestoneRepository(db),
-        notification_repo=NotificationRepository(db)
+        notification_repo=NotificationRepository(db),
+        audit_repo=AuditLogRepository(db),
     )
 
 def _map_milestone_response(milestone) -> MilestoneResponse:
@@ -84,4 +86,4 @@ async def delete_milestone(
     service: MilestoneService = Depends(get_milestone_service),
     current_user: dict = Depends(get_owner_user),
 ):
-    await service.delete_milestone(milestone_id)
+    await service.delete_milestone(milestone_id, user=current_user.get("sub", "anonymous"))

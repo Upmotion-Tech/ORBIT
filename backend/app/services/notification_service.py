@@ -20,14 +20,17 @@ class NotificationService:
         self.notification_repo = notification_repo
         self.task_repo = task_repo
 
-    async def get_notifications(self, user_id: str, roles: Optional[list] = None) -> list[Notification]:
-        # Perform dynamic "Task Due Soon" and "Task Overdue" check if task_repo is available
+    async def get_notifications(self, user_id: str, roles: Optional[list] = None, user_name: str = "") -> list[Notification]:
+        # The automatic "Task Due Soon" / "Task Overdue" check that used to
+        # run here on every single notification fetch is disabled — it's
+        # what was flooding every persona's notification list with nothing
+        # but time/deadline noise, drowning out the notifications that
+        # actually matter (leave approved/rejected, project/task assignment).
+        # Notifications are now purely event-driven — created once, at the
+        # moment something real happens — never synthesized on read.
+        # `_check_and_create_task_alerts` is left below, unused, in case a
+        # real (rate-limited, opt-in) due-date reminder feature is wanted later.
         roles = roles or []
-        if self.task_repo and "dev" in roles:
-            await self._check_and_create_task_alerts("Kofi Mensah", "dev")
-        elif self.task_repo and any(r in ("owner", "admin") for r in roles):
-            # For administrators, check for all employees
-            await self._check_and_create_task_alerts(None, "owner")
 
         return await self.notification_repo.find_all_for_user(user_id, roles)
 

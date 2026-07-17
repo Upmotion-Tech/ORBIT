@@ -7,9 +7,14 @@ from app.repositories.notification_repository import NotificationRepository
 from app.services.invoice_pdf_service import generate_invoice_pdf_bytes, safe_invoice_filename
 
 class InvoiceService:
-    def __init__(self, invoice_repo: InvoiceRepository, notification_repo: Optional[NotificationRepository] = None):
+    def __init__(self, invoice_repo: InvoiceRepository, notification_repo: Optional[NotificationRepository] = None, audit_repo = None):
         self.invoice_repo = invoice_repo
         self.notification_repo = notification_repo
+        self.audit_repo = audit_repo
+
+    async def _audit(self, actor: str, action: str, label: str, detail: Optional[str] = None) -> None:
+        if self.audit_repo:
+            await self.audit_repo.log(actor, action, "Invoice", label, detail)
 
     async def list_invoices(self, **kwargs) -> list[Invoice]:
         return await self.invoice_repo.find_all(**kwargs)
@@ -58,6 +63,7 @@ class InvoiceService:
                 title="New Invoice Draft Created",
                 message=f"Invoice {invoice.invoice_number} for client {invoice.client} was created by {user}."
             )
+        await self._audit(user, "Created", invoice.invoice_number, f"Client '{invoice.client}'")
         return invoice
 
     async def update_invoice(self, invoice_id: str, data: dict, user: str = "anonymous") -> Invoice:
@@ -82,12 +88,18 @@ class InvoiceService:
             await self.notification_repo.create(user_id="finance", notif_type=notif_type, title=title, message=message)
             await self.notification_repo.create(user_id="owner", notif_type=notif_type, title=title, message=message)
 
+        if old_status != new_status:
+            await self._audit(user, "Status Changed", updated_invoice.invoice_number, f"'{old_status}' → '{new_status}'")
+        else:
+            await self._audit(user, "Updated", updated_invoice.invoice_number)
+
         return updated_invoice
 
-    async def delete_invoice(self, invoice_id: str) -> None:
+    async def delete_invoice(self, invoice_id: str, user: str = "anonymous") -> None:
         invoice = await self.invoice_repo.find_by_id(invoice_id)
         if not invoice:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found.")
+        await self._audit(user, "Deleted", invoice.invoice_number)
         await self.invoice_repo.soft_delete(invoice)
 
     def generate_invoice_pdf(self, invoice: Invoice) -> tuple[bytes, str]:

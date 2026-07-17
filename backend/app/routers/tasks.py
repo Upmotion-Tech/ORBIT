@@ -5,10 +5,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import get_persona_role
+from app.core.dependencies import get_persona_role, get_current_user
 from app.repositories.task_repository import TaskRepository
 from app.repositories.project_repository import ProjectRepository
 from app.repositories.notification_repository import NotificationRepository
+from app.repositories.employee_repository import EmployeeRepository
+from app.repositories.audit_log_repository import AuditLogRepository
 from app.services.task_service import TaskService
 from app.schemas.task import TaskCreate, TaskUpdate, TaskResponse
 from app.schemas.comment import CommentCreate, CommentResponse
@@ -21,6 +23,8 @@ def get_task_service(db: AsyncSession = Depends(get_db)) -> TaskService:
         TaskRepository(db),
         ProjectRepository(db),
         NotificationRepository(db),
+        EmployeeRepository(db),
+        AuditLogRepository(db),
     )
 
 
@@ -33,6 +37,7 @@ async def list_tasks(
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
     persona: str = Depends(get_persona_role),
+    current_user: dict = Depends(get_current_user),
     service: TaskService = Depends(get_task_service),
 ):
     return await service.list_tasks(
@@ -43,6 +48,7 @@ async def list_tasks(
         date_from=date_from,
         date_to=date_to,
         persona=persona,
+        user_name=current_user.get("name", ""),
     )
 
 
@@ -50,9 +56,10 @@ async def list_tasks(
 async def get_task(
     task_id: str,
     persona: str = Depends(get_persona_role),
+    current_user: dict = Depends(get_current_user),
     service: TaskService = Depends(get_task_service),
 ):
-    task = await service.get_task(task_id, persona)
+    task = await service.get_task(task_id, persona, current_user.get("name", ""))
     if not task:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -91,9 +98,11 @@ async def update_task(
 async def delete_task(
     task_id: str,
     persona: str = Depends(get_persona_role),
+    current_user: dict = Depends(get_current_user),
     service: TaskService = Depends(get_task_service),
 ):
-    success = await service.delete_task(task_id, persona=persona)
+    user_name = current_user.get("name") or persona
+    success = await service.delete_task(task_id, persona=persona, user=user_name)
     if not success:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -109,6 +118,7 @@ async def add_comment(
     task_id: str,
     data: CommentCreate,
     persona: str = Depends(get_persona_role),
+    current_user: dict = Depends(get_current_user),
     service: TaskService = Depends(get_task_service),
 ):
     task = await service.task_repo.find_by_id(task_id)
@@ -118,15 +128,16 @@ async def add_comment(
             detail="Task not found.",
         )
 
+    user_name = current_user.get("name") or persona
+
     # Permissions/Visibility check
     project = await service.project_repo.find_by_id(task.project_id)
-    if persona == "dev" and task.assignee != "Kofi Mensah" and (not project or "Kofi Mensah" not in project.team):
+    if persona == "dev" and task.assignee != user_name and (not project or user_name not in project.team):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot comment on tasks you are not assigned to.",
         )
 
-    user_name = "Jordan Blake" if persona in ("owner", "finance") else "Kofi Mensah"
     comment = await service.task_repo.add_comment(
         task_id=task_id,
         project_id=task.project_id,

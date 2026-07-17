@@ -16,9 +16,15 @@ class EmployeeService:
         self,
         employee_repo: EmployeeRepository,
         notification_repo: Optional[NotificationRepository] = None,
+        audit_repo = None,
     ):
         self.employee_repo = employee_repo
         self.notification_repo = notification_repo
+        self.audit_repo = audit_repo
+
+    async def _audit(self, actor: str, action: str, label: str, detail: Optional[str] = None) -> None:
+        if self.audit_repo:
+            await self.audit_repo.log(actor, action, "Employee", label, detail)
 
     async def list_employees(
         self, search=None, department=None, status_filter=None,
@@ -75,6 +81,8 @@ class EmployeeService:
                 message=f"{employee.name} has been added as {employee.role}.",
             )
 
+        await self._audit(user, "Created", employee.name, f"Role '{employee.role}'")
+
         return self._to_response(employee, persona)
 
     async def update_employee(
@@ -103,6 +111,7 @@ class EmployeeService:
                 )
             data["email"] = email
 
+        password_changed = False
         if "password" in data:
             pw = data.pop("password")
             if pw:
@@ -112,6 +121,7 @@ class EmployeeService:
                         detail="New password matches the current password.",
                     )
                 data["password_hash"] = get_password_hash(pw)
+                password_changed = True
 
         data["updated_by"] = user
         data["updated_at"] = now_pkt()
@@ -126,10 +136,15 @@ class EmployeeService:
                 message=f"{employee.name}'s record has been updated.",
             )
 
+        if password_changed:
+            await self._audit(user, "Password Changed", employee.name)
+        else:
+            await self._audit(user, "Updated", employee.name)
+
         return self._to_response(employee, persona)
 
     async def delete_employee(
-        self, employee_id: str, persona=None,
+        self, employee_id: str, persona=None, user="anonymous",
     ) -> None:
         employee = await self.employee_repo.find_by_id(employee_id)
         if not employee:
@@ -144,6 +159,7 @@ class EmployeeService:
                 detail="Only HR can deactivate employees.",
             )
 
+        await self._audit(user, "Deactivated", employee.name)
         await self.employee_repo.soft_delete(employee)
 
     def _to_response(self, employee: Employee, persona) -> EmployeeResponse:

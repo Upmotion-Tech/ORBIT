@@ -66,7 +66,7 @@ class LeaveRepository:
         result = await self.db.execute(query)
         return list(result.scalars().all())
 
-    async def find_approved_by_type(self, employee_id: str, leave_type: str) -> list[LeaveRequest]:
+    async def find_approved_by_type(self, employee_id: str, leave_type: str, year: Optional[int] = None) -> list[LeaveRequest]:
         query = (
             select(LeaveRequest)
             .where(
@@ -75,10 +75,15 @@ class LeaveRepository:
                 LeaveRequest.status == "Approved",
             )
         )
+        if year is not None:
+            query = query.where(
+                LeaveRequest.start_date >= date(year, 1, 1),
+                LeaveRequest.start_date <= date(year, 12, 31),
+            )
         result = await self.db.execute(query)
         return list(result.scalars().all())
 
-    async def find_pending_by_type(self, employee_id: str, leave_type: str) -> list[LeaveRequest]:
+    async def find_pending_by_type(self, employee_id: str, leave_type: str, year: Optional[int] = None) -> list[LeaveRequest]:
         query = (
             select(LeaveRequest)
             .where(
@@ -87,6 +92,11 @@ class LeaveRepository:
                 LeaveRequest.status == "Pending",
             )
         )
+        if year is not None:
+            query = query.where(
+                LeaveRequest.start_date >= date(year, 1, 1),
+                LeaveRequest.start_date <= date(year, 12, 31),
+            )
         result = await self.db.execute(query)
         return list(result.scalars().all())
 

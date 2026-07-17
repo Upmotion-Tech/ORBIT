@@ -8,6 +8,7 @@ from app.models.task import Task
 from app.repositories.task_repository import TaskRepository
 from app.repositories.project_repository import ProjectRepository
 from app.repositories.notification_repository import NotificationRepository
+from app.repositories.employee_repository import EmployeeRepository
 from app.schemas.task import TaskResponse
 
 
@@ -17,10 +18,32 @@ class TaskService:
         task_repo: TaskRepository,
         project_repo: ProjectRepository,
         notification_repo: Optional[NotificationRepository] = None,
+        employee_repo: Optional[EmployeeRepository] = None,
+        audit_repo = None,
     ):
         self.task_repo = task_repo
         self.project_repo = project_repo
         self.notification_repo = notification_repo
+        self.employee_repo = employee_repo
+        self.audit_repo = audit_repo
+
+    async def _audit(self, actor: str, action: str, label: str, detail: Optional[str] = None) -> None:
+        if self.audit_repo:
+            await self.audit_repo.log(actor, action, "Task", label, detail)
+
+    async def _resolve_assignee_notification_target(self, assignee_name: Optional[str]) -> str:
+        # Notifications need a real employee id (or a broadcast keyword like
+        # "all"/"dev") to actually reach anyone — `team`/`assignee` fields
+        # store plain display names, not ids. Resolve the assignee's real id
+        # by exact (case-insensitive) name match so the notification targets
+        # *them specifically* instead of broadcasting to "all"/"dev" (the
+        # previous behavior, which happened to still reach them but also
+        # everyone else).
+        if not assignee_name or not self.employee_repo:
+            return "all"
+        matches = await self.employee_repo.find_by_name(assignee_name)
+        exact = next((e for e in matches if e.name.strip().lower() == assignee_name.strip().lower()), None)
+        return exact.id if exact else "all"
 
     async def list_tasks(
         self,
@@ -31,8 +54,11 @@ class TaskService:
         date_from: Optional[date] = None,
         date_to: Optional[date] = None,
         persona: str = "owner",
+        user_name: str = "",
     ) -> list[TaskResponse]:
-        assigned_to_member = "Kofi Mensah" if persona == "dev" else None
+        # Was hardcoded to the mock name "Kofi Mensah" — see project_service's
+        # identical fix for the full explanation. Now uses the real caller.
+        assigned_to_member = user_name if persona == "dev" else None
 
         tasks = await self.task_repo.find_all(
             search=search,
@@ -45,7 +71,7 @@ class TaskService:
         )
         return [TaskResponse.model_validate(t) for t in tasks]
 
-    async def get_task(self, task_id: str, persona: str = "owner") -> Optional[TaskResponse]:
+    async def get_task(self, task_id: str, persona: str = "owner", user_name: str = "") -> Optional[TaskResponse]:
         task = await self.task_repo.find_by_id(task_id)
         if not task:
             return None
@@ -53,7 +79,7 @@ class TaskService:
         # Dev member visibility check
         if persona == "dev":
             project = await self.project_repo.find_by_id(task.project_id)
-            if task.assignee != "Kofi Mensah" and (not project or "Kofi Mensah" not in project.team):
+            if task.assignee != user_name and (not project or user_name not in project.team):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Access denied to this task.",
@@ -88,13 +114,15 @@ class TaskService:
 
         # Generate notification for assigned developer
         if self.notification_repo and task.assignee:
-            target_user = "dev" if task.assignee == "Kofi Mensah" else "all"
+            target_user = await self._resolve_assignee_notification_target(task.assignee)
             await self.notification_repo.create(
                 user_id=target_user,
                 notif_type="Task Assigned",
                 title="Assigned to new task",
                 message=f"You have been assigned to task '{task.title}' under project '{project.name}'.",
             )
+
+        await self._audit(user, "Created", task.title, f"Project '{project.name}'")
 
         return TaskResponse.model_validate(task)
 
@@ -114,6 +142,7 @@ class TaskService:
             )
 
         old_assignee = task.assignee
+        old_status = task.status
         data["updated_by"] = user
         updated_task = await self.task_repo.update(task, data)
 
@@ -121,7 +150,7 @@ class TaskService:
         if self.notification_repo and "assignee" in data and updated_task.assignee != old_assignee:
             project = await self.project_repo.find_by_id(updated_task.project_id)
             proj_name = project.name if project else "Unknown Project"
-            target_user = "dev" if updated_task.assignee == "Kofi Mensah" else "all"
+            target_user = await self._resolve_assignee_notification_target(updated_task.assignee)
             await self.notification_repo.create(
                 user_id=target_user,
                 notif_type="Task Assigned",
@@ -129,9 +158,14 @@ class TaskService:
                 message=f"You have been assigned to task '{updated_task.title}' under project '{proj_name}'.",
             )
 
+        if "status" in data and updated_task.status != old_status:
+            await self._audit(user, "Status Changed", updated_task.title, f"'{old_status}' → '{updated_task.status}'")
+        else:
+            await self._audit(user, "Updated", updated_task.title)
+
         return TaskResponse.model_validate(updated_task)
 
-    async def delete_task(self, task_id: str, persona: str = "owner") -> bool:
+    async def delete_task(self, task_id: str, persona: str = "owner", user: str = "anonymous") -> bool:
         task = await self.task_repo.find_by_id(task_id)
         if not task:
             return False
@@ -142,5 +176,6 @@ class TaskService:
                 detail="Dev members cannot delete tasks.",
             )
 
+        await self._audit(user, "Deleted", task.title)
         await self.task_repo.soft_delete(task)
         return True

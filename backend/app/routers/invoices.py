@@ -9,6 +9,7 @@ from app.core.database import get_db
 from app.core.dependencies import get_current_user, get_owner_user
 from app.repositories.invoice_repository import InvoiceRepository
 from app.repositories.notification_repository import NotificationRepository
+from app.repositories.audit_log_repository import AuditLogRepository
 from app.services.invoice_service import InvoiceService
 from app.schemas.invoice import InvoiceCreate, InvoiceUpdate, InvoiceResponse
 
@@ -17,7 +18,8 @@ router = APIRouter(prefix="/api/finance/invoices", tags=["Invoices"])
 def get_invoice_service(db: AsyncSession = Depends(get_db)) -> InvoiceService:
     return InvoiceService(
         invoice_repo=InvoiceRepository(db),
-        notification_repo=NotificationRepository(db)
+        notification_repo=NotificationRepository(db),
+        audit_repo=AuditLogRepository(db),
     )
 
 def _map_invoice_response(inv) -> InvoiceResponse:
@@ -106,4 +108,4 @@ async def delete_invoice(
     service: InvoiceService = Depends(get_invoice_service),
     current_user: dict = Depends(get_owner_user),
 ):
-    await service.delete_invoice(invoice_id)
+    await service.delete_invoice(invoice_id, user=current_user.get("sub", "anonymous"))

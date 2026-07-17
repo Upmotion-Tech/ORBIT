@@ -7,6 +7,7 @@ from app.core.database import get_db
 from app.core.dependencies import get_persona_roles, get_current_user
 from app.repositories.employee_repository import EmployeeRepository
 from app.repositories.notification_repository import NotificationRepository
+from app.repositories.audit_log_repository import AuditLogRepository
 from app.services.employee_service import EmployeeService
 from app.schemas.employee import EmployeeCreate, EmployeeUpdate, EmployeeResponse
 
@@ -17,6 +18,7 @@ def get_employee_service(db: AsyncSession = Depends(get_db)) -> EmployeeService:
     return EmployeeService(
         employee_repo=EmployeeRepository(db),
         notification_repo=NotificationRepository(db),
+        audit_repo=AuditLogRepository(db),
     )
 
 
@@ -87,7 +89,8 @@ async def update_employee(
 @router.delete("/{employee_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_employee(
     employee_id: str,
+    current_user: dict = Depends(get_current_user),
     persona: list = Depends(get_persona_roles),
     service: EmployeeService = Depends(get_employee_service),
 ):
-    await service.delete_employee(employee_id, persona=persona)
+    await service.delete_employee(employee_id, persona=persona, user=current_user.get("sub", "anonymous"))
