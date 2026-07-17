@@ -35,6 +35,16 @@ STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    try:
+        from scripts.seed_hr import seed as seed_hr
+        await seed_hr()
+    except Exception as e:
+        print(f"[seed] HR seed skipped/errored: {e}")
+    try:
+        from scripts.seed_finance import seed as seed_finance
+        await seed_finance()
+    except Exception as e:
+        print(f"[seed] Finance seed skipped/errored: {e}")
     yield
     await engine.dispose()
 
