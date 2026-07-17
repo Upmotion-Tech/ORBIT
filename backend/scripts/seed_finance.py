@@ -50,19 +50,24 @@ async def seed():
 
         # 1. Seed Invoices
         invoices_data = [
-            {"client": "Acme Corp", "project_id": projects[0].id, "currency": "USD", "amount": 15000.0, "invoice_type": "Fixed", "issue_date": date(2026, 7, 1), "due_date": date(2026, 7, 31), "status": "Sent", "notes": "Initial milestone payment."},
-            {"client": "Globex", "project_id": projects[0].id, "currency": "USD", "amount": 25000.0, "invoice_type": "Fixed", "issue_date": date(2026, 6, 1), "due_date": date(2026, 7, 1), "status": "Paid", "notes": "Project kickoff payment."},
-            {"client": "Initech", "project_id": projects[0].id, "currency": "PKR", "amount": 450000.0, "invoice_type": "Hourly", "issue_date": date(2026, 7, 5), "due_date": date(2026, 8, 5), "status": "Draft", "notes": "Consulting services billing."},
-            {"client": "Acme Corp", "project_id": projects[0].id, "currency": "USD", "amount": 10000.0, "invoice_type": "Fixed", "issue_date": date(2026, 5, 10), "due_date": date(2026, 6, 10), "status": "Overdue", "notes": "Design sign-off billing."}
+            {"invoice_number": "UPM-CZ-2026-001", "client": "Acme Corp", "project_id": projects[0].id, "currency": "USD", "amount": 15000.0, "invoice_type": "Fixed", "issue_date": date(2026, 7, 1), "due_date": date(2026, 7, 31), "status": "Sent", "notes": "Initial milestone payment."},
+            {"invoice_number": "UPM-CZ-2026-002", "client": "Globex", "project_id": projects[0].id, "currency": "USD", "amount": 25000.0, "invoice_type": "Fixed", "issue_date": date(2026, 6, 1), "due_date": date(2026, 7, 1), "status": "Paid", "notes": "Project kickoff payment."},
+            {"invoice_number": "UPM-CZ-2026-003", "client": "Initech", "project_id": projects[0].id, "currency": "PKR", "amount": 450000.0, "invoice_type": "Hourly", "issue_date": date(2026, 7, 5), "due_date": date(2026, 8, 5), "status": "Draft", "notes": "Consulting services billing."},
+            {"invoice_number": "UPM-CZ-2026-004", "client": "Acme Corp", "project_id": projects[0].id, "currency": "USD", "amount": 10000.0, "invoice_type": "Fixed", "issue_date": date(2026, 5, 10), "due_date": date(2026, 6, 10), "status": "Overdue", "notes": "Design sign-off billing."}
         ]
 
         for inv_data in invoices_data:
             invoice = Invoice(
                 id=str(uuid.uuid4()),
+                invoice_number=inv_data["invoice_number"],
                 client=inv_data["client"],
                 project_id=inv_data["project_id"],
                 currency=inv_data["currency"],
                 amount=inv_data["amount"],
+                line_items=[{
+                    "project_id": inv_data["project_id"], "description": projects[0].name,
+                    "qty": 1, "unit_price": inv_data["amount"],
+                }],
                 invoice_type=inv_data["invoice_type"],
                 issue_date=inv_data["issue_date"],
                 due_date=inv_data["due_date"],

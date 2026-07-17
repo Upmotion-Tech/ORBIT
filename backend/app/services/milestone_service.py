@@ -23,7 +23,7 @@ class MilestoneService:
 
         if self.notification_repo:
             message = f"New milestone '{milestone.name}' of {milestone.currency} {milestone.amount:,.2f} expected for project '{milestone.project.name if milestone.project else 'N/A'}'."
-            await self.notification_repo.create(user_id="financehead", notif_type="Milestone Created", title="Milestone Scheduled", message=message)
+            await self.notification_repo.create(user_id="finance", notif_type="Milestone Created", title="Milestone Scheduled", message=message)
             await self.notification_repo.create(user_id="owner", notif_type="Milestone Created", title="Milestone Scheduled", message=message)
         return milestone
 
@@ -42,7 +42,7 @@ class MilestoneService:
             title = f"Milestone Marked as {new_status}"
             message = f"Milestone '{milestone.name}' for project '{milestone.project.name if milestone.project else 'N/A'}' status changed to {new_status}."
             
-            await self.notification_repo.create(user_id="financehead", notif_type=notif_type, title=title, message=message)
+            await self.notification_repo.create(user_id="finance", notif_type=notif_type, title=title, message=message)
             await self.notification_repo.create(user_id="owner", notif_type=notif_type, title=title, message=message)
 
         return updated_milestone

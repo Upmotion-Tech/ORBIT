@@ -20,7 +20,7 @@ class HolidayService:
         return [HolidayResponse.model_validate(h) for h in holidays]
 
     async def create_holiday(self, data: dict, persona=None) -> HolidayResponse:
-        if not has_role(persona, "hr", "hr_admin", "owner"):
+        if not has_role(persona, "hr", "owner"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only HR or Owner can add holidays.",
@@ -30,7 +30,7 @@ class HolidayService:
         return HolidayResponse.model_validate(holiday)
 
     async def delete_holiday(self, holiday_id: str, persona=None) -> None:
-        if not has_role(persona, "hr", "hr_admin", "owner"):
+        if not has_role(persona, "hr", "owner"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only HR or Owner can delete holidays.",

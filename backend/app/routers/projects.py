@@ -70,7 +70,7 @@ async def create_project(
     service: ProjectService = Depends(get_project_service),
 ):
     # Map Jordan Blake for owner role, or persona role
-    user_name = "Jordan Blake" if persona in ("owner", "financehead") else persona
+    user_name = "Jordan Blake" if persona in ("owner", "finance") else persona
     return await service.create_project(data.model_dump(), user=user_name, persona=persona)
 
 
@@ -81,7 +81,7 @@ async def update_project(
     persona: str = Depends(get_persona_role),
     service: ProjectService = Depends(get_project_service),
 ):
-    user_name = "Jordan Blake" if persona in ("owner", "financehead") else persona
+    user_name = "Jordan Blake" if persona in ("owner", "finance") else persona
     return await service.update_project(
         project_id,
         data.model_dump(exclude_unset=True),
@@ -143,7 +143,7 @@ async def upload_attachment(
 
     # 3. Check for replacement permissions
     existing = await service.project_repo.find_attachment_by_id_and_filename(project_id, file.filename)
-    if existing and persona == "devmember":
+    if existing and persona == "dev":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Dev members cannot replace existing attachments.",
@@ -158,7 +158,7 @@ async def upload_attachment(
     filename = await storage_service.save(file, prefix=f"proj_{project_id}_")
     url = storage_service.get_url(filename)
     
-    user_name = "Jordan Blake" if persona in ("owner", "financehead") else "Kofi Mensah"
+    user_name = "Jordan Blake" if persona in ("owner", "finance") else "Kofi Mensah"
     attachment = await service.project_repo.add_attachment(
         project_id=project_id,
         filename=file.filename,
@@ -171,7 +171,7 @@ async def upload_attachment(
     if service.notification_repo:
         # Notify assigned team members
         for member in project.team:
-            target_user = "devmember" if member == "Kofi Mensah" else "all"
+            target_user = "dev" if member == "Kofi Mensah" else "all"
             await service.notification_repo.create(
                 user_id=target_user,
                 notif_type="Attachment Uploaded",
@@ -198,7 +198,7 @@ async def delete_attachment(
     persona: str = Depends(get_persona_role),
     service: ProjectService = Depends(get_project_service),
 ):
-    if persona == "devmember":
+    if persona == "dev":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Dev members cannot delete attachments.",
@@ -246,14 +246,14 @@ async def add_comment(
             detail="Project not found.",
         )
 
-    # Check devmember project visibility
-    if persona == "devmember" and "Kofi Mensah" not in project.team:
+    # Check dev project visibility
+    if persona == "dev" and "Kofi Mensah" not in project.team:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot comment on projects you are not assigned to.",
         )
 
-    user_name = "Jordan Blake" if persona in ("owner", "financehead") else "Kofi Mensah"
+    user_name = "Jordan Blake" if persona in ("owner", "finance") else "Kofi Mensah"
     comment = await service.project_repo.add_comment(
         project_id=project_id,
         task_id=data.task_id,
@@ -268,7 +268,7 @@ async def add_comment(
         for member in project.team:
             if member == user_name:
                 continue
-            target_user = "devmember" if member == "Kofi Mensah" else "all"
+            target_user = "dev" if member == "Kofi Mensah" else "all"
             await service.notification_repo.create(
                 user_id=target_user,
                 notif_type="Comment Added",

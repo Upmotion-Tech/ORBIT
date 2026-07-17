@@ -7,7 +7,12 @@ from pydantic import BaseModel, Field, field_validator
 from app.core.time import to_pkt
 
 
-ACCESS_LEVELS = ("owner", "hr_admin", "financehead", "devmember", "employee")
+# Each value (besides "owner" and "employee") corresponds 1:1 to a sidebar
+# screen/module — "owner" grants everything, "employee" means no extra
+# module access beyond the base Me/Leave/Policies screens every employee
+# gets. An employee can hold any combination of these (multi-select), and
+# ends up seeing exactly the union of the screens they're ticked for.
+ACCESS_LEVELS = ("owner", "dashboard", "crm", "dev", "finance", "hr", "permissions", "employee")
 
 EMAIL_REGEX = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 

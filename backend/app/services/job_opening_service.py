@@ -42,7 +42,7 @@ class JobOpeningService:
     async def create_opening(
         self, data: dict, user="anonymous", persona=None,
     ) -> OpeningResponse:
-        if not has_role(persona, "hr", "hr_admin"):
+        if not has_role(persona, "hr"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only HR can create job openings.",
@@ -73,7 +73,7 @@ class JobOpeningService:
                 detail="Job opening not found.",
             )
 
-        if not has_role(persona, "hr", "hr_admin"):
+        if not has_role(persona, "hr"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only HR can update job openings.",
@@ -95,7 +95,7 @@ class JobOpeningService:
         return self._to_response(opening)
 
     async def delete_opening(self, opening_id: str, persona=None) -> None:
-        if not has_role(persona, "hr", "hr_admin"):
+        if not has_role(persona, "hr"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only HR can delete job openings.",

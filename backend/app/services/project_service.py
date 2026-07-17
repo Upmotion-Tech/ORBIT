@@ -32,8 +32,8 @@ class ProjectService:
         date_to: Optional[date] = None,
         persona: str = "owner",
     ) -> list[ProjectResponse]:
-        # Enforce project visibility: devmember only sees projects they are assigned to
-        assigned_to_member = "Kofi Mensah" if persona == "devmember" else None
+        # Enforce project visibility: dev only sees projects they are assigned to
+        assigned_to_member = "Kofi Mensah" if persona == "dev" else None
         
         projects = await self.project_repo.find_all(
             search=search,
@@ -53,7 +53,7 @@ class ProjectService:
             return None
             
         # Dev member visibility check
-        if persona == "devmember" and "Kofi Mensah" not in project.team:
+        if persona == "dev" and "Kofi Mensah" not in project.team:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied to this project.",
@@ -62,7 +62,7 @@ class ProjectService:
         return self._to_response(project, persona)
 
     async def create_project(self, data: dict, user: str = "anonymous", persona: str = "owner") -> ProjectResponse:
-        if persona not in ("owner", "admin", "financehead"):
+        if persona not in ("owner", "admin", "finance"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You do not have permission to create projects.",
@@ -98,7 +98,7 @@ class ProjectService:
         # Generate notifications for assigned team members
         if self.notification_repo and project.team:
             for member in project.team:
-                target_user = "devmember" if member == "Kofi Mensah" else "all"
+                target_user = "dev" if member == "Kofi Mensah" else "all"
                 await self.notification_repo.create(
                     user_id=target_user,
                     notif_type="Project Assigned",
@@ -116,8 +116,8 @@ class ProjectService:
                 detail="Project not found.",
             )
 
-        # Enforce permissions: devmember cannot edit projects
-        if persona == "devmember":
+        # Enforce permissions: dev cannot edit projects
+        if persona == "dev":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Dev members cannot edit project parameters.",
@@ -156,7 +156,7 @@ class ProjectService:
             removed = old_team - new_team
 
             for member in added:
-                target_user = "devmember" if member == "Kofi Mensah" else "all"
+                target_user = "dev" if member == "Kofi Mensah" else "all"
                 await self.notification_repo.create(
                     user_id=target_user,
                     notif_type="Project Assigned",
@@ -165,7 +165,7 @@ class ProjectService:
                 )
 
             for member in removed:
-                target_user = "devmember" if member == "Kofi Mensah" else "all"
+                target_user = "dev" if member == "Kofi Mensah" else "all"
                 await self.notification_repo.create(
                     user_id=target_user,
                     notif_type="Removed from Project",
@@ -189,7 +189,7 @@ class ProjectService:
         if not project:
             return False
 
-        if persona == "devmember":
+        if persona == "dev":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Dev members cannot delete projects.",
@@ -266,7 +266,7 @@ class ProjectService:
         
         # Enforce financial visibility logic
         # Dev members cannot see budget, spent, profitability, etc.
-        if persona == "devmember":
+        if persona == "dev":
             resp.budget = None
             
         return resp

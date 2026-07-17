@@ -16,7 +16,7 @@ class CandidateService:
         self.candidate_repo = candidate_repo
 
     async def list_candidates(self, opening_id: str, persona=None) -> list[CandidateResponse]:
-        if not has_role(persona, "owner", "hr", "hr_admin"):
+        if not has_role(persona, "owner", "hr"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied.",
@@ -27,7 +27,7 @@ class CandidateService:
     async def create_candidate(
         self, opening_id: str, data: dict, persona=None,
     ) -> CandidateResponse:
-        if not has_role(persona, "hr", "hr_admin"):
+        if not has_role(persona, "hr"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only HR can add candidates.",
@@ -40,7 +40,7 @@ class CandidateService:
     async def update_candidate(
         self, candidate_id: str, data: dict, persona=None,
     ) -> CandidateResponse:
-        if not has_role(persona, "hr", "hr_admin"):
+        if not has_role(persona, "hr"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only HR can update candidates.",

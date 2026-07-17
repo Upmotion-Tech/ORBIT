@@ -32,7 +32,7 @@ class TaskService:
         date_to: Optional[date] = None,
         persona: str = "owner",
     ) -> list[TaskResponse]:
-        assigned_to_member = "Kofi Mensah" if persona == "devmember" else None
+        assigned_to_member = "Kofi Mensah" if persona == "dev" else None
 
         tasks = await self.task_repo.find_all(
             search=search,
@@ -51,7 +51,7 @@ class TaskService:
             return None
 
         # Dev member visibility check
-        if persona == "devmember":
+        if persona == "dev":
             project = await self.project_repo.find_by_id(task.project_id)
             if task.assignee != "Kofi Mensah" and (not project or "Kofi Mensah" not in project.team):
                 raise HTTPException(
@@ -62,7 +62,7 @@ class TaskService:
         return TaskResponse.model_validate(task)
 
     async def create_task(self, data: dict, user: str = "anonymous", persona: str = "owner") -> TaskResponse:
-        if persona not in ("owner", "admin", "financehead"):
+        if persona not in ("owner", "admin", "finance"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You do not have permission to create tasks.",
@@ -88,7 +88,7 @@ class TaskService:
 
         # Generate notification for assigned developer
         if self.notification_repo and task.assignee:
-            target_user = "devmember" if task.assignee == "Kofi Mensah" else "all"
+            target_user = "dev" if task.assignee == "Kofi Mensah" else "all"
             await self.notification_repo.create(
                 user_id=target_user,
                 notif_type="Task Assigned",
@@ -106,8 +106,8 @@ class TaskService:
                 detail="Task not found.",
             )
 
-        # Enforce task permissions: devmember cannot edit tasks
-        if persona == "devmember":
+        # Enforce task permissions: dev cannot edit tasks
+        if persona == "dev":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Dev members cannot edit task parameters.",
@@ -121,7 +121,7 @@ class TaskService:
         if self.notification_repo and "assignee" in data and updated_task.assignee != old_assignee:
             project = await self.project_repo.find_by_id(updated_task.project_id)
             proj_name = project.name if project else "Unknown Project"
-            target_user = "devmember" if updated_task.assignee == "Kofi Mensah" else "all"
+            target_user = "dev" if updated_task.assignee == "Kofi Mensah" else "all"
             await self.notification_repo.create(
                 user_id=target_user,
                 notif_type="Task Assigned",
@@ -136,7 +136,7 @@ class TaskService:
         if not task:
             return False
 
-        if persona == "devmember":
+        if persona == "dev":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Dev members cannot delete tasks.",

@@ -23,8 +23,8 @@ class NotificationRepository:
             targets.add(role)
             if role in ("owner", "admin"):
                 targets.update(["owner", "admin"])
-            elif role in ("hr", "hr_admin"):
-                targets.update(["hr", "hr_admin"])
+            elif role == "hr":
+                targets.add("hr")
         query = select(Notification).where(
             Notification.user_id.in_(targets)
         ).order_by(Notification.created_at.desc()).limit(limit)
@@ -59,8 +59,8 @@ class NotificationRepository:
         targets = {user_id, "all"}
         for role in (roles or []):
             targets.add(role)
-            if role in ("hr", "hr_admin"):
-                targets.update(["hr", "hr_admin"])
+            if role == "hr":
+                targets.add("hr")
         stmt = (
             update(Notification)
             .where(Notification.user_id.in_(targets), Notification.is_read == False)

@@ -558,3 +558,440 @@ All Finance module tasks are done. Remaining project-wide items are governed by 
 - **Backend Integrity**: All 21 finance routes verified: invoices CRUD + PDF, expenses CRUD, payroll read + update, milestones CRUD, stats — all 200 OK in live smoke test.
 - **Stats live sample**: `{total_outstanding: $25k, total_paid: $25k, monthly_expenses: $470, payroll_cost: $1407/mo, upcoming_milestones: $47k}`
 
+---
+
+# ⚠️ Update (2026-07-17): another tool touched this repo — new sync targets, git now exists
+
+**Read this before doing anything else.** Between the Finance-module session above and this one, a *third* AI tool/session (not this one, not the Finance-module one — identifiable by its own `pack.py`/`unpacked/` tooling at the repo root, a different style from this project's established scratchpad extract/edit/repackage-once workflow) also touched the repo. Concretely, since the last time this file was updated:
+
+- **`.git` now exists at the repo root.** This was previously an explicitly non-git directory (see environment context in earlier sessions). Check `git status`/`git log` before assuming anything about history or trusting "no git repo" from stale context.
+- **`frontend/` is a new third copy of the bundle** (`frontend/index.html` + `frontend/vercel.json`, for a Vercel deploy target implied by the Stack section above). **The bundle now has to be repackaged into three places, not two**: `ORBIT.html`, `backend/static/index.html`, `frontend/index.html`. All three must stay byte-identical. Forgetting the third one means the deployed Vercel frontend silently drifts from what you tested locally.
+- **Root-level `pack.py` and `unpacked/`** are that other tool's own extract/repack scripts — don't confuse them with anything documented in this file's "ORBIT.html internal format" section. Prefer the workflow already documented there (extract the `__bundler/template` JSON string's decoded content into `template.html` + `script.js`, edit, `node --check` + tag-balance-check, repackage once) — it's what every Claude session in this project has used and verified works correctly, including the exact `</script` → `<\/script` re-escaping step, which is easy to get wrong.
+- A large **Finance module** was added by a separate session (see the section directly above this one) — fully real, verified working (`/api/finance/stats` etc. all 200 in a fresh TestClient check this session ran).
+- **My own prior turn's in-progress work survived intact**: the multi-access-level backend migration (see next section) — model/schema/services/routers were all still in place and functional when this session picked back up, and the Finance-module session's frontend changes correctly wrapped the new `access_levels` array field for backward compatibility (see below) rather than breaking on it. No data or code was lost across the handoff, as far as this session could verify.
+
+## Status of the "multiple access levels per employee" ask — backend done, frontend UI not
+
+The user asked: *"Multiple access level can be assigned to an employee not just one."* Previously `Employee.access_level` was a single string (`"owner" | "hr_admin" | "financehead" | "devmember" | "employee"`). This is a real permission-system change, not just a UI tweak, so it touched a lot of files. Work was interrupted mid-way through by the user (to ask for this very documentation update), then paused further for the drawer/transition UI-polish ask below — **the backend half is complete and verified; the frontend UI half (letting HR actually pick more than one) is not started.**
+
+### Done (backend, verified via TestClient against the live DB)
+- **`app/models/employee.py`**: `access_level: Mapped[str]` → `access_levels: Mapped[list[str]] = mapped_column(JSON, default=lambda: ["employee"])`.
+- **`app/schemas/employee.py`**: `EmployeeCreate`/`EmployeeUpdate`/`EmployeeResponse` all use `access_levels: list[str]`, with a `field_validator` requiring at least one entry and rejecting anything not in `ACCESS_LEVELS`.
+- **`app/core/permissions.py`** (new file): `has_role(roles: list, *allowed) -> bool` — the shared "does this employee hold any of these roles" check, since a plain `x not in (...)` stops working once `x` can be a list.
+- **`app/core/dependencies.py`**: `get_owner_user`/`get_hr_user` now check membership in `current_user["roles"]` (a list) instead of equality against `current_user["role"]` (a string). **Two separate dependencies now exist on purpose**:
+  - `get_persona_role` — kept returning a single string (`roles[0]`, the "primary" role) **specifically for `app/routers/projects.py` and `app/routers/tasks.py`**, which still run on the pre-real-auth mock-persona permission checks (`persona == "devmember"`, hardcoded `"Kofi Mensah"` assignee, etc. — this is the still-untouched Phase 2/3 debt the roadmap above already flags). Changing what this function returns would have silently broken every project/task permission check, since `list_of_roles not in (a, b, c)` is *always* `True` — every such check would have started raising 403 for everyone, including owners. Left alone deliberately.
+  - `get_persona_roles` (new) — returns the full `list[str]`, used by every HR-scope router (`employees.py`, `leaves.py`, `settings_hr.py`, `job_openings.py`) whose services now call `has_role()`.
+- **`app/routers/auth.py`**: JWT payload now carries `"roles": employee.access_levels` (was `"role": employee.access_level`); `LoginUserResponse.access_levels: list[str]` (was `access_level: str`).
+- **`app/routers/leads.py`**, **`app/routers/notifications.py`**, **`app/repositories/notification_repository.py`**, **`app/services/notification_service.py`**: all switched from a single `role`/`persona` string to a `roles`/`personas` list — notification broadcast-target expansion (`hr`/`hr_admin`, `owner`/`admin`) now happens per-role across the whole list, and the task-due-soon/overdue check triggers on `"devmember" in roles` instead of `role == "devmember"`.
+- **`app/services/employee_service.py`, `candidate_service.py`, `holiday_service.py`, `job_opening_service.py`, `leave_policy_service.py`, `leave_service.py`**: every `if persona not in (...)` permission check converted to `if not has_role(persona, ...)`; all `persona="owner"` defaults changed to `persona=None`. Salary redaction in `EmployeeResponse` now also checks `has_role(...)`.
+- **`backend/scripts/seed_hr.py`**: every `"access_level": "x"` seed entry converted to `"access_levels": ["x"]`; the `Employee(...)` constructor call and the hardcoded `hamzashafiq@theupmotion.online` HR-admin block both updated.
+- **Live `orbit.db` migrated** (backed up first to `backend/orbit.db.bak-before-multi-access-level-<timestamp>`): added `access_levels` TEXT column, backfilled every existing employee's single value into a 1-element JSON array, dropped the old `access_level` column. Verified: `PRAGMA table_info(employees)` shows `access_levels` present and `access_level` gone; a real login now returns `access_levels: ["hr_admin"]` etc.
+
+### Already bridged by the Finance-module session (found, not built, this session)
+The frontend was **not** left broken by the schema change — whoever worked on it after my backend changes already patched the wire format: `submitNewEmployee` sends `access_levels: [f.accessLevel || 'employee']` (wraps the single selected value in an array), `setEmployeeFieldLive`'s `access_level` case does the same, and `onAuthenticated`/`isOwner()`/the sidebar's `access` gating all derive a single working value via `user.access_levels[0]`. So **the app works correctly today for the single-access-level case** — nothing is broken, no 422s. What's missing is entirely additive.
+
+### Not done — this is the actual remaining work
+1. **Frontend UI is still a single `<Select>`**, not a multi-select (`template.html` lines ~3561 and ~3588 in the current extraction, both `HealerDesignSystem_11773a.Select` bound to `efoAccessLevel`/`selEmployee.access_level`). HR still can't actually assign more than one — needs converting to a checkbox group (or multi-select component) bound to an array, in both the New Employee form and the existing-employee edit view.
+2. **Permission *merging* across multiple assigned levels was never built.** Right now `user.access_levels[0]` (whichever is first) is the only one that drives the sidebar `access.*` gating (`ACCESS[persona]` lookup) — so even once multi-select exists, an employee assigned both `devmember` and `financehead` would only get whichever screens `access_levels[0]` grants, silently ignoring the second role. Needs a `mergeAccessLevels(list)` that ORs every assigned level's `ACCESS[level]` booleans together, used wherever the sidebar currently does `ACCESS[persona]`.
+3. Backend already supports #2 correctly (`has_role()` checks *any* overlap) — this is purely a frontend gap.
+
+**Next agent**: pick up at #1/#2 above. Don't touch `app/routers/projects.py`/`tasks.py` or their services as part of this — they're intentionally still on the single-string `get_persona_role`/mock-persona system; that's Phase 2/3 debt, not part of this ask.
+
+## UI polish pass (2026-07-17): drawer close animations, screen transitions, logout button
+
+The user reported drawers closing instantly with no animation, screen switches having no transition, and the logout button "not looking good." Investigation found **the Finance-module (or another) session had already attempted all three fixes** — there's a CSS block literally titled `/* ORBIT FIXES — Drawer close animation, logout button, sidebar bold */` — but the attempts were incomplete/broken in ways that hadn't been caught because this project's workflow doesn't include live-browser verification (documented in "Workflow notes" above — static/structural checks only).
+
+### Root causes found
+1. **Drawer close animation only worked for 5 of 16 drawers/modals.** The mechanism (`_closeWithAnimation(fn)` in script.js) adds an `orbit-closing` class to `document.querySelector('.crm-panel-slide:not(.orbit-closing)')`, waits 240ms, then calls `fn()` to actually unmount. This requires **both** (a) the panel's own close handler to call `_closeWithAnimation` instead of a raw `setState`, **and** (b) the panel's `<div>` to actually carry `class="crm-panel-slide"` (or `crm-pop` for small centered popups) so the CSS/querySelector has something to find. Cross-referencing all 16 `sc-if`-gated drawers/modals against both requirements found:
+   - **6 close handlers never called `_closeWithAnimation` at all** (`closeNewLead`, `closeLeaveAction`, `closeNewProject`, `closeNewTask`, `closeMilestoneForm`, `cancelDeleteLead`) — instant `setState`, no animation attempted.
+   - **8 drawers' panel/overlay `<div>`s were missing the `crm-panel-slide`/`crm-overlay-fade` classes entirely** (Project, New Project, Task, New Task, Invoice, Expense, Milestone, Invite) — even where the close handler *did* call `_closeWithAnimation`, the `querySelector` found nothing and silently fell through to an instant close.
+   - Only Lead, Employee, Leave, Opening, and My-Leave drawers had both halves correct and actually animated.
+2. **Screen-transition CSS targeted the wrong element.** The existing rule was `[data-brand="orbit"] [style*="flex:1;display:flex;flex-direction:column"] > div` — that inline-style substring belongs to the *outer* layout wrapper (the one that also contains the top bar), not the actual scrollable per-screen content area (`<div style="flex:1;padding:24px;overflow:auto">`, a sibling below the top bar). The rule never matched the right element, so screen switches never visibly animated. There was also a **third, completely dead** earlier attempt using a `sc-if > div[...]` selector — `<sc-if>` is a compile-time-only template directive (see "ORBIT.html internal format" above) and never exists as a real element in the rendered DOM, so that selector could never match anything, ever.
+3. **Three separate, partially-conflicting `.sidebar-logout-btn` CSS rule blocks** existed simultaneously (evidence of at least three different editing passes each adding their own version instead of touching the existing one) — the last one in source order (with `!important`) happened to win, but the redundancy was real clutter and the weight was only 600, not bold.
+
+### Fixes applied (`template.html` + `script.js`, repackaged once at the end)
+- `_closeWithAnimation` now matches `.crm-panel-slide:not(.orbit-closing), .crm-pop:not(.orbit-closing)` (covers both side-drawers and small centered popups), and also finds the panel's `.crm-overlay-fade` ancestor via `.closest()` and fades it out in sync, instead of only animating the panel while the backdrop just vanished.
+- Added the missing `class="crm-overlay-fade"` / `class="crm-panel-slide"` to all 8 previously-unmarked drawers.
+- Wired all 6 previously-instant close handlers through `_closeWithAnimation`.
+- Added `pop-fade-out` and `overlay-fade-out` keyframes (the old CSS only had `drawer-slide-out` for panels).
+- Added `class="orbit-screen-content"` to the actual per-screen content wrapper div and rewrote the screen-transition rule to target `.orbit-screen-content > div` — reliable because exactly one screen's content div is ever mounted as that wrapper's child at a time, so the `screen-enter` keyframe fires on every navigation. Removed the dead `sc-if > div[...]` rule (left a comment explaining why it could never have worked, for the next person who wonders).
+- Consolidated the 3 duplicate `.sidebar-logout-btn` blocks into one: bumped to `font-weight: 700` (bold, per this ask), slightly stronger border/hover/active states, kept the existing red danger-action styling.
+- **Home icon**: investigated but left unchanged — `dashboardItems`'s `{ icon: 'home' }` uses the same Lucide-style naming convention that works correctly for every other sidebar icon in the app (`bar-chart-2`, `flask-conical`, `credit-card`, `clipboard-list`, etc.), and `SidebarSection`/`Icon` are opaque pre-built design-system components compiled into the gzip+base64 manifest assets — no CSS rule hiding it was found, and there's no template/script-level bug to point to. Flagged as needing live-browser confirmation rather than blindly changed on a guess.
+
+### Verification
+Static/structural only, per this project's standing workflow: `node --check` on script.js, tag-balance check on template.html (one false-positive round-trip along the way — my own explanatory CSS comment literally contained the substring `<sc-if>` as an example, which the balance-checker matched as a real opening tag; reworded the comment), scaffolded-binding cross-check (template `{{ }}` idents vs script.js render-vals) came back clean, and a fresh backend TestClient login still returns 200 against the live DB. Repackaged into all **three** bundle copies (`ORBIT.html`, `backend/static/index.html`, `frontend/index.html`) — confirmed byte-identical sizes afterward. **Not** exercised in an actual browser (consistent with this project's documented workflow, but worth being upfront that the animation timing/feel hasn't been eyeballed).
+
+## Refresh flash fix (2026-07-17): splash + login screen briefly flashing on page load
+
+The user reported a millisecond flash of both the splash screen and the login screen on every browser refresh, even when already logged in with a valid session. Root cause: of the ~195 `sc-if` conditionals in the template, only `authChecking` and `showLogin` (the two gates controlling which of splash/login/app shows) were missing a `hint-placeholder-val` attribute — every other consequential conditional in the file has one. This hint is what the runtime uses to decide what to paint on the very first pre-hydration frame, before the real JS state (`authChecking: true` by default) has actually run; without it, the initial paint and the real state briefly disagreed, causing the flash during the handoff.
+
+**Fix**: added `hint-placeholder-val="{{ true }}"` to the `authChecking` gate and `hint-placeholder-val="{{ false }}"` to `showLogin`, matching the real initial state values exactly. Repackaged into all three bundle copies. Verified tag balance and scaffolded bindings stayed clean; not browser-tested (consistent with this project's standing workflow).
+
+## Multiple access levels per employee — completed (2026-07-17)
+
+Following on from the "backend done, frontend not started" status logged earlier today, the user clarified the actual requirement: **access levels needed to be per-screen/module toggles** (their words: *"Access levels should be Leads, invoices and expenses.. if the owner selects leads for a certain employee he should be seeing the leads then, vice versa for all"*) — not multi-select over the old 5 abstract role names. Ticking "Leads" should grant *only* Leads, not a bundle. This is now fully implemented, tick-box UI included, verified end-to-end.
+
+### The vocabulary problem this ran into, and how it was resolved
+The old `access_levels` values (`owner`/`hr_admin`/`financehead`/`devmember`/`employee`) were **not just an HR concept** — grepping turned up `"hr_admin"`/`"financehead"`/`"devmember"` (plus hardcoded `"Kofi Mensah"` assignee logic) load-bearing inside `project_service.py`, `task_service.py`, `expense_service.py`, `invoice_service.py`, `milestone_service.py`, `salary_slip_service.py`, and the notification broadcast-target expansion — i.e. the Finance module (built in an earlier session, see above) and the still-untouched Dev/Project mock-persona system both depend on these exact strings. Simply swapping employees over to a new screen-keyed vocabulary (`crm`/`dev`/`finance`/`hr`) without touching those services would have silently broken project visibility scoping and finance notification delivery for real employees, since e.g. `get_persona_role()` (the still-single-string dependency `projects.py`/`tasks.py` depend on, kept deliberately unchanged for exactly this reason) returns `access_levels[0]`.
+
+Given that, this was done as a **full, consistent rename** rather than introducing a second parallel vocabulary: `hr_admin`→`hr`, `financehead`→`finance`, `devmember`→`dev` everywhere across the backend (mechanical find/replace across all 17 affected files, then a manual cleanup pass for the duplicate `has_role(persona, "hr", "hr")`-style args the crude replace produced — search `grep -rn '"hr", "hr"'` if this pattern resurfaces anywhere). `ACCESS_LEVELS` in `app/schemas/employee.py` is now `("owner", "dashboard", "crm", "dev", "finance", "hr", "permissions", "employee")`.
+
+### Backend changes
+- **`app/schemas/employee.py`**: `ACCESS_LEVELS` tuple updated as above.
+- **All `has_role()` call sites** (`employee_service.py`, `candidate_service.py`, `holiday_service.py`, `job_opening_service.py`, `leave_policy_service.py`, `leave_service.py`) and **`app/core/dependencies.py`**'s `get_hr_user`: `"hr_admin"` → `"hr"` (with duplicate-arg cleanup after the mechanical replace).
+- **`app/repositories/notification_repository.py`**: broadcast-target expansion simplified from `role in ("hr", "hr_admin")` to `role == "hr"` (no more second name to check).
+- **`project_service.py`, `task_service.py`, `expense_service.py`, `invoice_service.py`, `milestone_service.py`, `salary_slip_service.py`**: every `"devmember"`/`"financehead"` role-comparison string renamed to `"dev"`/`"finance"`. The hardcoded `"Kofi Mensah"` name-matching logic itself was **not** touched — that's separate, pre-existing Phase 2/3 debt (mock-persona-based project assignment), unrelated to this vocabulary rename, and still needs a real rewrite later.
+- **`app/core/dependencies.py`**: kept **two** persona dependencies on purpose — `get_persona_role` (unchanged, still returns a single string = `roles[0]`, used only by `projects.py`/`tasks.py` which still run on the old mock-persona system) and `get_persona_roles` (the list, used by every real HR-scope router).
+- **`backend/scripts/seed_hr.py`**: every seed employee's `access_levels` entry renamed to match (`hr_admin`→`["hr"]` etc).
+- **Live `orbit.db` migrated** (backed up first to `backend/orbit.db.bak-before-access-vocab-rename-<timestamp>`): read every employee's actual current `access_levels` value (not assumed from the seed script — one employee, Ayesha Siddiqui, had been manually changed to `["owner"]` via the UI during earlier testing and was correctly left alone) and remapped only the old role names in place. 11 of 21 employees had a value that needed renaming.
+- Verified via TestClient: HR login returns `access_levels: ["hr"]`; a `dev`-only employee gets 403 creating an employee; a `finance`-only employee gets 403 adding a holiday; HR can add/delete a holiday; **an employee can now hold more than one level at once** — PUT `access_levels: ["dev", "crm"]` on a real employee round-tripped correctly.
+
+### Frontend changes
+- **`ACCESS_LEVEL_OPTIONS`**: now the 7 tick-box options shown in the Employee form — `Owner (full access)`, `Dashboard`, `Leads`, `Projects`, `Invoices & Expenses`, `Employees`, `Setup` — each value matching the new backend screen-key vocabulary 1:1 except Owner (implies everything).
+- **`mergeAccess(levels)`** (new function): computes the sidebar's `access.{dashboard,crm,dev,finance,hr,permissions,audit}` booleans as a straight union across every level the employee holds (`owner` implies all) — this is what makes "tick Leads + tick Invoices & Expenses → sees exactly those two, nothing bundled in" actually true. Replaces the old `ACCESS_LEVELS[persona]` single-role bundle lookup that `renderVals()` used to do.
+- **`derivePersonaFlavor(levels)`** (new function): the app still has a large amount of *cosmetic* logic scattered through Dashboard/Dev/Finance rendering that keys off a single `persona` string (`persona === 'devmember'` → "My Projects" label, own-projects-only filtering, `canRunPayroll`, `canApproveExpense`, etc. — roughly 15 call sites, none of them touched). Rather than rewrite all of those (out of scope — that's the "remove persona system" Phase 2 work, not this ask), this derives a single best-guess flavor from the granular list (priority `owner > hr > finance > dev`, else `employee`) and feeds it into the same `persona` variable those checks already read. For every *currently real* employee (single-level after migration) this reproduces their exact prior behavior. For a newly multi-tagged employee going forward, it's a reasonable but approximate default — acceptable since none of those checks are access-control-critical, just labels/defaults.
+- **Employee form UI** (both New Employee and existing-employee edit): the single `<Select>` replaced with a tick-box list (`empAccessLevelRows`/`efoAccessLevelRows`, precomputed in `renderVals()` since the template's `{{ }}` expression language can't do `.includes()` checks — each row carries `{value, label, checked, onToggle}`). `toggleEmpAccessLevel(id, value)` / `toggleEfoAccessLevel(value)` add/remove one value from the array per checkbox click; `setEmployeeFieldLive`'s `'access_levels'` case now sends the raw array straight through (no more wrap-single-value-in-array shim from the earlier session).
+- **`onAuthenticated`**: `user.access_level` is now set via `derivePersonaFlavor(user.access_levels)` instead of naively taking `access_levels[0]` — this one change is what keeps every downstream `currentUser.access_level === 'devmember'`/`'owner'` check (there are a few: `loadHrData`'s early-return, `isOwner()`) working correctly without having to touch each of them individually.
+
+### Verification
+`node --check` + tag-balance + scaffolded-binding cross-check all clean (x-import count dropped from 204→202 as expected — two `Select` components replaced by plain checkbox markup). Backend TestClient checks above all passed against the live DB. Repackaged into all three bundle copies. **Not** browser-tested — in particular the checkbox `checked="{{ al.checked }}"` binding pattern is new to this codebase (no prior checkbox existed to copy from) and, while it follows the same `attr="{{ expr }}"` convention already confirmed working for `disabled`, it's the one part of this change worth an actual click-test before fully trusting it.
+
+## Follow-up (same day): two real bugs the browser test above would have caught
+
+The user reported both immediately, from actual browser console output — worth reading closely since real errors are exactly what static/structural checks can't catch.
+
+### 1. 422 on toggling an access-level checkbox down to zero
+`toggleEmpAccessLevel` computed `next` by filtering the clicked value out of the current array with no floor — unticking the *last* checked box for a real employee sent `access_levels: []` in the PUT, which `EmployeeUpdate`'s validator correctly rejects ("at least one access level is required"), surfacing as a raw 422 in the console. `submitNewEmployee` (the create path) already had a `.length ? ... : ['employee']` fallback for this same edge case; the live-edit toggle path didn't. **Fixed**: `toggleEmpAccessLevel`/`toggleEfoAccessLevel` now fall back to `['employee']` (existing employee) / `[]` (new-employee form, harmless since submit already guards it) when unticking would otherwise leave nothing — and while touching this, added the also-requested "ticking Owner auto-ticks (and disables) every other box" behavior: clicking Owner replaces the whole selection with `['owner']` outright (visually shows every row checked via `checked: isOwner || ...` in the row-construction, and `disabled: isOwner && value !== 'owner'` locks the rest so they can't be confusingly toggled while Owner covers everything already); unticking Owner drops back to `['employee']`.
+
+### 2. Every icon in the app was silently broken (CORS + 404 on unpkg.com)
+The user's console showed this for `plus-circle`, `home`, and `check-circle` (previously, in an earlier session today, this exact symptom for just `home` was investigated and wrongly written off as *"opaque design-system component, no code-level bug found — flagged for live-browser confirmation"*. It needed exactly that confirmation, and the real bug was fully diagnosable once actually chased down.)
+
+**Root cause, fully verified via the live npm/unpkg registry, not guessed**: the Icon component (compiled into one of the gzip+base64 manifest JS assets — `a7fb5d78-ec80-4fc2-b2b2-00b87a8df9c3`, decompressible with `zlib.gunzipSync` if this ever needs re-checking) builds every icon's URL as `` `https://unpkg.com/lucide-static@0.400.0/icons/${name}.svg` `` and uses it as a CSS `mask-image` to recolor a single-color SVG. That mechanism itself is fine. The problem is entirely in the icon **names** this app passes it: Lucide renamed a batch of icons at some point, and `lucide-static@0.400.0` (confirmed to genuinely exist on npm, not a bad version pin) only ships static `.svg` files under the **new** names — the old names only exist as backward-compat *JS* re-exports under `/dist/esm/icons/`, which is a different, unrelated part of the package this app's Icon component never touches. Fetching `icons/home.svg` (or `plus-circle`/`check-circle`/`x-circle`/`alert-triangle`) 404s outright; the CORS message is secondary noise from how Chrome reports a failed cross-origin mask-image load, not the actual cause.
+
+Confirmed by downloading `https://unpkg.com/lucide-static@0.400.0/?meta` (unpkg's file-listing API) and checking every icon name actually used anywhere in this app against the real file list. Five were stale:
+
+| old name (used in this app) | new name (only one that exists as `.svg`) |
+|---|---|
+| `home` | `house` |
+| `plus-circle` | `circle-plus` |
+| `check-circle` | `circle-check` |
+| `x-circle` | `circle-x` |
+| `alert-triangle` | `triangle-alert` |
+
+All other icon names used in the app (`bar-chart-2`, `calendar`, `clipboard-list`, `credit-card`, `file-text`, `flask-conical`, `search`, `settings`, `user`, `users`, `x`, `plus`) were already current — confirmed by checking literally every distinct icon name referenced anywhere in `template.html`/`script.js` against the real SVG file list, not just the ones in the error log.
+
+**Fixed**: renamed all 5 at their call sites — `dashboardItems`' `icon: 'home'` (×2), `TOAST_TONE_META`'s `success`/`error`/`warning` icons, and the template's `icon="plus-circle"` Button props (×6, New Invoice/Log Expense/Add Milestone/Add Employee/Add Opening + one more). Nothing in the compiled manifest asset itself needed touching — this was entirely a "we're asking for icons that no longer exist under these names" problem in our own code, not a design-system bug.
+
+**If this resurfaces for some other icon name later**: re-run the same check — `curl -s "https://unpkg.com/lucide-static@0.400.0/?meta"` and grep the returned file list for `/icons/<name>.svg`. If it's missing, search the listing for the likely renamed sibling (Lucide's convention was largely `<word>-<shape>` → `<shape>-<word>`, e.g. `check-circle` → `circle-check`).
+
+### Verification
+Confirmed via the actual npm registry + unpkg file listing (not assumption) that all 17 distinct icon names used anywhere in the app now resolve to a real file. `node --check` + tag-balance + scaffolded-binding checks clean. Backend TestClient re-verified after the checkbox fix (PUT with a single remaining level, and separately with an explicit `["dev", "crm"]` multi-value array). Repackaged into all three bundle copies.
+
+---
+
+## Update (2026-07-17) — Invoice overhaul: real line items, editable invoice number/dates, Word-template PDF, Finance UI polish
+
+Reworked Finance → Invoices end to end, driven by the user pasting the real
+`Invoice Template.docx` layout and a filled example and asking for the app to
+match it exactly, plus two small unrelated Finance UI bugs.
+
+### Backend
+- `Invoice` model gained `invoice_number` (free-text, e.g. `UPM-CZ-2026-001`),
+  nullable `project_id` (no longer required — a "primary" project kept only
+  for the list view's Project column/filter), `line_items` (JSON array of
+  `{project_id, description, qty, unit_price}`), and four optional
+  `bank_account_name`/`bank_account_number`/`bank_iban`/`bank_name` fields.
+  SQLite can't drop a NOT NULL constraint via `ALTER TABLE`, so the live
+  `orbit.db` (backed up first) was migrated via a full table-rebuild-and-
+  backfill script — all 4 existing invoices got sequential invoice numbers
+  and single-item `line_items` derived from their old `project_id`+`amount`.
+- `InvoiceCreate`/`InvoiceUpdate` schemas now require `line_items` (at least
+  one) instead of a flat `amount` — **`amount` is always server-recomputed**
+  from `sum(qty * unit_price)` in `InvoiceService._apply_line_items()`, never
+  trusted from the client.
+- **PDF generation was completely rewritten**: dropped reportlab entirely in
+  favor of filling the user's actual `Invoice Template.docx` (now shipped at
+  `backend/app/templates/invoice_template.docx`) via python-docx, then
+  converting to PDF with `docx2pdf` (drives Word via COM automation — see
+  `invoice_pdf_service.py`'s module docstring). **This only works on Windows
+  with Word installed; it will NOT work on Render/Linux — must be swapped for
+  a LibreOffice-headless or cloud conversion call before deploying.** The
+  download filename is now the invoice number (`safe_invoice_filename`), not
+  a UUID fragment — fixed on both ends (server `Content-Disposition` AND the
+  frontend's `a.download`, since the latter otherwise silently overrides it).
+  - Tricky bug along the way: this template's textboxes have some `<w:p>`
+    elements that structurally contain *other whole paragraphs* as
+    descendants (Word's own compatibility markup). A deep `.//w:t` search
+    picks up nested paragraphs' runs too and corrupts a sibling field when
+    they share space — fixed by scoping every run lookup to direct children
+    only (`p.findall('./w:r/w:t')`). Worth remembering if any other
+    docx-template work hits similarly-garbled output.
+- Found (while in this code) and fixed the same **MissingGreenlet** bug class
+  documented earlier in this file, in four more places:
+  `invoice_repository.py`, `expense_repository.py`, `milestone_repository.py`,
+  `salary_slip_repository.py` — all had bare `await self.db.refresh(obj)`
+  after an update, which expires relationships; fixed all four to
+  `return await self.find_by_id(obj.id)` instead. Also fixed
+  `invoice_repository.py`'s `count()`/`find_all()` using an inner
+  `.join(Invoice.project)`, which would have silently excluded any invoice
+  with no linked project once `project_id` became nullable — changed to
+  `.outerjoin`.
+
+### Frontend (ORBIT.html / backend/static / frontend — all three kept in sync)
+- **Invoice drawer rebuilt**: editable Invoice No., Client, Currency, Status,
+  real `<input type="date">` for both Issue date and Due date (previously a
+  free-text field with a misleading placeholder), a repeatable line-items
+  section (project dropdown + description + qty + unit price + live line
+  total + Remove, "+ Add line item" button), a live auto-calculated Total,
+  Notes, and four optional bank-detail fields. The footer button now reads
+  "Create Invoice" or "Save Changes" and works for both new and existing
+  invoices — previously editing an existing invoice had no submit path at
+  all even though the service/API already supported it.
+- The left "View in PDF" summary panel now shows the real invoice number and
+  a per-line-item breakdown instead of a single flattened project/amount row.
+- Fixed a real bug in the Invoices list: the Type column read a nonexistent
+  `i.installment` field (always rendered "Full"); now reads the real
+  `invoice_type`.
+- **Finance sub-tabs** (Invoices/Expenses/Payroll/Milestones) now animate on
+  switch, via the same `screen-enter` keyframe used for top-level screens,
+  scoped one level down with a new `.orbit-subtab-content > div:nth-child(2)`
+  rule (added a `class="orbit-subtab-content"` on the Finance screen root).
+- **Invoices and Expenses table rows are now fully clickable** (not just the
+  small "View" link) — same pattern as the CRM leads table: `sc-camel-on-click`
+  on the `<tr>` plus `sc-camel-on-click="{{ stopClick }}"` on the link's own
+  `<td>` so the link still works without double-firing.
+
+### Verification
+`node --check` on script.js, a from-scratch tag/brace-balance check (sc-if/
+sc-for/sc-raw-select/sc-raw-tr/sc-raw-td/div/x-import/button/textarea/`{{ }}`,
+all balanced), and the scaffolded-binding cross-check (template `{{ }}`
+idents vs script.js renderVals keys — only sc-for loop aliases like `li`/`po`
+flagged, which is expected and not a real gap). Repackaged into all three
+bundle copies (byte-identical, JSON-parses back cleanly, new keys like
+`pfInvNumber`/`invLineItemRows`/`addInvoiceLineItem` confirmed present in the
+written bundle). Backend re-verified post-repackage with a TestClient login +
+invoice list call against the live `orbit.db`.
+
+**Not done / explicitly out of scope for this round**: swapping
+`docx2pdf`/Word-COM for a Linux-compatible PDF converter before deployment;
+wiring a "Delete Invoice" button in the drawer (the backend/service method
+already exists, just was never exposed in this drawer, pre-existing gap not
+touched); the broader 8-phase roadmap from the 2026-07-16 entry above (Phase
+2 onward) is still untouched by this work.
+
+---
+
+## Update (2026-07-17, later) — Invoice PDF alignment/bold, auto-save, payroll sync bug, Milestones fully broken
+
+A large batch of follow-up fixes across Invoices, Payroll, and Milestones, all
+user-reported after using the invoice overhaul above.
+
+### Invoice PDF (`invoice_pdf_service.py`)
+- **Real root cause of the "qty not aligned under QTY" bug**: `Cell.text =
+  value` (python-docx's cell-text setter) doesn't just set text — it replaces
+  every paragraph in the cell with a single brand-new default-styled
+  paragraph, silently dropping the template's CENTER alignment and 10pt font
+  size (confirmed by direct test: alignment came back `None`, font size
+  `None`, after a plain `.text =` assignment on a cell that was CENTER/10pt
+  in the source template). Every line-item cell was affected, not just QTY —
+  it only looked wrong there because a short "1" hugging the left edge of a
+  wide cell is the most visually obvious case. **Fixed** by adding
+  `_set_cell_text(cell, text, bold=None)`, which reuses the cell's existing
+  first run (preserving alignment/font/size) instead of replacing the
+  paragraph — the same preserve-don't-replace principle `_set_run_group_text`
+  already used for the textbox fields. All four line-item columns plus the
+  grand-total cell now go through it. Verified via a real generated PDF
+  (rendered and visually inspected): qty/unit price/total now sit correctly
+  centered under their headers.
+- **Bank details now render bold in the PDF**: `_set_run_group_text` gained
+  an optional `bold` param that adds/removes a `<w:b/>` on the run's `rPr`
+  (inserted at index 0, not appended, to stay closer to schema-expected
+  ordering and avoid a Word "repair" prompt). Applied to all four bank-detail
+  lines (Account Name/Number, IBAN, Bank Name).
+- **Paid Date**: `Invoice` model gained `paid_date` (nullable `Date`, added
+  to the live `orbit.db` via `ALTER TABLE` — nullable column add, no rebuild
+  needed this time, unlike the earlier `project_id` nullability change).
+  `InvoiceCreate`/`Update`/`Response` schemas updated;
+  `InvoiceService._apply_paid_date()` clears `paid_date` server-side
+  whenever `status` is set to anything other than `"Paid"` (so an invoice
+  bounced back from Paid doesn't keep showing a stale paid date). Also
+  fixed, while in this schema: **`InvoiceCreate` had no `status` field at
+  all** — every new invoice silently defaulted to `"Draft"` regardless of
+  what the create form's Status selector showed, since Pydantic quietly
+  drops fields a model doesn't declare. PDF: no dedicated template slot for
+  a paid date exists, so it rides on the same line as the issue date —
+  `DATE:  17 / 07 / 2026     PAID: 20 / 07 / 2026` — only appended when
+  `status == "Paid"` and `paid_date` is set.
+
+### Invoice frontend (template.html / script.js)
+- **Line-item row no longer shows the project name twice.** Selecting a
+  project auto-filled the Description input with that same project's name,
+  so the row visually repeated "Acme Portal Integration" once in the project
+  dropdown and again right below it. Description is now only shown
+  (`li.showDescription`) when no project is linked; linking a project always
+  syncs the description to that project's name behind the scenes (was
+  previously fill-once-if-empty, now always-sync while linked).
+- **Invoice edit auto-saves like everything else in this app** (Leads,
+  Projects, Tasks already worked this way — invoices didn't). Existing
+  invoices no longer show a "Save Changes" button at all: every field
+  (`setInvoiceField`) debounce-saves (500ms) via a per-field
+  `_invoiceApiPatchFor()` → `invoicesApi.update()`, with a footer label that
+  reads "Saving…" / "Changes save automatically", matching the CRM Leads
+  drawer's pattern exactly. **New** invoices still use the explicit "Create
+  Invoice" button — nothing to auto-save against until the record exists.
+- **Invoice number prefix lock**: `UPM-CZ-` is now non-editable — everything
+  after it (year, sequence, punctuation) stays fully free-form. Implemented
+  as an onChange guard (`onPfInvNumber`) rather than a split
+  label+input — if an edit would remove/mangle the prefix, it strips
+  whatever partial-prefix fragment survived and re-prepends the real one,
+  leaving the rest of what was typed untouched.
+- **Paid Date field** in the form, shown only when Status = Paid
+  (`showPaidDate`), a real `<input type="date">`.
+
+### Payroll — real sync bug, not a UI gap
+`GET /api/finance/payroll` calls `get_or_create_slip(emp.id, month,
+emp.salary, ...)` for every employee on every page load, passing the
+employee's **current** salary each time — but the service only ever used
+that value when a slip didn't exist yet. Once a slip existed for that
+employee+month (created the very first time anyone opened Payroll that
+month), it was returned untouched forever, silently ignoring any later HR
+salary edit. **Fixed**: `get_or_create_slip` now re-syncs `gross_salary` (and
+recomputes `net_salary` from the slip's own tax/bonus/allowances/deductions)
+whenever an existing slip is `Unpaid` and its `gross_salary` no longer
+matches the employee's live salary. A slip marked **Paid is left alone**
+regardless of later salary changes — it's a historical record at that point,
+same "locked once finalized" treatment as everything else in this app.
+Verified via TestClient: bumped an employee's salary → payroll immediately
+reflected it (Unpaid) → marked Paid → bumped salary again → payroll
+correctly did NOT change.
+
+Separately: **the editable Gross/Tax/Allowances/Bonus/Deductions inputs with
+live Net Pay calculation the user asked for already existed** in both
+`script.js` (`setSalarySlipFieldLive`, debounced auto-save, already
+optimistic-update + PUT) and `template.html` (real `type="number"` inputs
+bound correctly), gated behind `canRunPayroll` (`access.finance && persona
+!== 'devmember'`). The user's screenshot showing a read-only slip was from a
+non-finance persona (Ayesha Siddiqui, Senior Engineer) correctly seeing the
+locked-down view — not a bug. No changes needed here beyond the sync fix
+above.
+
+### Milestones — three real bugs, not "unfinished"
+1. **The "Project (locked/won leads only)" dropdown was always empty**, for
+   two independent reasons found by reading the actual filter: it read
+   `p.leadId` (camelCase — doesn't exist; the real field from the API is
+   snake_case `lead_id`, never aliased) *and* it looked up stage via
+   `D.leads` (the old frontend mock array — CRM Leads has been fully
+   live-backend for a long time). Both fixed: filter now reads `p.lead_id`
+   and cross-references `this.state.apiLeads` (the real loaded leads).
+2. **The Milestones table's Milestone-name and Expected-date columns were
+   always blank** — the template referenced `{{ m.description }}` and
+   `{{ m.expectedDate }}`, neither of which the row-mapping in `script.js`
+   ever produced (the real fields, present via the row's `...m` spread, are
+   `m.name` and `m.expected_date`). Same "scaffolded-but-unwired" class of
+   bug flagged multiple times earlier in this file — caught the same way,
+   by cross-referencing template idents against renderVals keys. Fixed by
+   pointing the template at the real field names rather than inventing new
+   aliases.
+3. **No delete affordance existed at all** — `deleteMilestone` was fully
+   implemented in `script.js` (confirm dialog → DELETE → toast → reload)
+   but never once referenced in `template.html`. Added a Delete link/column,
+   owner-gated the same way the status dropdown already is.
+   Also: Milestone form's "Expected date" was a free-text input with a
+   placeholder ("e.g. 15 Sep 2026") instead of a real date picker (same bug
+   class fixed for Invoices/Employees earlier), and "Amount" wasn't
+   `type="number"` — both fixed, plus `submitMilestone` now explicitly
+   validates amount > 0 with a clear error instead of a generic
+   "fill all fields" message.
+
+### Validation audit (numeric fields)
+Swept every Finance-adjacent form for text inputs holding numeric data;
+found and fixed one more gap beyond Milestones' Amount above: the **Expense
+form's Amount field** was a plain text `Input` with no `type="number"`.
+Invoice line items, Salary Slip fields, and Employee salary were already
+correctly `type="number"`. Did not add alphabetic-only restrictions to name
+fields (client/description/project name etc.) — real company names
+routinely contain digits and punctuation ("7-Eleven", "24/7 Logistics"), so a
+strict letters-only filter would reject legitimate input; scoped this pass
+to "numbers stay numeric," not the reverse.
+
+### Verification
+Backend: `_set_cell_text`/`_set_run_group_text` bold logic verified by
+generating a real invoice PDF (two line items, Paid status with paid_date,
+all four bank fields, notes) and visually inspecting the rendered output —
+line items centered correctly under their headers, bank details bold, paid
+date appended to the date line. Payroll sync verified end-to-end via
+TestClient (salary bump while Unpaid → reflected; salary bump while Paid →
+untouched). Live `orbit.db` backed up before the `paid_date` column add.
+Frontend: `node --check`, tag/brace-balance check, and the scaffolded-binding
+cross-check all clean (same harmless sc-for alias false-positives as every
+previous pass). Repackaged into all three bundle copies — byte-identical,
+JSON round-trips correctly, spot-checked new keys (`onPfInvNumber`,
+`showPaidDate`, `invoiceAutoSaveLabel`, `li.showDescription`, `m.onDelete`,
+`m.expected_date`) all present in the written bundle. Backend re-verified
+post-repackage (login + invoices/milestones/payroll list, all 200).
+
+**Not done / explicitly out of scope this round**: a full milestone
+edit/detail drawer (only create + inline status + delete exist — matches
+what was asked, "should all be functional," without inventing an unrequested
+edit-modal); alphabetic-only validation for name fields (see above, judged
+counterproductive); the Linux-compatible PDF converter swap and the
+2026-07-16 8-phase roadmap remain untouched.
+
+---
+
+## Update (2026-07-17, later still) — CRM Assigned Rep / Project Team / Task Owner all read stale mock employees
+
+This is exactly the "Employees as single source of truth" split-brain the
+2026-07-16 roadmap already flagged for CRM's Assigned Rep dropdown and the
+Software Dev employee dropdown — the user hit it directly (Lead POC dropdown
+and Project Team picker both showing old mock names like "Charlie Davis" /
+"Ana Reyes" / "Kofi Mensah" instead of real HR employees).
+
+### Root cause #1 (three call sites): reading `D.employees` instead of the real `apiEmployees`
+- `crmAllEmployeeNames` (feeds the CRM Lead "Assigned Rep" dropdown,
+  `repOptions`)
+- `allEmployeeNames` (feeds the Project drawer's "Team" search-to-add picker)
+- `devEmployeeOptions` (feeds the Task Detail drawer's "Owner" dropdown)
+
+All three read `D.employees` — the frontend's original hardcoded mock array
+— instead of `this.state.apiEmployees`, the real list `employeesApi.list()`
+already loads. Fixed all three to read from `apiEmployees`, filtering out
+`status === 'Terminated'` (matching a filter already used for a fourth,
+already-correct call site) and, for `devEmployeeOptions` specifically, the
+real field name `department` (not the mock's `dept`).
+
+### Root cause #2, found while fixing #1: `loadHrData` never even fetches employees for dev-team-member personas
+`loadHrData()` (which loaded `apiEmployees` alongside leaves/openings/policy/
+holidays) starts with `if (currentUser.access_level === 'devmember') return;`
+— intentional, to skip HR-specific data for dev personas. But that early
+return meant `apiEmployees` was **never populated at all** for a dev-team
+persona, so even after fixing root cause #1, a dev-member user opening a
+Project's Team picker would still see an empty list — the employees list
+had quietly become a cross-cutting dependency (CRM, Dev) that this guard
+wasn't written with in mind. **Fixed** by splitting `loadEmployees()` out of
+`loadHrData()` into its own method, called unconditionally from
+`bootAppData()` for every persona; `loadHrData()` keeps its dev-member
+early-return for the actually-HR-only data (leaves/openings/policy/holidays).
+
+### Related bug found and fixed while in this code: "Me" screen's salary slip showed a random employee
+`myEmployee` (backs the "Me" screen's "Latest salary slip" card) was
+`apiEmployees[0]` — literally whichever employee happened to load first,
+not the logged-in user. The name/role shown above it came from the correct
+`currentUser`-derived `meta`, so this screen could show one person's name
+right next to a **different, arbitrary employee's** salary figures for
+anyone except that first employee in the list. This was already broken for
+every non-dev persona before today; fixing root cause #2 above (employees
+now loading for dev personas too) would have newly exposed it to them as
+well, so fixed alongside the others: `myEmployee` now looks up
+`apiEmployees.find(e => e.id === currentUser.id)`. (The salary figures
+themselves are still a hardcoded 18%/82% gross/net approximation rather
+than the real salary-slip API — left alone, out of scope for this pass.)
+
+### Verification
+`node --check`, tag-balance, and scaffolded-binding checks all clean.
+Repackaged into all three bundle copies (byte-identical); confirmed
+`loadEmployees` and the `department === 'Software Dev'` fix are both present
+in the written bundle. Backend re-checked post-repackage (login + employees
+list, 200). Not browser-tested, consistent with this project's standing
+workflow.
+

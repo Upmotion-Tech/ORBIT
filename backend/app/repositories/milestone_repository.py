@@ -100,8 +100,9 @@ class MilestoneRepository:
         for key, value in data.items():
             setattr(milestone, key, value)
         await self.db.flush()
-        await self.db.refresh(milestone)
-        return milestone
+        # Same MissingGreenlet risk as invoice/expense/job_opening repos had:
+        # a bare refresh() expires `project` without reloading it.
+        return await self.find_by_id(milestone.id)
 
     async def soft_delete(self, milestone: Milestone) -> None:
         milestone.deleted_at = now_pkt()

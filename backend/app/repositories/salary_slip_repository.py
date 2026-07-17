@@ -110,8 +110,9 @@ class SalarySlipRepository:
         for key, value in data.items():
             setattr(slip, key, value)
         await self.db.flush()
-        await self.db.refresh(slip)
-        return slip
+        # Same MissingGreenlet risk as invoice/expense/job_opening repos had:
+        # a bare refresh() expires `employee` without reloading it.
+        return await self.find_by_id(slip.id)
 
     async def soft_delete(self, slip: SalarySlip) -> None:
         slip.deleted_at = now_pkt()

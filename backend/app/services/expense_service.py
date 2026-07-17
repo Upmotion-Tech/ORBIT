@@ -24,7 +24,7 @@ class ExpenseService:
         if self.notification_repo:
             message = f"Expense of {expense.currency} {expense.amount:,.2f} for category '{expense.category}' submitted by {user}."
             await self.notification_repo.create(
-                user_id="financehead",
+                user_id="finance",
                 notif_type="Expense Submitted",
                 title="New Expense Logged",
                 message=message
@@ -52,7 +52,7 @@ class ExpenseService:
             title = f"Expense Request {new_status}"
             message = f"Expense #{expense.id[:8].upper()} of {expense.currency} {expense.amount:,.2f} for '{expense.category}' has been {new_status.lower()}."
             
-            await self.notification_repo.create(user_id="financehead", notif_type=notif_type, title=title, message=message)
+            await self.notification_repo.create(user_id="finance", notif_type=notif_type, title=title, message=message)
             await self.notification_repo.create(user_id="owner", notif_type=notif_type, title=title, message=message)
 
         return updated_expense

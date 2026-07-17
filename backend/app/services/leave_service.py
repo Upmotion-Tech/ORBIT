@@ -104,7 +104,7 @@ class LeaveService:
                 detail="Leave request not found.",
             )
 
-        if not has_role(persona, "hr", "hr_admin", "owner"):
+        if not has_role(persona, "hr", "owner"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only HR can approve leave requests.",
@@ -151,7 +151,7 @@ class LeaveService:
                 detail="Leave request not found.",
             )
 
-        if not has_role(persona, "hr", "hr_admin", "owner"):
+        if not has_role(persona, "hr", "owner"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only HR can reject leave requests.",

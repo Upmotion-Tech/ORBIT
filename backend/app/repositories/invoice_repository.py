@@ -52,7 +52,7 @@ class InvoiceRepository:
         date_from: Optional[date] = None,
         date_to: Optional[date] = None,
     ) -> int:
-        query = select(func.count(Invoice.id)).join(Invoice.project).where(Invoice.deleted_at.is_(None))
+        query = select(func.count(Invoice.id)).outerjoin(Invoice.project).where(Invoice.deleted_at.is_(None))
         query = self._apply_filters(query, search, status, currency, project_id, date_from, date_to)
         result = await self.db.execute(query)
         return result.scalar_one()
@@ -70,7 +70,7 @@ class InvoiceRepository:
         page: int = 1,
         page_size: int = 100,
     ) -> list[Invoice]:
-        query = select(Invoice).join(Invoice.project).options(joinedload(Invoice.project)).where(Invoice.deleted_at.is_(None))
+        query = select(Invoice).outerjoin(Invoice.project).options(joinedload(Invoice.project)).where(Invoice.deleted_at.is_(None))
         query = self._apply_filters(query, search, status, currency, project_id, date_from, date_to)
 
         # Apply sorting
@@ -107,8 +107,12 @@ class InvoiceRepository:
         for key, value in data.items():
             setattr(invoice, key, value)
         await self.db.flush()
-        await self.db.refresh(invoice)
-        return invoice
+        # A bare refresh() expires the `project` relationship without
+        # reloading it, so any access afterward (e.g. building the response)
+        # tries an async lazy-load outside a valid greenlet context and
+        # raises MissingGreenlet — re-fetch with the same eager-load path
+        # find_by_id already uses instead.
+        return await self.find_by_id(invoice.id)
 
     async def soft_delete(self, invoice: Invoice) -> None:
         invoice.deleted_at = now_pkt()

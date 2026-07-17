@@ -41,7 +41,7 @@ async def get_persona_role(
 ) -> str:
     # Single "primary" role — kept for the project/task routers, which
     # still run on the pre-multi-role mock-persona permission checks
-    # (persona == "devmember", etc.) and expect exactly one string.
+    # (persona == "dev", etc.) and expect exactly one string.
     roles = current_user.get("roles") or ["employee"]
     return roles[0]
 
@@ -59,7 +59,7 @@ async def get_hr_user(
     current_user: dict = Depends(get_current_user),
 ) -> dict:
     roles = current_user.get("roles") or []
-    if not any(r in ("owner", "hr_admin") for r in roles):
+    if not any(r in ("owner", "hr") for r in roles):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied. HR permissions required.",

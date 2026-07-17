@@ -106,8 +106,9 @@ class ExpenseRepository:
         for key, value in data.items():
             setattr(expense, key, value)
         await self.db.flush()
-        await self.db.refresh(expense)
-        return expense
+        # Same MissingGreenlet risk as job_opening_repository.py/invoice_repository.py
+        # had: a bare refresh() expires `submitted_by` without reloading it.
+        return await self.find_by_id(expense.id)
 
     async def soft_delete(self, expense: Expense) -> None:
         expense.deleted_at = now_pkt()

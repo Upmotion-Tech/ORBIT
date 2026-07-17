@@ -67,7 +67,7 @@ async def create_task(
     persona: str = Depends(get_persona_role),
     service: TaskService = Depends(get_task_service),
 ):
-    user_name = "Jordan Blake" if persona in ("owner", "financehead") else persona
+    user_name = "Jordan Blake" if persona in ("owner", "finance") else persona
     return await service.create_task(data.model_dump(), user=user_name, persona=persona)
 
 
@@ -78,7 +78,7 @@ async def update_task(
     persona: str = Depends(get_persona_role),
     service: TaskService = Depends(get_task_service),
 ):
-    user_name = "Jordan Blake" if persona in ("owner", "financehead") else persona
+    user_name = "Jordan Blake" if persona in ("owner", "finance") else persona
     return await service.update_task(
         task_id,
         data.model_dump(exclude_unset=True),
@@ -120,13 +120,13 @@ async def add_comment(
 
     # Permissions/Visibility check
     project = await service.project_repo.find_by_id(task.project_id)
-    if persona == "devmember" and task.assignee != "Kofi Mensah" and (not project or "Kofi Mensah" not in project.team):
+    if persona == "dev" and task.assignee != "Kofi Mensah" and (not project or "Kofi Mensah" not in project.team):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot comment on tasks you are not assigned to.",
         )
 
-    user_name = "Jordan Blake" if persona in ("owner", "financehead") else "Kofi Mensah"
+    user_name = "Jordan Blake" if persona in ("owner", "finance") else "Kofi Mensah"
     comment = await service.task_repo.add_comment(
         task_id=task_id,
         project_id=task.project_id,
@@ -147,7 +147,7 @@ async def add_comment(
             if member in notified:
                 continue
             notified.add(member)
-            target_user = "devmember" if member == "Kofi Mensah" else "all"
+            target_user = "dev" if member == "Kofi Mensah" else "all"
             await service.notification_repo.create(
                 user_id=target_user,
                 notif_type="Comment Added",

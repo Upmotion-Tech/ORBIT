@@ -1,7 +1,8 @@
+import asyncio
 from datetime import date
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -65,11 +66,15 @@ async def get_invoice_pdf(
     inv = await service.get_invoice(invoice_id)
     if not inv:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found.")
-    pdf_buffer = service.generate_invoice_pdf(inv)
-    return StreamingResponse(
-        pdf_buffer,
+    # docx->PDF conversion drives Word via COM automation, a blocking call —
+    # run it off the event loop so it doesn't stall other requests.
+    pdf_bytes, filename = await asyncio.get_event_loop().run_in_executor(
+        None, service.generate_invoice_pdf, inv
+    )
+    return Response(
+        content=pdf_bytes,
         media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename=invoice_{inv.id[:8].upper()}.pdf"}
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )
 
 @router.post("/", response_model=InvoiceResponse, status_code=status.HTTP_201_CREATED)

@@ -23,8 +23,8 @@ class NotificationService:
     async def get_notifications(self, user_id: str, roles: Optional[list] = None) -> list[Notification]:
         # Perform dynamic "Task Due Soon" and "Task Overdue" check if task_repo is available
         roles = roles or []
-        if self.task_repo and "devmember" in roles:
-            await self._check_and_create_task_alerts("Kofi Mensah", "devmember")
+        if self.task_repo and "dev" in roles:
+            await self._check_and_create_task_alerts("Kofi Mensah", "dev")
         elif self.task_repo and any(r in ("owner", "admin") for r in roles):
             # For administrators, check for all employees
             await self._check_and_create_task_alerts(None, "owner")

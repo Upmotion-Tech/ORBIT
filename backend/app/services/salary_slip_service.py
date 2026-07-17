@@ -36,6 +36,22 @@ class SalarySlipService:
                 "updated_by": user
             }
             slip = await self.slip_repo.create(data)
+            return slip
+
+        # A slip already exists for this employee/month. Once it's Paid it's
+        # a historical record and stays locked — but an Unpaid slip should
+        # keep tracking the employee's current salary, since it was only
+        # ever a snapshot taken the first time this month's payroll page
+        # happened to be opened, not a deliberate finalized figure. Without
+        # this, editing an employee's salary in HR silently never reaches
+        # payroll for the current month.
+        if slip.payment_status != "Paid" and slip.gross_salary != base_salary:
+            data = {
+                "gross_salary": base_salary,
+                "net_salary": base_salary + slip.allowances + slip.bonus - slip.tax - slip.other_deductions,
+                "updated_by": user,
+            }
+            slip = await self.slip_repo.update(slip, data)
         return slip
 
     async def update_slip(self, slip_id: str, data: dict, user: str = "anonymous") -> SalarySlip:
@@ -65,7 +81,7 @@ class SalarySlipService:
             emp = updated_slip.employee
             emp_name = emp.name if emp else "Employee"
             await self.notification_repo.create(
-                user_id="financehead",
+                user_id="finance",
                 notif_type="Salary Paid",
                 title="Salary Payment Processed",
                 message=f"Salary for {emp_name} for the month of {updated_slip.month} has been marked as Paid."

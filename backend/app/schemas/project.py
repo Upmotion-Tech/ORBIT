@@ -43,7 +43,7 @@ class ProjectResponse(BaseModel):
     deadline: Optional[date] = None
     status: str
     at_risk: bool
-    budget: Optional[float] = None  # None if hidden for devmember
+    budget: Optional[float] = None  # None if hidden for dev
     description: Optional[str] = None
     team: list[str]
     created_at: Optional[datetime] = None
