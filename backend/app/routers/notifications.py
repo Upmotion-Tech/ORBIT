@@ -18,7 +18,7 @@ def get_notification_service(db: AsyncSession = Depends(get_db)) -> Notification
     )
 
 
-@router.get("/", response_model=list[NotificationResponse])
+@router.get("", response_model=list[NotificationResponse])
 async def get_notifications(
     current_user: dict = Depends(get_current_user),
     service: NotificationService = Depends(get_notification_service),

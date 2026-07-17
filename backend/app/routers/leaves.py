@@ -26,7 +26,7 @@ def get_leave_service(db: AsyncSession = Depends(get_db)) -> LeaveService:
     )
 
 
-@router.get("/", response_model=list[LeaveResponse])
+@router.get("", response_model=list[LeaveResponse])
 async def list_leaves(
     employee_id: Optional[str] = None,
     status_filter: Optional[str] = None,
@@ -66,7 +66,7 @@ async def get_leave(
     return leave
 
 
-@router.post("/", response_model=LeaveResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=LeaveResponse, status_code=status.HTTP_201_CREATED)
 async def create_leave(
     body: LeaveCreate,
     current_user: dict = Depends(get_current_user),

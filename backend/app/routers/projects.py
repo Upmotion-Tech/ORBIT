@@ -30,7 +30,7 @@ def get_project_service(db: AsyncSession = Depends(get_db)) -> ProjectService:
     )
 
 
-@router.get("/", response_model=list[ProjectResponse])
+@router.get("", response_model=list[ProjectResponse])
 async def list_projects(
     search: Optional[str] = None,
     client: Optional[str] = None,
@@ -70,7 +70,7 @@ async def get_project(
     return project
 
 
-@router.post("/", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
 async def create_project(
     data: ProjectCreate,
     persona: str = Depends(get_persona_role),

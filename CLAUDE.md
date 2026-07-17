@@ -2218,4 +2218,60 @@ after this, it's most likely a stale browser cache serving the old bundle
 rather than a remaining CSS issue, given the two-block conflict is now
 fully resolved.
 
+---
+
+## Update (2026-07-18) — Production Neon database wiped clean ahead of go-live
+
+User request: clear out the production database before pushing live (they'll
+add real data manually from here), keeping exactly one login. Confirmed
+scope with the user first (target = the Neon Postgres DB referenced in
+`.env`'s commented-out `DATABASE_URL` line, not the local dev SQLite; keep =
+the existing seeded HR admin, `hamzashafiq@theupmotion.online` / `1234`).
+
+**Found something important while inspecting first**: Neon's schema had
+drifted from the current models — e.g. `invoices` was still missing
+`invoice_number`/`line_items`/`bank_*` (columns added by the "Invoice
+overhaul" migration earlier in this file, which was only ever run against
+whichever DB was active locally at the time — the environment has flip-
+flopped between SQLite and this Neon URL repeatedly, per earlier entries).
+A plain `DELETE FROM` on every table would have left production on that
+same broken schema. **Fixed properly instead of just clearing rows**:
+backed up every readable row to `backend/neon_backup_before_wipe_20260718.json`
+(gitignored — contains password hashes; local-only safety net, not meant to
+be committed) via a script that pointed `DATABASE_URL` at Neon for its own
+process only (never touched the actual `.env` file, so local dev still
+defaults to SQLite exactly as before), then `Base.metadata.drop_all` +
+`create_all` against Neon to rebuild every table from the current model
+definitions — guaranteeing the schema Neon now has is exactly what the
+deployed code expects, not a stale snapshot from whenever it was last
+migrated.
+
+Also found the seeded `hamzashafiq` account in Neon specifically had
+`access_levels: ["employee"]`, not `["hr"]` — an old value from before the
+access-vocabulary rename earlier in this file, never carried over to this
+particular database. Recreated the account fresh with `access_levels:
+["hr"]` and reset the password hash for `1234`, rather than assume the old
+row's hash/roles were what the user expected.
+
+**End state**: every table in the Neon production DB is empty except
+`employees`, which has exactly one row (`hamzashafiq@theupmotion.online` /
+`1234`, HR Admin, `access_levels: ["hr"]`). `currency_settings` and
+`leave_policies` being empty is intentional and safe — both repositories
+already fall back to sensible defaults (`SettingsRepository.get_currency_settings()`
+auto-creates a default row on first read; `leave_service.py`'s balance
+calc already handles a missing `LeavePolicy` with hardcoded 12/7/14-day
+defaults) rather than erroring.
+
+### Verification
+Live end-to-end via `httpx.AsyncClient`/`ASGITransport` pointed at the real
+Neon URL: `POST /api/auth/login` with the new credentials → 200 with the
+correct user payload; `GET /api/auth/me` with the returned token → 200.
+Row counts re-checked across all 16 tables post-wipe: 1 for `employees`, 0
+for everything else. Confirmed via `git status` that the local `.env` file
+was never modified (dev still defaults to SQLite) and that the backup JSON
+is untracked (added a `.gitignore` rule — `backend/neon_backup_before_wipe_*.json`
+— so it can never be committed by accident, alongside a new `**/*.db.bak-*`
+rule covering the SQLite backup files this project has made a habit of
+creating before risky migrations).
+
 

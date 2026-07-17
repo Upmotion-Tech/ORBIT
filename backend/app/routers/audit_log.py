@@ -16,7 +16,7 @@ def get_audit_log_service(db: AsyncSession = Depends(get_db)) -> AuditLogService
     return AuditLogService(AuditLogRepository(db))
 
 
-@router.get("/", response_model=list[AuditLogResponse])
+@router.get("", response_model=list[AuditLogResponse])
 async def list_audit_logs(
     limit: Optional[int] = 200,
     current_user: dict = Depends(get_audit_user),

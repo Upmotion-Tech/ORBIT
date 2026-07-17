@@ -25,7 +25,7 @@ def _map_milestone_response(milestone) -> MilestoneResponse:
     resp.project_name = milestone.project.name if milestone.project else None
     return resp
 
-@router.get("/", response_model=list[MilestoneResponse])
+@router.get("", response_model=list[MilestoneResponse])
 async def list_milestones(
     search: Optional[str] = None,
     status: Optional[str] = None,
@@ -57,7 +57,7 @@ async def get_milestone(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Milestone not found.")
     return _map_milestone_response(milestone)
 
-@router.post("/", response_model=MilestoneResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=MilestoneResponse, status_code=status.HTTP_201_CREATED)
 async def create_milestone(
     body: MilestoneCreate,
     service: MilestoneService = Depends(get_milestone_service),

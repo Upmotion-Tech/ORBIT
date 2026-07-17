@@ -11,6 +11,8 @@
 # Databases
 **/*.db
 **/*.sqlite3
+**/*.db.bak-*
+backend/neon_backup_before_wipe_*.json
 
 # Storage
 backend/app/storage/*

@@ -22,7 +22,7 @@ def get_employee_service(db: AsyncSession = Depends(get_db)) -> EmployeeService:
     )
 
 
-@router.get("/", response_model=list[EmployeeResponse])
+@router.get("", response_model=list[EmployeeResponse])
 async def list_employees(
     search: Optional[str] = None,
     department: Optional[str] = None,
@@ -56,7 +56,7 @@ async def get_employee(
     return employee
 
 
-@router.post("/", response_model=EmployeeResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=EmployeeResponse, status_code=status.HTTP_201_CREATED)
 async def create_employee(
     body: EmployeeCreate,
     current_user: dict = Depends(get_current_user),

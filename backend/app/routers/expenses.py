@@ -25,7 +25,7 @@ def _map_expense_response(exp) -> ExpenseResponse:
     resp.submitted_by_name = exp.submitted_by.name if exp.submitted_by else "Unknown"
     return resp
 
-@router.get("/", response_model=list[ExpenseResponse])
+@router.get("", response_model=list[ExpenseResponse])
 async def list_expenses(
     search: Optional[str] = None,
     status: Optional[str] = None,
@@ -58,7 +58,7 @@ async def get_expense(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Expense not found.")
     return _map_expense_response(exp)
 
-@router.post("/", response_model=ExpenseResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=ExpenseResponse, status_code=status.HTTP_201_CREATED)
 async def create_expense(
     body: ExpenseCreate,
     service: ExpenseService = Depends(get_expense_service),

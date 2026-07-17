@@ -28,7 +28,7 @@ def get_task_service(db: AsyncSession = Depends(get_db)) -> TaskService:
     )
 
 
-@router.get("/", response_model=list[TaskResponse])
+@router.get("", response_model=list[TaskResponse])
 async def list_tasks(
     search: Optional[str] = None,
     project_id: Optional[str] = None,
@@ -68,7 +68,7 @@ async def get_task(
     return task
 
 
-@router.post("/", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
 async def create_task(
     data: TaskCreate,
     persona: str = Depends(get_persona_role),

@@ -27,7 +27,7 @@ def _map_invoice_response(inv) -> InvoiceResponse:
     resp.project_name = inv.project.name if inv.project else None
     return resp
 
-@router.get("/", response_model=list[InvoiceResponse])
+@router.get("", response_model=list[InvoiceResponse])
 async def list_invoices(
     search: Optional[str] = None,
     status: Optional[str] = None,
@@ -79,7 +79,7 @@ async def get_invoice_pdf(
         headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )
 
-@router.post("/", response_model=InvoiceResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=InvoiceResponse, status_code=status.HTTP_201_CREATED)
 async def create_invoice(
     body: InvoiceCreate,
     service: InvoiceService = Depends(get_invoice_service),

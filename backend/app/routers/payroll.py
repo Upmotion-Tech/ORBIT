@@ -27,7 +27,7 @@ def _map_slip_response(slip) -> SalarySlipResponse:
     resp.employee_department = slip.employee.department if slip.employee else "Unknown"
     return resp
 
-@router.get("/", response_model=list[SalarySlipResponse])
+@router.get("", response_model=list[SalarySlipResponse])
 async def list_payroll_slips(
     month: Optional[str] = None,
     search: Optional[str] = None,

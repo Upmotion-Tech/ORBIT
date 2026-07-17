@@ -16,7 +16,7 @@ def get_time_entry_repository(db: AsyncSession = Depends(get_db)) -> TimeEntryRe
     return TimeEntryRepository(db)
 
 
-@router.get("/")
+@router.get("")
 async def list_time_entries(
     project_id: Optional[str] = None,
     repo: TimeEntryRepository = Depends(get_time_entry_repository),
@@ -59,7 +59,7 @@ async def list_time_entries(
     }
 
 
-@router.post("/", response_model=TimeEntryResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=TimeEntryResponse, status_code=status.HTTP_201_CREATED)
 async def create_time_entry(
     data: TimeEntryCreate,
     repo: TimeEntryRepository = Depends(get_time_entry_repository),

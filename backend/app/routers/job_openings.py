@@ -30,7 +30,7 @@ def get_candidate_service(db: AsyncSession = Depends(get_db)) -> CandidateServic
     )
 
 
-@router.get("/", response_model=list[OpeningResponse])
+@router.get("", response_model=list[OpeningResponse])
 async def list_openings(
     department: Optional[str] = None,
     status_filter: Optional[str] = None,
@@ -60,7 +60,7 @@ async def get_opening(
     return opening
 
 
-@router.post("/", response_model=OpeningResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=OpeningResponse, status_code=status.HTTP_201_CREATED)
 async def create_opening(
     body: OpeningCreate,
     current_user: dict = Depends(get_current_user),
