@@ -287,6 +287,15 @@ async def add_comment(
                 title=f"New comment on project: {project.name}",
                 message=f"{user_name} said: '{data.text[:50]}...'",
             )
+        # Owner should see all project activity, even on projects they
+        # aren't personally on the team of.
+        if persona != "owner":
+            await service.notification_repo.create(
+                user_id="owner",
+                notif_type="Comment Added",
+                title=f"New comment on project: {project.name}",
+                message=f"{user_name} said: '{data.text[:50]}...'",
+            )
 
     return CommentResponse.model_validate(comment)
 

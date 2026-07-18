@@ -27,6 +27,8 @@ from app.routers import (
     milestones,
     finance_stats,
     audit_log,
+    expense_categories,
+    dashboard_export,
 )
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
@@ -96,6 +98,8 @@ app.include_router(payroll.router)
 app.include_router(milestones.router)
 app.include_router(finance_stats.router)
 app.include_router(audit_log.router)
+app.include_router(expense_categories.router)
+app.include_router(dashboard_export.router)
 
 
 

@@ -9,6 +9,7 @@ class TaskCreate(BaseModel):
     project_id: str = Field(..., max_length=36)
     title: str = Field(..., min_length=1, max_length=255)
     assignee: Optional[str] = Field(None, max_length=255)
+    start_date: Optional[date] = None
     deadline: Optional[date] = None
     status: str = Field(default="Not Started", pattern=r"^(Not Started|In Progress|Delayed|Completed)$")
     description: Optional[str] = None
@@ -18,6 +19,7 @@ class TaskUpdate(BaseModel):
     project_id: Optional[str] = Field(None, max_length=36)
     title: Optional[str] = Field(None, min_length=1, max_length=255)
     assignee: Optional[str] = Field(None, max_length=255)
+    start_date: Optional[date] = None
     deadline: Optional[date] = None
     status: Optional[str] = Field(None, pattern=r"^(Not Started|In Progress|Delayed|Completed)$")
     description: Optional[str] = None
@@ -28,6 +30,7 @@ class TaskResponse(BaseModel):
     project_id: str
     title: str
     assignee: Optional[str] = None
+    start_date: Optional[date] = None
     deadline: Optional[date] = None
     status: str
     description: Optional[str] = None

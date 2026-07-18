@@ -150,17 +150,27 @@ async def add_comment(
     if service.notification_repo and project:
         # Notify task assignee (if not poster) and project team
         notified = {user_name}
-        
+
         target_list = [task.assignee] if task.assignee else []
         target_list.extend(project.team or [])
-        
+
         for member in target_list:
             if member in notified:
                 continue
             notified.add(member)
-            target_user = "dev" if member == "Kofi Mensah" else "all"
+            target_user = await service._resolve_assignee_notification_target(member)
             await service.notification_repo.create(
                 user_id=target_user,
+                notif_type="Comment Added",
+                title=f"New comment on task: {task.title}",
+                message=f"{user_name} said: '{data.text[:50]}...'",
+            )
+
+        # Owner should see all task activity, even on tasks whose project
+        # they aren't personally on the team of.
+        if persona != "owner":
+            await service.notification_repo.create(
+                user_id="owner",
                 notif_type="Comment Added",
                 title=f"New comment on task: {task.title}",
                 message=f"{user_name} said: '{data.text[:50]}...'",

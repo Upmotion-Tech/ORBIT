@@ -8,6 +8,7 @@ class SalarySlipCreate(BaseModel):
     gross_salary: float = Field(0.0, ge=0)
     tax: float = Field(0.0, ge=0)
     other_deductions: float = Field(0.0, ge=0)
+    deduction_reason: Optional[str] = None
     bonus: float = Field(0.0, ge=0)
     allowances: float = Field(0.0, ge=0)
     notes: Optional[str] = None
@@ -16,6 +17,7 @@ class SalarySlipUpdate(BaseModel):
     gross_salary: Optional[float] = None
     tax: Optional[float] = None
     other_deductions: Optional[float] = None
+    deduction_reason: Optional[str] = None
     bonus: Optional[float] = None
     allowances: Optional[float] = None
     payment_status: Optional[str] = None
@@ -32,6 +34,7 @@ class SalarySlipResponse(BaseModel):
     gross_salary: float
     tax: float
     other_deductions: float
+    deduction_reason: Optional[str] = None
     bonus: float
     allowances: float
     net_salary: float

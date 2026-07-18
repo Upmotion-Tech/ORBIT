@@ -98,6 +98,9 @@ class EmployeeResponse(BaseModel):
     access_levels: list[str]
     status: str
     probation_end: Optional[date] = None
+    # "In Probation" / "Cleared" — computed server-side from probation_end
+    # vs today (PKT), never trust a client-sent value for this.
+    probation_status: Optional[str] = None
     contract_file: bool
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None

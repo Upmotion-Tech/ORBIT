@@ -20,6 +20,7 @@ class Task(Base):
     project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     assignee: Mapped[str] = mapped_column(String(255), nullable=True)
+    start_date: Mapped[date] = mapped_column(Date, nullable=True)
     deadline: Mapped[date] = mapped_column(Date, nullable=True)
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="Not Started")
     description: Mapped[str] = mapped_column(Text, nullable=True)

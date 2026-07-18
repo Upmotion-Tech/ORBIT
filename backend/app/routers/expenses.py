@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_user, get_owner_user
+from app.core.dependencies import get_current_user, get_finance_user
 from app.repositories.expense_repository import ExpenseRepository
 from app.repositories.notification_repository import NotificationRepository
 from app.repositories.audit_log_repository import AuditLogRepository
@@ -62,7 +62,7 @@ async def get_expense(
 async def create_expense(
     body: ExpenseCreate,
     service: ExpenseService = Depends(get_expense_service),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_finance_user),
 ):
     exp = await service.create_expense(body.model_dump(), user=current_user.get("sub", "anonymous"))
     return _map_expense_response(exp)
@@ -72,7 +72,7 @@ async def update_expense(
     expense_id: str,
     body: ExpenseUpdate,
     service: ExpenseService = Depends(get_expense_service),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_finance_user),
 ):
     exp = await service.update_expense(
         expense_id,
@@ -85,6 +85,6 @@ async def update_expense(
 async def delete_expense(
     expense_id: str,
     service: ExpenseService = Depends(get_expense_service),
-    current_user: dict = Depends(get_owner_user),
+    current_user: dict = Depends(get_finance_user),
 ):
     await service.delete_expense(expense_id, user=current_user.get("sub", "anonymous"))

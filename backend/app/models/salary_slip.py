@@ -18,6 +18,7 @@ class SalarySlip(Base):
     gross_salary: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     tax: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     other_deductions: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    deduction_reason: Mapped[str] = mapped_column(Text, nullable=True)
     bonus: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     allowances: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     net_salary: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)

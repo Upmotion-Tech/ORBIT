@@ -36,10 +36,10 @@ class LeavePolicyService:
     async def update_policy(
         self, data: dict, user="anonymous", persona=None,
     ) -> LeavePolicyResponse:
-        if not has_role(persona, "hr", "owner"):
+        if not has_role(persona, "owner"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only HR or Owner can update leave policy.",
+                detail="Only Owner can update leave policy.",
             )
 
         year = datetime.now().year

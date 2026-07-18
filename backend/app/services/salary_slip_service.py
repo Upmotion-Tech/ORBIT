@@ -59,6 +59,12 @@ class SalarySlipService:
         if not slip:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Salary slip not found.")
 
+        # Gross salary is never directly editable here — it always tracks
+        # the employee's actual set salary (see get_or_create_slip, which
+        # keeps it in sync for as long as the slip is Unpaid). Silently drop
+        # it rather than let a client-supplied value override that.
+        data.pop("gross_salary", None)
+
         # Recompute net salary based on update variables or existing values
         gross = data.get("gross_salary", slip.gross_salary)
         tax = data.get("tax", slip.tax)

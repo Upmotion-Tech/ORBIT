@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_user, get_owner_user
+from app.core.dependencies import get_current_user, get_finance_user
 from app.repositories.milestone_repository import MilestoneRepository
 from app.repositories.notification_repository import NotificationRepository
 from app.repositories.audit_log_repository import AuditLogRepository
@@ -61,7 +61,7 @@ async def get_milestone(
 async def create_milestone(
     body: MilestoneCreate,
     service: MilestoneService = Depends(get_milestone_service),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_finance_user),
 ):
     milestone = await service.create_milestone(body.model_dump(), user=current_user.get("sub", "anonymous"))
     return _map_milestone_response(milestone)
@@ -71,7 +71,7 @@ async def update_milestone(
     milestone_id: str,
     body: MilestoneUpdate,
     service: MilestoneService = Depends(get_milestone_service),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_finance_user),
 ):
     milestone = await service.update_milestone(
         milestone_id,
@@ -84,6 +84,6 @@ async def update_milestone(
 async def delete_milestone(
     milestone_id: str,
     service: MilestoneService = Depends(get_milestone_service),
-    current_user: dict = Depends(get_owner_user),
+    current_user: dict = Depends(get_finance_user),
 ):
     await service.delete_milestone(milestone_id, user=current_user.get("sub", "anonymous"))

@@ -138,11 +138,12 @@ class TaskRepository:
         if date_to:
             query = query.where(Task.deadline <= date_to)
         if assigned_to_member:
-            # Dev team member visibility limits: only tasks assigned to them, or tasks on projects they are assigned to
-            query = query.where(
-                or_(
-                    Task.assignee == assigned_to_member,
-                    Project.team.like(f'%"{assigned_to_member}"%'),
-                )
-            )
+            # Dev team member visibility: only tasks actually assigned to
+            # them — being on a project's team no longer implies visibility
+            # into every task on that project (that was the previous
+            # behavior; explicitly narrowed per request so "My Tasks" really
+            # only shows tasks assigned to the logged-in person, not every
+            # task belonging to a project they happen to be a team member
+            # of).
+            query = query.where(Task.assignee == assigned_to_member)
         return query

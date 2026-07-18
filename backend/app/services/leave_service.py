@@ -90,12 +90,13 @@ class LeaveService:
         leave = await self.leave_repo.create(data)
 
         if self.notification_repo and employee:
-            await self.notification_repo.create(
-                user_id="hr",
-                notif_type="Leave Submitted",
-                title="Leave request submitted",
-                message=f"{employee.name} submitted a {leave.leave_type} leave request.",
-            )
+            for target in ("hr", "owner"):
+                await self.notification_repo.create(
+                    user_id=target,
+                    notif_type="Leave Submitted",
+                    title="Leave request submitted",
+                    message=f"{employee.name} submitted a {leave.leave_type} leave request.",
+                )
 
         await self._audit(user, "Submitted", f"{employee.name if employee else employee_id} — {leave.leave_type}", f"{days} day(s)")
 

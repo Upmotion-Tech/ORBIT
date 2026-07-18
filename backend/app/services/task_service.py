@@ -105,6 +105,11 @@ class TaskService:
         if not data.get("assignee"):
             data["assignee"] = project.created_by or "Ana Reyes"
 
+        # Defaults to today, but the caller can set it earlier (e.g. backfilling
+        # work that already started) — never forced, only filled in if omitted.
+        if not data.get("start_date"):
+            data["start_date"] = now_pkt().date()
+
         data["created_by"] = user
         data["updated_by"] = user
         data["created_at"] = now_pkt()

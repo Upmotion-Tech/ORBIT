@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_user, get_owner_user
+from app.core.dependencies import get_current_user, get_finance_user
 from app.repositories.salary_slip_repository import SalarySlipRepository
 from app.repositories.employee_repository import EmployeeRepository
 from app.repositories.notification_repository import NotificationRepository
@@ -75,7 +75,7 @@ async def update_salary_slip(
     slip_id: str,
     body: SalarySlipUpdate,
     service: SalarySlipService = Depends(get_slip_service),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_finance_user),
 ):
     slip = await service.update_slip(
         slip_id,
@@ -88,6 +88,6 @@ async def update_salary_slip(
 async def delete_salary_slip(
     slip_id: str,
     service: SalarySlipService = Depends(get_slip_service),
-    current_user: dict = Depends(get_owner_user),
+    current_user: dict = Depends(get_finance_user),
 ):
     await service.delete_slip(slip_id)

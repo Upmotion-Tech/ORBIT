@@ -6,7 +6,7 @@ from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_user, get_owner_user
+from app.core.dependencies import get_current_user, get_finance_user
 from app.repositories.invoice_repository import InvoiceRepository
 from app.repositories.notification_repository import NotificationRepository
 from app.repositories.audit_log_repository import AuditLogRepository
@@ -83,7 +83,7 @@ async def get_invoice_pdf(
 async def create_invoice(
     body: InvoiceCreate,
     service: InvoiceService = Depends(get_invoice_service),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_finance_user),
 ):
     inv = await service.create_invoice(body.model_dump(), user=current_user.get("sub", "anonymous"))
     return _map_invoice_response(inv)
@@ -93,7 +93,7 @@ async def update_invoice(
     invoice_id: str,
     body: InvoiceUpdate,
     service: InvoiceService = Depends(get_invoice_service),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_finance_user),
 ):
     inv = await service.update_invoice(
         invoice_id,
@@ -106,6 +106,6 @@ async def update_invoice(
 async def delete_invoice(
     invoice_id: str,
     service: InvoiceService = Depends(get_invoice_service),
-    current_user: dict = Depends(get_owner_user),
+    current_user: dict = Depends(get_finance_user),
 ):
     await service.delete_invoice(invoice_id, user=current_user.get("sub", "anonymous"))
