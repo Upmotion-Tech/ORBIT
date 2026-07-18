@@ -96,14 +96,23 @@ class ProjectService:
                 detail="Only owners can create projects.",
             )
 
-        # Enforce deadline validation: deadline >= today on creation
+        # Enforce deadline validation: deadline >= the project's own
+        # start_date (falls back to today only if none is supplied — the
+        # frontend's own New Project form always sends today explicitly).
+        # Comparing against a hardcoded "today" here would reproduce the
+        # same class of bug just fixed in update_project below if a caller
+        # ever supplies a backdated start_date at creation time.
         deadline = data.get("deadline")
         if deadline and isinstance(deadline, str):
             deadline = date.fromisoformat(deadline)
-        if deadline and deadline < date.today():
+        start = data.get("start_date")
+        if isinstance(start, str):
+            start = date.fromisoformat(start)
+        start = start or date.today()
+        if deadline and deadline < start:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Project deadline cannot be before creation date.",
+                detail=f"Project deadline cannot be before start date ({start}).",
             )
 
         # Check duplicate name
@@ -164,16 +173,24 @@ class ProjectService:
                     detail="A project with this name already exists.",
                 )
 
-        # Enforce deadline validation: deadline >= project created_at date
+        # Enforce deadline validation: deadline >= project start_date — was
+        # comparing against the immutable created_at timestamp instead, which
+        # broke the instant an owner backdated (or postdated) a project's own
+        # start_date away from the moment its row happened to be created — a
+        # perfectly legitimate, expected edit — since a deadline genuinely
+        # fine relative to the real start date could still fall before the
+        # unrelated creation timestamp.
         deadline = data.get("deadline")
         if deadline:
             if isinstance(deadline, str):
                 deadline = date.fromisoformat(deadline)
-            created_date = project.created_at.date()
-            if deadline < created_date:
+            start = data.get("start_date", project.start_date)
+            if isinstance(start, str):
+                start = date.fromisoformat(start)
+            if start and deadline < start:
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail=f"Project deadline cannot be before creation date ({created_date}).",
+                    detail=f"Project deadline cannot be before start date ({start}).",
                 )
 
         old_team = set(project.team or [])
