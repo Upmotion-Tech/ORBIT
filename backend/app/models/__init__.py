@@ -20,6 +20,7 @@ from app.models.salary_slip import SalarySlip
 from app.models.milestone import Milestone
 from app.models.audit_log import AuditLog
 from app.models.expense_category import ExpenseCategory
+from app.models.expense_category_budget import ExpenseCategoryBudget
 
 __all__ = [
     "Lead",
@@ -44,5 +45,6 @@ __all__ = [
     "Milestone",
     "AuditLog",
     "ExpenseCategory",
+    "ExpenseCategoryBudget",
 ]
 

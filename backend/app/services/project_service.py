@@ -36,11 +36,15 @@ class ProjectService:
         # person rather than broadcasting to "all". Same fix already applied
         # to TaskService's assignee notifications; this was the one
         # deliberately-deferred instance of it (see project history).
+        # Falls back to "owner" (not "all") when a name can't be resolved to
+        # a real employee — a broadcast-to-everyone here would leak an
+        # unrelated project's activity to random employees just because of a
+        # name-matching miss.
         if not member_name or not self.employee_repo:
-            return "all"
+            return "owner"
         matches = await self.employee_repo.find_by_name(member_name)
         exact = next((e for e in matches if e.name.strip().lower() == member_name.strip().lower()), None)
-        return exact.id if exact else "all"
+        return exact.id if exact else "owner"
 
     async def list_projects(
         self,

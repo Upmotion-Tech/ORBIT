@@ -2,14 +2,18 @@ from typing import Optional
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.database import get_db
 from app.core.security import decode_access_token
+from app.repositories.employee_repository import EmployeeRepository
 
 security_scheme = HTTPBearer(auto_error=False)
 
 
 async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme),
+    db: AsyncSession = Depends(get_db),
 ) -> dict:
     if credentials is None:
         raise HTTPException(
@@ -22,6 +26,20 @@ async def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token.",
         )
+
+    # Re-checked fresh on every request (not just at login) — if the Owner
+    # deactivates this account while its session is still live, this is what
+    # forces it out on the very next authenticated call rather than waiting
+    # for the JWT to naturally expire. Every other get_* dependency in this
+    # file depends on get_current_user, so this check applies everywhere for
+    # free rather than needing to be repeated per-router.
+    employee = await EmployeeRepository(db).find_by_id(payload.get("user_id", ""))
+    if not employee or not employee.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Your account has been deactivated by the Owner. Contact Admin.",
+        )
+
     return payload
 
 

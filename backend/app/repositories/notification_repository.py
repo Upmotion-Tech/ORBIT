@@ -14,15 +14,25 @@ class NotificationRepository:
     async def find_all_for_user(self, user_id: str, roles: Optional[list] = None, limit: int = 50) -> list[Notification]:
         # Matches both notifications aimed at this specific employee (user_id
         # = their real id) and role-broadcast notifications (user_id = a
-        # role string like "hr" / "all"). `roles` are the employee's real
-        # access_levels from their auth token, not a UI persona — an
-        # employee can hold more than one, so every assigned role's
-        # broadcast targets are included.
-        targets = {user_id, "all"}
+        # role string like "hr" / "finance" / "owner"). `roles` are the
+        # employee's real access_levels from their auth token, not a UI
+        # persona — an employee can hold more than one, so every assigned
+        # role's broadcast targets are included.
+        # "all" deliberately does NOT match for everyone — only owner/admin —
+        # per the standing policy that only Owners get company-wide "all
+        # info" notifications; every other employee should only ever see
+        # notifications actually about them (their own leave decisions,
+        # comments/assignments on projects/tasks/leads they're on). Every
+        # write site that used to create a real user_id="all" notification
+        # has been fixed to target a specific person or "owner" instead, but
+        # this read-side restriction is the actual enforcement — it means a
+        # future accidental "all" notification can't silently leak to every
+        # employee again regardless of role.
+        targets = {user_id}
         for role in (roles or []):
             targets.add(role)
             if role in ("owner", "admin"):
-                targets.update(["owner", "admin"])
+                targets.update(["owner", "admin", "all"])
             elif role == "hr":
                 targets.add("hr")
         query = select(Notification).where(
@@ -56,11 +66,13 @@ class NotificationRepository:
         return notification
 
     async def mark_all_read(self, user_id: str, roles: Optional[list] = None) -> None:
-        targets = {user_id, "all"}
+        # Same "all" restriction as find_all_for_user above — only owner/admin
+        # can ever have an "all"-targeted notification to mark read.
+        targets = {user_id}
         for role in (roles or []):
             targets.add(role)
-            if role == "hr":
-                targets.add("hr")
+            if role in ("owner", "admin"):
+                targets.update(["owner", "admin", "all"])
         stmt = (
             update(Notification)
             .where(Notification.user_id.in_(targets), Notification.is_read == False)

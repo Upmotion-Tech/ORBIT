@@ -96,7 +96,7 @@ class EmployeeService:
         return self._to_response(employee, persona)
 
     async def update_employee(
-        self, employee_id: str, data: dict, user="anonymous", persona=None,
+        self, employee_id: str, data: dict, user="anonymous", persona=None, actor_id=None,
     ) -> EmployeeResponse:
         employee = await self.employee_repo.find_by_id(employee_id)
         if not employee:
@@ -131,6 +131,20 @@ class EmployeeService:
                         detail="New password matches the current password.",
                     )
                 data["password_hash"] = get_password_hash(pw)
+                # Only force a mandatory re-change when someone ELSE assigned
+                # this password (HR/Owner resetting another employee's
+                # account) — that's "assigned on the employee's behalf, not
+                # their own choice", the actual condition must_change_password
+                # is meant to capture. When the acting user IS this employee
+                # (changing their own password from their own profile), they
+                # already chose it themselves, so there's nothing to force —
+                # this used to unconditionally set True regardless of who
+                # was acting, which meant self-changing your own password
+                # from your profile re-flagged your account every time,
+                # producing an infinite "must change password" loop on every
+                # subsequent login/refresh even though you'd just done so.
+                is_self = bool(actor_id) and actor_id == employee.id
+                data["must_change_password"] = not is_self
                 password_changed = True
 
         data["updated_by"] = user
@@ -185,6 +199,45 @@ class EmployeeService:
 
         await self._audit(user, "Deactivated", employee.name)
         await self.employee_repo.soft_delete(employee)
+
+    async def set_account_active(
+        self, employee_id: str, is_active: bool, user="anonymous", actor_id=None, persona=None,
+    ) -> EmployeeResponse:
+        # Deliberately separate from delete_employee/soft_delete above (which
+        # terminates an employee's record entirely) — this is a reversible
+        # login-access switch only. Owner-only, per explicit request.
+        employee = await self.employee_repo.find_by_id(employee_id)
+        if not employee:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Employee not found.",
+            )
+
+        if not has_role(persona, "owner"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only the Owner can activate or deactivate accounts.",
+            )
+
+        if not is_active and actor_id and actor_id == employee.id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="You cannot deactivate your own account.",
+            )
+
+        employee = await self.employee_repo.update(employee, {
+            "is_active": is_active,
+            "updated_by": user,
+            "updated_at": now_pkt(),
+        })
+
+        await self._audit(
+            user,
+            "Account Activated" if is_active else "Account Deactivated",
+            employee.name,
+        )
+
+        return self._to_response(employee, persona)
 
     def _to_response(self, employee: Employee, persona) -> EmployeeResponse:
         resp = EmployeeResponse.model_validate(employee)

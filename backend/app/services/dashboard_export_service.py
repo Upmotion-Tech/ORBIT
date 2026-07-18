@@ -103,14 +103,14 @@ def build_excel(data: DashboardExportRequest) -> bytes:
             row += 1
         row += 1
 
-    if data.department_budgets:
-        row = _section(ws, row, "Expenses by Department — Budget vs. Actual")
-        ws.cell(row=row, column=1, value="Department").font = HEADER_FONT
+    if data.category_budgets:
+        row = _section(ws, row, "Expenses by Category — Budget vs. Actual")
+        ws.cell(row=row, column=1, value="Category").font = HEADER_FONT
         ws.cell(row=row, column=2, value="Actual").font = HEADER_FONT
         ws.cell(row=row, column=3, value="Budget").font = HEADER_FONT
         row += 1
-        for b in data.department_budgets:
-            ws.cell(row=row, column=1, value=b.dept)
+        for b in data.category_budgets:
+            ws.cell(row=row, column=1, value=b.category)
             ws.cell(row=row, column=2, value=b.actual)
             ws.cell(row=row, column=3, value=b.budget)
             row += 1
@@ -206,11 +206,11 @@ def build_pdf(data: DashboardExportRequest) -> bytes:
             [4 * inch, 2.6 * inch],
         ))
 
-    if data.department_budgets:
-        story.append(Paragraph("Expenses by Department — Budget vs. Actual", section_style))
+    if data.category_budgets:
+        story.append(Paragraph("Expenses by Category — Budget vs. Actual", section_style))
         story.append(data_table(
-            ["Department", "Actual", "Budget"],
-            [[b.dept, b.actual, b.budget] for b in data.department_budgets],
+            ["Category", "Actual", "Budget"],
+            [[b.category, b.actual, b.budget] for b in data.category_budgets],
             [2.6 * inch, 2.2 * inch, 2.2 * inch],
         ))
 

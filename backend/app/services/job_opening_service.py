@@ -54,8 +54,11 @@ class JobOpeningService:
         opening = await self.opening_repo.create(data)
 
         if self.notification_repo:
+            # Owner-only — HR (the only role that can create an opening,
+            # enforced above) already knows; a random employee with no HR
+            # involvement has no reason to be told about internal hiring.
             await self.notification_repo.create(
-                user_id="all",
+                user_id="owner",
                 notif_type="Opening Created",
                 title="New job opening",
                 message=f"Position '{opening.title}' has been opened in {opening.department}.",
@@ -86,7 +89,7 @@ class JobOpeningService:
 
         if data.get("status") == "Closed" and self.notification_repo:
             await self.notification_repo.create(
-                user_id="all",
+                user_id="owner",
                 notif_type="Opening Closed",
                 title="Job opening closed",
                 message=f"Position '{opening.title}' has been closed.",

@@ -139,8 +139,12 @@ class LeaveService:
 
         if self.notification_repo:
             emp = leave.employee
+            # Falls back to "owner" (never "all") on the practically-unreachable
+            # case where the leave request's own employee relationship somehow
+            # doesn't resolve — a broadcast-to-everyone here would mean a random
+            # employee learns about someone else's leave decision.
             await self.notification_repo.create(
-                user_id=emp.id if emp else "all",
+                user_id=emp.id if emp else "owner",
                 notif_type="Leave Approved",
                 title="Leave request approved",
                 message=f"Your {leave.leave_type} leave has been approved."
@@ -186,7 +190,7 @@ class LeaveService:
         if self.notification_repo:
             emp = leave.employee
             await self.notification_repo.create(
-                user_id=emp.id if emp else "all",
+                user_id=emp.id if emp else "owner",
                 notif_type="Leave Rejected",
                 title="Leave request rejected",
                 message=f"Your {leave.leave_type} leave has been rejected."

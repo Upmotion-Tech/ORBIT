@@ -1,253 +1,177 @@
-# Orbit CRM — Backend API
+# ORBIT — Operational Revenue & Business Intelligence Tool
 
-FastAPI backend for the Orbit Professional Services OS. CRM Leads module with full CRUD, Kanban-ready stage workflow, file uploads, activity logging, and search.
+**ORBIT** is the internal ERP / Professional Services Operating System built for **Upmotion Tech**. It replaces the spreadsheets-and-Slack-threads way of running the company with one system of record for sales pipeline, project delivery, HR, and finance — with a single login, real permissions, and one shared source of truth for numbers that used to live in five different places.
 
-## Tech Stack
+This README describes what's actually built and running today, not an aspirational roadmap. For a detailed, dated history of every decision, bug fix, and open item, see [`CLAUDE.md`](./CLAUDE.md) in this same directory — it's the authoritative build log for this project and is updated after every round of work.
+
+---
+
+## What ORBIT does
+
+| Module | What it covers |
+|---|---|
+| **CRM** | Sales leads, pipeline stages (New → Contacted → Proposal → Negotiation → Won/Lost), scope documents & signed contracts, duplicate detection, activity log & comments |
+| **Software Dev** | Projects (auto-created when a lead is Won) and Tasks/Subtasks, Kanban & list views, team assignment, time logging, attachments, threaded comments |
+| **Finance** | Invoices (with a real Word-template-driven PDF generator), Expenses (with category & department budget tracking), Payroll / salary slips, Payment milestones |
+| **HR** | Employee records, leave requests & balances, hiring pipeline (job openings + candidates), holidays & leave policy |
+| **Dashboard & Reports** | Company-wide revenue/cash-position overview, delayed-project tracking, project profitability, resource utilization, expense-category budgets, exportable to Excel/PDF |
+| **Setup** | Currency exchange rate, pipeline stages & lead sources, leave policy, audit trail, employee account activation/deactivation |
+| **Auth & Permissions** | Real JWT login, bcrypt-hashed passwords, per-employee multi-select access levels (Owner/Dashboard/CRM/Dev/Finance/HR/Permissions/Employee), mandatory password change on first login or after an admin reset, instant account deactivation |
+| **Notifications & Audit** | Real-time notification tray scoped to what each employee is actually meant to see (their own leave decisions, comments/assignments on things they're on) — never a company-wide broadcast unless you're the Owner. Every sensitive action is written to a real audit log. |
+
+---
+
+## Tech stack
 
 | Layer | Technology |
-|-------|-----------|
-| Framework | FastAPI (async) |
+|---|---|
+| Backend framework | FastAPI (async) |
 | ORM | SQLAlchemy 2.x (async) |
 | Validation | Pydantic v2 |
-| Migrations | Alembic |
-| Database | PostgreSQL (production) / SQLite (development) |
-| Auth | JWT (future-ready, dependency-injected) |
-| Storage | Local filesystem (abstracted for future S3/R2) |
+| Database (production) | PostgreSQL, hosted on **Neon** |
+| Database (development) | SQLite (zero config — just run it) |
+| Auth | JWT (`python-jose`) + `bcrypt` password hashing |
+| PDF/Excel export | ReportLab, `python-docx` (Word-template fill for invoices), `openpyxl` |
+| Backend hosting | **Render** |
+| Frontend hosting | **Vercel** (static bundle, proxies `/api/*` to Render) |
+| Frontend | A single self-contained HTML bundle (`ORBIT.html`) — see below |
 
-## Quick Start
+The database is chosen automatically from `DATABASE_URL`: unset → SQLite (development), set → PostgreSQL via `asyncpg` (production). No code ever needs to change between environments.
+
+---
+
+## Architecture
+
+The backend follows a straightforward clean-architecture layering, enforced by convention (not a framework):
+
+```
+backend/app/
+├── core/          # config, DB engine/session, JWT + password hashing, PKT time helpers, dependencies
+├── models/        # SQLAlchemy ORM models — one file per table
+├── schemas/       # Pydantic request/response models — never leak ORM objects to the wire
+├── repositories/  # All raw DB queries live here — routers and services never touch SQLAlchemy directly
+├── services/      # Business logic, permission checks, validation, audit logging
+├── routers/       # FastAPI endpoints — thin, just wire a service call to an HTTP verb
+└── dependencies/  # (folded into core/dependencies.py) auth/role-gating dependencies
+```
+
+**Rule of thumb:** routers stay thin (no business logic), services own the rules, repositories own the SQL. Every router constructs its service via a small `get_*_service()` factory function that wires up the repositories it needs.
+
+There are **no Alembic migrations** in active use — every table is created via `Base.metadata.create_all` on backend startup (see `main.py`'s `lifespan`). Schema *changes* to an already-existing table (a new column on a live table) are applied by hand with a one-off script against both the local SQLite file and the live Neon database — `CLAUDE.md` documents every one of these with the exact command used.
+
+---
+
+## Authentication & permissions
+
+- Login is real: `POST /api/auth/login` checks a bcrypt hash and issues a JWT carrying the employee's id, name, and their full list of access levels.
+- **Access levels are multi-select**, not a single role. An employee can hold any combination of `owner`, `dashboard`, `crm`, `dev`, `finance`, `hr`, `permissions`, `employee` — the sidebar and every screen-level gate is the union of whatever levels they hold. `owner` implies everything.
+- **Temporary passwords**: when HR/Owner creates an employee or resets an existing one's password, that account is flagged `must_change_password`. The very next successful login is redirected straight to a mandatory Change Password screen (old password → new password → confirm) before anything else in the app is reachable. Changing your *own* password from your own profile does **not** re-trigger this (only an admin-initiated reset does).
+- **Account deactivation**: an Owner can deactivate any other employee's account from Setup → Employees. A deactivated account is rejected at login with a clear message, and — critically — an already-logged-in session for that account is invalidated on its *very next* authenticated request (checked fresh against the database on every call, not just at token-issue time), not just at its next login.
+- Role-gating dependencies live in `app/core/dependencies.py`: `get_owner_user`, `get_hr_user`, `get_finance_user`, `get_persona_roles` (the real multi-value list), and `get_persona_role` (a single derived "primary" role, kept only for the Projects/Tasks routers, which still predate the multi-access-level system).
+
+---
+
+## Time handling
+
+ORBIT standardizes on **Pakistan Standard Time (Asia/Karachi, fixed UTC+05:00, no DST)** everywhere a date or time is shown — never the visitor's own machine timezone.
+
+- Backend: `app/core/time.py` provides `now_pkt()` (use instead of `datetime.now()`/`utcnow()`) and `to_pkt()` (normalizes any datetime before it's serialized). Every response schema with a datetime field validates it through `to_pkt()`, so timestamps always serialize with a `+05:00` offset.
+- Frontend: all date/time formatting explicitly passes `timeZone: 'Asia/Karachi'`, and "today" for filters/overdue checks is always the PKT calendar date, never the browser's local date.
+
+---
+
+## The frontend: `ORBIT.html`
+
+The frontend is **not** a plain HTML/JS file you can edit with a text editor — it's a single, self-contained compiled bundle produced by a template-component runtime (the same one used by Claude's own Artifacts). Concretely:
+
+- Near the end of the file, a `<script type="__bundler/manifest">` block holds compiled JS/font assets (gzip+base64), and a `<script type="__bundler/template">` block holds the entire page's HTML template as one big JSON string, using custom directives (`<sc-if>`, `<sc-for>`) and `{{ expr }}` interpolation.
+- Inside that template, a `<script type="text/x-dc" data-dc-script">` tag holds the actual app logic — a single `Component extends DCLogic` class with `state`, methods, and a `renderVals()` method whose returned object is exactly the set of names usable in `{{ }}` bindings in the template. It behaves like a normal React class component; it's just authored against this template compiler instead of JSX.
+
+**Three identical copies of this bundle must always stay in sync**: `ORBIT.html` (repo root), `backend/static/index.html` (served by FastAPI at `/`), and `frontend/index.html` (deployed to Vercel).
+
+To edit it: extract the template HTML and the embedded script into separate plain files, edit those normally, then re-serialize the template string back into the bundle — verifying tag balance (`sc-if`/`sc-for` open vs. close counts, `{{ }}` count) and that every `{{ identifier }}` used in the template actually exists as a key in `renderVals()`'s returned object before repackaging. `CLAUDE.md` documents the exact tooling and has caught several real bugs this way (a key returned under the wrong name, a missing `!` negation, etc.).
+
+---
+
+## Running it locally
 
 ```bash
 cd backend
 pip install -r requirements.txt
 
-# Development (SQLite — no config needed)
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-
-# Production (PostgreSQL)
-set DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/orbit
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+# Development — SQLite, zero config
+uvicorn app.main:app --reload
 ```
 
-Open **http://localhost:8000** for the frontend and **http://localhost:8000/docs** for Swagger.
+Must be run from inside `backend/` — the app's imports are absolute (`app.core...`) and only resolve when `backend/` is the working directory. Open **http://localhost:8000** for the app itself, **http://localhost:8000/docs** for the interactive API docs.
 
-## Seed Data
+On first startup the backend seeds realistic sample data (`backend/scripts/seed_hr.py`, `seed_finance.py`) if the database is empty — including one HR admin login (`hamzashafiq@theupmotion.online` / `1234`) for getting into the app immediately.
 
-```bash
-cd backend
-set PYTHONPATH=.
-python -m scripts.seed
-```
-
-Populates 8 sample leads across all stages (New, Contacted, Proposal, Negotiation, Won, Lost) with activity log entries.
-
-## Project Structure
-
-```
-backend/
-├── app/
-│   ├── main.py                  # FastAPI app entry, CORS, lifespan
-│   ├── core/
-│   │   ├── config.py            # env-based config (DATABASE_URL detection)
-│   │   ├── database.py          # Async engine, session factory, Base
-│   │   ├── security.py          # JWT create/decode, password hashing
-│   │   └── dependencies.py      # get_db, get_current_user (JWT-ready)
-│   ├── models/
-│   │   ├── lead.py              # Lead ORM model (soft-delete, indexes)
-│   │   └── lead_activity.py     # Activity log model
-│   ├── schemas/
-│   │   ├── common.py            # Pagination, ErrorResponse, WarningResponse
-│   │   ├── lead.py              # LeadCreate, LeadUpdate, LeadStageUpdate, LeadResponse
-│   │   └── lead_activity.py     # ActivityCreate, ActivityResponse
-│   ├── repositories/
-│   │   ├── lead_repository.py   # All DB queries (list, search, filter, duplicates)
-│   │   └── activity_repository.py
-│   ├── services/
-│   │   ├── lead_service.py      # Business logic, stage validation, audit
-│   │   └── storage_service.py   # File upload abstraction (local)
-│   ├── routers/
-│   │   └── leads.py             # All 11 API endpoints
-│   ├── storage/                 # Uploaded files (local dev)
-│   └── utils/
-├── static/
-│   └── index.html               # Frontend SPA (served at /)
-├── scripts/
-│   └── seed.py                  # Database seeder
-├── alembic/                     # Migrations
-├── alembic.ini
-├── requirements.txt
-├── .env                         # Local config
-└── README.md
-```
-
-## API Endpoints
-
-All endpoints are prefixed with `/api/leads`. Full docs at `/docs`.
-
-### Leads CRUD
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/leads` | List leads with search, filter, sort, pagination |
-| `GET` | `/api/leads/search?q=` | Global search (company, contact, rep, description) |
-| `GET` | `/api/leads/{id}` | Get single lead |
-| `POST` | `/api/leads` | Create lead (returns duplicate warning) |
-| `PUT` | `/api/leads/{id}` | Update lead |
-| `PATCH` | `/api/leads/{id}/stage` | Change stage (validates workflow) |
-| `DELETE` | `/api/leads/{id}` | Soft delete |
-
-### File Uploads
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/api/leads/{id}/scope-document` | Upload scope document |
-| `POST` | `/api/leads/{id}/signed-contract` | Upload signed contract |
-
-### Activities
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/leads/{id}/activities` | List activity log |
-| `POST` | `/api/leads/{id}/activities` | Add activity/comment |
-
-### System
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/health` | Health check |
-
-## Lead Stages & Workflow
-
-```
-New → Contacted → Proposal → Negotiation → Won
-  ↓       ↓           ↓             ↓        Lost
-  └───────┴───────────┴─────────────┘
-```
-
-- Normal users cannot skip stages (e.g. New → Won is blocked)
-- Users with `role: owner` may override stage transitions
-- Won/Lost are terminal stages
-
-## Database
-
-### Auto-Switch: SQLite ↔ PostgreSQL
-
-The backend detects the database automatically:
-
-- **`DATABASE_URL` set** → uses PostgreSQL via asyncpg
-- **`DATABASE_URL` unset** → uses SQLite via aiosqlite
-
-No code changes required between environments.
-
-### Lead Model
-
-| Field | Type | Notes |
-|-------|------|-------|
-| `id` | UUID (PK) | Auto-generated |
-| `company_name` | String(255) | Required, indexed |
-| `client_contact_name` | String(255) | Required |
-| `assigned_rep` | String(255) | Indexed |
-| `source` | String(100) | Indexed |
-| `medium` | String(100) | |
-| `value` | Float | >= 0 |
-| `stage` | String(50) | New/Contacted/Proposal/Negotiation/Won/Lost |
-| `description` | Text | |
-| `date_received` | Date | |
-| `expected_closure_date` | Date | |
-| `actual_closure_date` | Date | |
-| `follow_up_date` | Date | |
-| `scope_document_url` | String(500) | |
-| `signed_contract_url` | String(500) | |
-| `is_locked_revenue` | Boolean | TRUE only when both documents exist |
-| `created_at` | DateTime (tz-aware) | |
-| `updated_at` | DateTime (tz-aware) | |
-| `created_by` | String(255) | |
-| `updated_by` | String(255) | |
-| `deleted_at` | DateTime (tz-aware) | Soft delete |
-
-### LeadActivity Model
-
-| Field | Type | Notes |
-|-------|------|-------|
-| `id` | UUID (PK) | Auto-generated |
-| `lead_id` | UUID (FK) | Cascade delete |
-| `type` | String(50) | create, update, stage_change, file_upload, delete, comment |
-| `note` | Text | Free text |
-| `created_by` | String(255) | |
-| `created_at` | DateTime (tz-aware) | |
-
-## Key Business Rules
-
-- **Duplicate Detection**: On create/update, warns if same company or contact exists (non-blocking)
-- **Locked Revenue**: Automatically set to TRUE when both scope document AND signed contract are uploaded
-- **Follow-up Overdue**: Computed dynamically — `follow_up_date < today AND stage NOT IN (Won, Lost)`
-- **Audit Trail**: Every mutation (create, update, stage change, delete, file upload) creates a LeadActivity entry
-- **Soft Delete**: Leads are soft-deleted via `deleted_at` timestamp, excluded from all queries
-- **Validation**: Backend validates all fields — never trust frontend input
-
-## Authentication
-
-JWT is dependency-ready. Endpoints accept a Bearer token via the `get_current_user` dependency. Currently defaults to `anonymous` with `owner` role for development.
-
-```python
-# Example: Protect an endpoint
-async def create_lead(
-    data: LeadCreate,
-    current_user: dict = Depends(get_current_user),
-    service: LeadService = Depends(get_lead_service),
-):
-```
-
-## Timezone Handling
-
-- All timestamps stored as timezone-aware (UTC) in the database
-- Date-only fields (date_received, expected_closure_date, etc.) stored as DATE type
-- Frontend converts to local timezone for display — no Z suffix on user-visible dates
-- `created_at` and `updated_at` use `DateTime(timezone=True)`
-
-## Deployment
-
-### Frontend (Vercel) + Backend (Render) + Database (Neon)
-
-1. Push backend to Render with `DATABASE_URL` pointing to Neon PostgreSQL
-2. The frontend `index.html` is served by the backend itself at `/`
-3. For separate deployment, configure the frontend to point to the Render API URL
-
-### Environment Variables
+### Environment variables
 
 | Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `DATABASE_URL` | No | SQLite | PostgreSQL connection string |
-| `UPLOAD_DIR` | No | `app/storage` | File upload directory |
-| `SECRET_KEY` | No | dev key | JWT signing key |
-| `DEBUG` | No | `true` | SQLAlchemy echo |
+|---|---|---|---|
+| `DATABASE_URL` | No | SQLite file | PostgreSQL connection string for production (Neon) |
+| `SECRET_KEY` | No (but should be set in production) | dev key | JWT signing key |
+| `UPLOAD_DIR` | No | `app/storage` | Local file-upload directory |
+| `DEBUG` | No | `true` | SQLAlchemy query echo |
 
-## What's Implemented
+---
 
-- [x] FastAPI async application with lifespan
-- [x] SQLAlchemy 2.x async ORM (Lead + LeadActivity models)
-- [x] Pydantic v2 schemas (request validation, response serialization)
-- [x] All 11 API endpoints for CRM Leads module
-- [x] Stage workflow validation (no skip for normal users)
-- [x] Duplicate detection with warning response
-- [x] Auto-computed locked revenue (both documents required)
-- [x] Dynamic follow-up overdue flag
-- [x] File upload with storage abstraction layer
-- [x] Activity/audit logging on every mutation
-- [x] Soft delete with filtered queries
-- [x] Pagination, search, filter, sort on list endpoint
-- [x] Global search across company, contact, rep, description
-- [x] Auto-switch SQLite (dev) / PostgreSQL (prod) via DATABASE_URL
-- [x] JWT-ready dependency injection
-- [x] Global error handling with structured JSON
-- [x] CORS configured
-- [x] Frontend served alongside API on same port
-- [x] Seed script with sample data
-- [x] Alembic migrations
-- [x] Swagger/OpenAPI docs at /docs
+## Deployment topology
 
-## What's Next (Phase 2)
+```
+ Vercel (frontend/index.html)  ──►  Render (FastAPI backend)  ──►  Neon (PostgreSQL)
+        static bundle                  ORBIT.html served                production DB
+                                        from backend/static/
+                                        at "/" too
+```
 
-- [ ] Wire the bundled frontend SPA to call this API instead of using in-memory data
-- [ ] Map frontend field names to API field names
-- [ ] Implement JWT login endpoint
-- [ ] Add remaining modules (Dev, Finance, HR, etc.)
+- **Backend → Render**, with `DATABASE_URL` pointing at Neon.
+- **Database → Neon PostgreSQL**. Every schema change (new table, new column) that's been verified locally is also applied by hand directly against the live Neon database as part of the same work session — see `CLAUDE.md` for the exact migration commands run and when.
+- **Frontend → Vercel**, `frontend/vercel.json` rewrites `/api/:path*` to the Render backend. (Routers must register their collection endpoints without a trailing slash — a trailing-slash redirect crossing the Vercel→Render origin boundary causes browsers to silently strip the `Authorization` header, which caused a real production outage once; see `CLAUDE.md`.)
+
+Nothing gets pushed or deployed without explicit request — even when a fix has been fully verified locally, committing and deploying is treated as a separate, deliberate step.
+
+---
+
+## Project structure
+
+```
+Orbit/
+├── ORBIT.html              # the compiled frontend bundle (see "The frontend" above)
+├── CLAUDE.md                # authoritative, continuously-updated build log — read this first
+├── README.md                 # this file
+├── backend/
+│   ├── app/
+│   │   ├── main.py           # FastAPI app, CORS, router registration, startup seeding
+│   │   ├── core/              # config, DB session, JWT/password hashing, PKT time, permission dependencies
+│   │   ├── models/            # ~24 SQLAlchemy models (Lead, Project, Task, Employee, Invoice, Expense, ...)
+│   │   ├── schemas/           # Pydantic request/response models
+│   │   ├── repositories/      # DB query layer
+│   │   ├── services/          # business logic + permission checks
+│   │   ├── routers/           # ~22 route modules, one per resource
+│   │   ├── templates/          # invoice_template.docx (filled to generate invoice PDFs)
+│   │   └── storage/            # uploaded files (local dev)
+│   ├── static/index.html      # bundle copy served by FastAPI at "/"
+│   ├── scripts/                 # seed_hr.py, seed_finance.py, wipe_hr.py, etc.
+│   └── requirements.txt
+└── frontend/
+    ├── index.html              # bundle copy deployed to Vercel
+    └── vercel.json             # /api/* rewrite to the Render backend
+```
+
+---
+
+## Known gaps / open roadmap
+
+This is an actively evolving internal tool. As of the most recent work session, the largest still-open items (see `CLAUDE.md` for full detail) are:
+
+- **Alembic migrations** aren't wired in yet — every schema change so far has been a hand-run one-off script. This is explicitly planned before the module surface grows much further.
+- **Persona-system cleanup**: the Software Dev (Projects/Tasks) routers still run on an older single-role permission model that predates the current multi-access-level system, kept deliberately unchanged to avoid destabilizing a working feature — a full migration to the real per-employee permission model is still pending.
+- **Technical-debt sweep**: removing dead mock-data code paths, consolidating duplicate API-call patterns, and a final audit that no prototype-only logic remains in any "completed" module.
+- The invoice PDF generator currently relies on Microsoft Word via COM automation (Windows-only) for the docx→PDF conversion step — this will need swapping for a Linux-compatible converter before it can run on the Render production server.
+
+## Contributing / working on this repo
+
+If you're an AI agent (or a human) picking this project back up, **read `CLAUDE.md` before making assumptions about what is or isn't implemented** — it is kept meticulously up to date, records the reasoning behind non-obvious decisions, and documents several real bugs (and their root causes) that are easy to reintroduce by accident if you don't know the history.

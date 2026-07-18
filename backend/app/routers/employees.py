@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import get_persona_roles, get_current_user
+from app.core.dependencies import get_persona_roles, get_current_user, get_owner_user
 from app.repositories.employee_repository import EmployeeRepository
 from app.repositories.notification_repository import NotificationRepository
 from app.repositories.audit_log_repository import AuditLogRepository
@@ -81,6 +81,36 @@ async def update_employee(
     return await service.update_employee(
         employee_id,
         body.model_dump(exclude_none=True),
+        user=current_user.get("sub", "anonymous"),
+        persona=persona,
+        actor_id=current_user.get("user_id"),
+    )
+
+
+@router.post("/{employee_id}/deactivate", response_model=EmployeeResponse)
+async def deactivate_employee_account(
+    employee_id: str,
+    current_user: dict = Depends(get_owner_user),
+    persona: list = Depends(get_persona_roles),
+    service: EmployeeService = Depends(get_employee_service),
+):
+    return await service.set_account_active(
+        employee_id, is_active=False,
+        user=current_user.get("sub", "anonymous"),
+        actor_id=current_user.get("user_id"),
+        persona=persona,
+    )
+
+
+@router.post("/{employee_id}/activate", response_model=EmployeeResponse)
+async def activate_employee_account(
+    employee_id: str,
+    current_user: dict = Depends(get_owner_user),
+    persona: list = Depends(get_persona_roles),
+    service: EmployeeService = Depends(get_employee_service),
+):
+    return await service.set_account_active(
+        employee_id, is_active=True,
         user=current_user.get("sub", "anonymous"),
         persona=persona,
     )

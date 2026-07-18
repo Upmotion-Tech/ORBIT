@@ -179,11 +179,25 @@ async def upload_attachment(
 
     # Generate Notification
     if service.notification_repo:
-        # Notify assigned team members
+        # Notify assigned team members — this was still the stale hardcoded
+        # "Kofi Mensah" mock-persona check (fixed everywhere else in this
+        # file already), meaning every real team member fell through to the
+        # "all" broadcast and every attachment upload notified the entire
+        # company. Uses the same real-name-to-employee-id resolver already
+        # used for comments/assignments on this same project.
         for member in project.team:
-            target_user = "dev" if member == "Kofi Mensah" else "all"
+            if member == user_name:
+                continue
+            target_user = await service._resolve_member_notification_target(member)
             await service.notification_repo.create(
                 user_id=target_user,
+                notif_type="Attachment Uploaded",
+                title=f"New attachment on project: {project.name}",
+                message=f"'{file.filename}' has been uploaded by {user_name}.",
+            )
+        if persona != "owner":
+            await service.notification_repo.create(
+                user_id="owner",
                 notif_type="Attachment Uploaded",
                 title=f"New attachment on project: {project.name}",
                 message=f"'{file.filename}' has been uploaded by {user_name}.",

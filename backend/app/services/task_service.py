@@ -32,18 +32,18 @@ class TaskService:
             await self.audit_repo.log(actor, action, "Task", label, detail)
 
     async def _resolve_assignee_notification_target(self, assignee_name: Optional[str]) -> str:
-        # Notifications need a real employee id (or a broadcast keyword like
-        # "all"/"dev") to actually reach anyone — `team`/`assignee` fields
-        # store plain display names, not ids. Resolve the assignee's real id
-        # by exact (case-insensitive) name match so the notification targets
-        # *them specifically* instead of broadcasting to "all"/"dev" (the
-        # previous behavior, which happened to still reach them but also
-        # everyone else).
+        # Notifications need a real employee id to actually reach that one
+        # person — `team`/`assignee` fields store plain display names, not
+        # ids. Resolve the assignee's real id by exact (case-insensitive)
+        # name match so the notification targets *them specifically*.
+        # Falls back to "owner" (never "all") when no exact match is found —
+        # a broadcast-to-everyone here would leak this task's activity to
+        # random employees just because of a name-matching miss.
         if not assignee_name or not self.employee_repo:
-            return "all"
+            return "owner"
         matches = await self.employee_repo.find_by_name(assignee_name)
         exact = next((e for e in matches if e.name.strip().lower() == assignee_name.strip().lower()), None)
-        return exact.id if exact else "all"
+        return exact.id if exact else "owner"
 
     async def list_tasks(
         self,

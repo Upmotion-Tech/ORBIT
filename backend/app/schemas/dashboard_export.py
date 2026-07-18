@@ -20,8 +20,8 @@ class UtilizationRow(BaseModel):
     pct: str
 
 
-class DepartmentBudgetRow(BaseModel):
-    dept: str
+class CategoryBudgetRow(BaseModel):
+    category: str
     actual: str
     budget: str
 
@@ -50,4 +50,4 @@ class DashboardExportRequest(BaseModel):
     delayed_projects: list[DelayedProjectRow] = []
     profitability: list[ProfitabilityRow] = []
     utilization: list[UtilizationRow] = []
-    department_budgets: list[DepartmentBudgetRow] = []
+    category_budgets: list[CategoryBudgetRow] = []

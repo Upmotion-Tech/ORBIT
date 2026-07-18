@@ -25,6 +25,17 @@ class Employee(Base):
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     salary: Mapped[float] = mapped_column(Float, default=0.0)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    # True whenever the current password_hash was set by someone other than
+    # the employee themselves (HR/Owner assigning it on create, or resetting
+    # it later) — forces a mandatory change-password screen on next login.
+    # Flipped back to False only by the employee's own successful
+    # POST /api/auth/change-password.
+    must_change_password: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Login-access switch, separate from `status` (which tracks employment
+    # state like Active/Terminated for HR/directory purposes). Owner-only:
+    # False blocks login outright and forces an already-logged-in session
+    # to be signed out on its next authenticated request (see get_current_user).
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     access_levels: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=lambda: ["employee"])
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="Active")
     probation_end: Mapped[date] = mapped_column(Date, nullable=True)
