@@ -2,7 +2,7 @@ import uuid
 from datetime import date
 from typing import Optional
 
-from sqlalchemy import select, func, or_, and_
+from sqlalchemy import select, func, or_, and_, cast, String
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -165,12 +165,17 @@ class ProjectRepository:
         if status:
             query = query.where(Project.status == status)
         if team_member:
-            query = query.where(Project.team.like(f'%"{team_member}"%'))
+            # Project.team is a JSON column — Postgres's `json` type has no
+            # LIKE operator at all (raises "operator does not exist: json ~~
+            # character varying"), unlike SQLite where JSON is just stored as
+            # TEXT and LIKE works implicitly. Explicit cast to text makes
+            # this work identically on both.
+            query = query.where(cast(Project.team, String).like(f'%"{team_member}"%'))
         if date_from:
             query = query.where(Project.deadline >= date_from)
         if date_to:
             query = query.where(Project.deadline <= date_to)
         if assigned_to_member:
             # Dev team member only sees projects they are assigned to
-            query = query.where(Project.team.like(f'%"{assigned_to_member}"%'))
+            query = query.where(cast(Project.team, String).like(f'%"{assigned_to_member}"%'))
         return query
