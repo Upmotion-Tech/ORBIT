@@ -42,10 +42,15 @@ class JobOpeningService:
     async def create_opening(
         self, data: dict, user="anonymous", persona=None,
     ) -> OpeningResponse:
-        if not has_role(persona, "hr"):
+        # "owner" added here after finding a real, pre-existing gap while
+        # extending this to Finance: a plain ["owner"]-only account (no
+        # separate "hr" tag) was actually getting 403'd on this endpoint,
+        # despite Owner being expected to have full parity with HR-scope
+        # actions everywhere else in the app.
+        if not has_role(persona, "owner", "hr", "finance"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only HR can create job openings.",
+                detail="Only Owner, HR, or Finance can create job openings.",
             )
 
         data["created_by"] = user
@@ -76,10 +81,10 @@ class JobOpeningService:
                 detail="Job opening not found.",
             )
 
-        if not has_role(persona, "hr"):
+        if not has_role(persona, "owner", "hr", "finance"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only HR can update job openings.",
+                detail="Only Owner, HR, or Finance can update job openings.",
             )
 
         if data.get("status") == "Closed" and opening.status != "Closed":
@@ -98,10 +103,14 @@ class JobOpeningService:
         return self._to_response(opening)
 
     async def delete_opening(self, opening_id: str, persona=None) -> None:
-        if not has_role(persona, "hr"):
+        # Matches create_opening/update_opening's allowed roles — leaving
+        # delete on the old HR-only check would have quietly reintroduced
+        # the same "Owner blocked without a separate HR tag" gap just fixed
+        # for create/update, one action later.
+        if not has_role(persona, "owner", "hr", "finance"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only HR can delete job openings.",
+                detail="Only Owner, HR, or Finance can delete job openings.",
             )
 
         opening = await self.opening_repo.find_by_id(opening_id)
@@ -111,7 +120,14 @@ class JobOpeningService:
                 detail="Job opening not found.",
             )
 
-        await self.opening_repo.update(opening, {"status": "Closed", "closed_at": now_pkt()})
+        # Was previously just setting status to "Closed" — a genuine bug,
+        # since "Closed" is already its own real, separate concept exposed
+        # via the opening's own Status dropdown (update_opening). A DELETE
+        # endpoint returning 204 No Content should actually delete, and this
+        # was never reachable from the frontend anyway (no UI ever called
+        # it), so repurposing it to a real hard-delete doesn't remove any
+        # working "close an opening" path — that already exists separately.
+        await self.opening_repo.delete(opening)
 
     def _to_response(self, opening: JobOpening) -> OpeningResponse:
         resp = OpeningResponse.model_validate(opening)

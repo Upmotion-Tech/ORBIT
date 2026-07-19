@@ -58,3 +58,10 @@ class JobOpeningRepository:
             setattr(opening, key, value)
         await self.db.flush()
         return await self.find_by_id(opening.id)
+
+    async def delete(self, opening: JobOpening) -> None:
+        # JobOpening.candidates has cascade="all, delete-orphan", so deleting
+        # the ORM object also removes every HiringCandidate row referencing
+        # it — no separate cleanup needed.
+        await self.db.delete(opening)
+        await self.db.flush()

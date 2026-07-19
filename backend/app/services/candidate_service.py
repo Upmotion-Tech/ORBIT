@@ -27,10 +27,14 @@ class CandidateService:
     async def create_candidate(
         self, opening_id: str, data: dict, persona=None,
     ) -> CandidateResponse:
-        if not has_role(persona, "hr"):
+        # "owner"/"finance" added here after finding the same "Owner blocked
+        # without a separate HR tag" gap already fixed for job openings
+        # themselves (this candidate-add endpoint is a direct child action
+        # of managing an opening, so it needs the same allowed roles).
+        if not has_role(persona, "owner", "hr", "finance"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only HR can add candidates.",
+                detail="Only Owner, HR, or Finance can add candidates.",
             )
 
         data["opening_id"] = opening_id
@@ -40,10 +44,10 @@ class CandidateService:
     async def update_candidate(
         self, candidate_id: str, data: dict, persona=None,
     ) -> CandidateResponse:
-        if not has_role(persona, "hr"):
+        if not has_role(persona, "owner", "hr", "finance"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only HR can update candidates.",
+                detail="Only Owner, HR, or Finance can update candidates.",
             )
 
         candidate = await self.candidate_repo.find_by_id(candidate_id)
