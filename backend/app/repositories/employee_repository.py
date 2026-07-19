@@ -1,9 +1,13 @@
 from typing import Optional
 
-from sqlalchemy import select, func, or_, and_
+from sqlalchemy import select, func, or_, and_, delete as sql_delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.employee import Employee
+from app.models.leave_request import LeaveRequest
+from app.models.salary_slip import SalarySlip
+from app.models.expense import Expense
+from app.models.notification import Notification
 from app.core.time import now_pkt
 
 
@@ -105,4 +109,18 @@ class EmployeeRepository:
     async def soft_delete(self, employee: Employee) -> None:
         employee.deleted_at = now_pkt()
         employee.status = "Inactive"
+        await self.db.flush()
+
+    async def hard_delete_with_related_data(self, employee: Employee) -> None:
+        # Genuine, irreversible removal — distinct from soft_delete above.
+        # employees.id is a nullable=False FK on LeaveRequest.employee_id,
+        # SalarySlip.employee_id, and Expense.submitted_by_id, so the row
+        # can't be deleted while any of those still reference it.
+        # Notification.user_id is a plain string (not a real FK) but is
+        # cleared too since "all data of them will be wiped" was explicit.
+        await self.db.execute(sql_delete(LeaveRequest).where(LeaveRequest.employee_id == employee.id))
+        await self.db.execute(sql_delete(SalarySlip).where(SalarySlip.employee_id == employee.id))
+        await self.db.execute(sql_delete(Expense).where(Expense.submitted_by_id == employee.id))
+        await self.db.execute(sql_delete(Notification).where(Notification.user_id == employee.id))
+        await self.db.delete(employee)
         await self.db.flush()

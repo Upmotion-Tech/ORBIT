@@ -124,3 +124,19 @@ async def delete_employee(
     service: EmployeeService = Depends(get_employee_service),
 ):
     await service.delete_employee(employee_id, persona=persona, user=current_user.get("sub", "anonymous"))
+
+
+@router.delete("/{employee_id}/permanent", status_code=status.HTTP_200_OK)
+async def permanently_delete_employee_account(
+    employee_id: str,
+    current_user: dict = Depends(get_owner_user),
+    persona: list = Depends(get_persona_roles),
+    service: EmployeeService = Depends(get_employee_service),
+):
+    name = await service.permanently_delete_employee(
+        employee_id,
+        user=current_user.get("sub", "anonymous"),
+        actor_id=current_user.get("user_id"),
+        persona=persona,
+    )
+    return {"name": name}

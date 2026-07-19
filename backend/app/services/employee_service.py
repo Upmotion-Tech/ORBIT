@@ -239,6 +239,40 @@ class EmployeeService:
 
         return self._to_response(employee, persona)
 
+    async def permanently_delete_employee(
+        self, employee_id: str, user="anonymous", actor_id=None, persona=None,
+    ) -> str:
+        # Genuine hard-delete: removes the account (can never log in again)
+        # plus every row that personally belongs to them, per explicit
+        # request — distinct from delete_employee/soft_delete above, which
+        # only flips an account inactive and keeps the record for history.
+        employee = await self.employee_repo.find_by_id(employee_id)
+        if not employee:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Employee not found.",
+            )
+
+        if not has_role(persona, "owner"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only the Owner can permanently delete an account.",
+            )
+
+        if actor_id and actor_id == employee.id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="You cannot delete your own account.",
+            )
+
+        employee_name = employee.name
+        # Capture the name before the row is gone — nothing to log against
+        # afterward.
+        await self._audit(user, "Account Permanently Deleted", employee_name)
+        await self.employee_repo.hard_delete_with_related_data(employee)
+
+        return employee_name
+
     def _to_response(self, employee: Employee, persona) -> EmployeeResponse:
         resp = EmployeeResponse.model_validate(employee)
         if not has_role(persona, "owner", "hr", "finance"):
