@@ -40,75 +40,23 @@ class EmailService:
         )
 
         has_logo = LOGO_PATH.exists()
-        logo_row = f"""\
-            <tr>
-              <td align="center" style="padding:36px 40px 20px 40px">
-                <img src="cid:{LOGO_CID}" alt="Upmotion Tech" width="150" style="display:block;height:auto;border:0;outline:none;text-decoration:none" />
-              </td>
-            </tr>
-""" if has_logo else ""
-
-        # Table-based layout on purpose (not flex/grid) — this is an actual
-        # email, not a browser page, and Outlook desktop's Word rendering
-        # engine ignores modern CSS layout; tables + inline styles are the
-        # one thing every major mail client renders consistently.
+        logo_html = (
+            f'<img src="cid:{LOGO_CID}" alt="Upmotion Tech" style="height:38px;margin-bottom:22px;display:block" />'
+            if has_logo else ""
+        )
+        # Deliberately plain — normal paragraphs, no card/button/gradient
+        # template. Just the same text as the plain-text part, formatted.
         html_body = f"""\
-<div style="background:#F0F2F7;padding:32px 16px;font-family:'Segoe UI',Helvetica,Arial,sans-serif">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-    <tr>
-      <td align="center">
-        <table role="presentation" width="480" cellpadding="0" cellspacing="0" border="0" style="max-width:480px;width:100%;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #E5E7F0">
-          <tr>
-            <td style="background:linear-gradient(135deg,#4F46E5,#6366F1);height:6px;line-height:6px;font-size:0">&nbsp;</td>
-          </tr>
-{logo_row}
-          <tr>
-            <td style="padding:0 40px">
-              <p style="margin:0 0 16px;font-size:20px;font-weight:700;color:#111318">Welcome, {first_name}.</p>
-              <p style="margin:0 0 8px;font-size:14.5px;line-height:1.6;color:#3A3D46">Welcome to Upmotion Tech — your ORBIT account has been created and is ready to use.</p>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:24px 40px 8px 40px">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F7F8FC;border:1px solid #E5E7F0;border-radius:10px">
-                <tr>
-                  <td style="padding:18px 22px">
-                    <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#8A8DA0">Email</p>
-                    <p style="margin:0 0 16px;font-size:14.5px;font-weight:600;color:#111318">{to_email}</p>
-                    <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#8A8DA0">Temporary Password</p>
-                    <p style="margin:0;font-family:Consolas,'Courier New',monospace;font-size:16px;font-weight:700;color:#4F46E5;letter-spacing:.03em">{temp_password}</p>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-          <tr>
-            <td align="center" style="padding:28px 40px 8px 40px">
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                <tr>
-                  <td align="center" style="border-radius:9px;background:#4F46E5">
-                    <a href="{login_url}" style="display:inline-block;padding:13px 34px;font-size:14.5px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:9px">Log in to ORBIT</a>
-                  </td>
-                </tr>
-              </table>
-              <p style="margin:14px 0 0;font-size:12.5px;color:#8A8DA0">or paste this link into your browser:<br>
-                <a href="{login_url}" style="color:#4F46E5;text-decoration:none;word-break:break-all">{login_url}</a></p>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:28px 40px 4px 40px">
-              <p style="margin:0;font-size:12.5px;line-height:1.6;color:#8A8DA0">For security reasons, you will be required to change your password the first time you sign in.</p>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:24px 40px 32px 40px;border-top:1px solid #EEF0F6">
-              <p style="margin:20px 0 0;font-size:13.5px;color:#3A3D46">Regards,<br><strong style="color:#111318">Upmotion Tech</strong></p>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
+<div style="font-family:'Segoe UI',Arial,sans-serif;font-size:14.5px;line-height:1.6;color:#1a1a2e;max-width:480px;margin:0 auto;padding:28px 4px">
+  {logo_html}
+  <p style="margin:0 0 14px">Hello {first_name},</p>
+  <p style="margin:0 0 14px">Welcome to Upmotion Tech.</p>
+  <p style="margin:0 0 18px">Your ORBIT account has been created.</p>
+  <p style="margin:0 0 14px">Login URL:<br><a href="{login_url}" style="color:#4F46E5">{login_url}</a></p>
+  <p style="margin:0 0 14px">Email:<br>{to_email}</p>
+  <p style="margin:0 0 18px">Temporary Password:<br><strong>{temp_password}</strong></p>
+  <p style="margin:0 0 18px">For security reasons, you will be required to change your password the first time you sign in.</p>
+  <p style="margin:0">Regards,<br>Upmotion Tech</p>
 </div>
 """
 
