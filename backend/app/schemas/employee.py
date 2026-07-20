@@ -26,7 +26,6 @@ class EmployeeCreate(BaseModel):
     employment_type: str = Field(default="Full-time")
     start_date: date
     salary: float = Field(default=0.0, ge=0)
-    password: str = Field(..., min_length=1, max_length=255)
     access_levels: list[str] = Field(default_factory=lambda: ["employee"])
     status: str = Field(default="Active")
     probation_end: Optional[date] = None
@@ -106,6 +105,13 @@ class EmployeeResponse(BaseModel):
     is_active: bool = True
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    # Both set only by create_employee's response, never by from_attributes
+    # (Employee has no such columns) — welcome_email_sent tells the caller
+    # whether the mail actually went out; temp_password is a fallback ONLY
+    # populated when it didn't, so HR/Owner isn't left with an unreachable
+    # account and no way to hand over the credential.
+    welcome_email_sent: Optional[bool] = None
+    temp_password: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

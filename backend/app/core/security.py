@@ -1,3 +1,5 @@
+import secrets
+import string
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -5,6 +7,22 @@ import bcrypt
 from jose import jwt
 
 from app.core.config import settings
+
+
+def generate_temp_password(length: int = 10) -> str:
+    """Random one-time password for newly-created employees, mailed to them
+    and never chosen by a human. Guarantees at least one upper/lower/digit/
+    symbol so it clears any reasonable complexity check downstream."""
+    required = [
+        secrets.choice(string.ascii_uppercase),
+        secrets.choice(string.ascii_lowercase),
+        secrets.choice(string.digits),
+        secrets.choice("!@#$%*"),
+    ]
+    pool = string.ascii_letters + string.digits
+    chars = required + [secrets.choice(pool) for _ in range(length - len(required))]
+    secrets.SystemRandom().shuffle(chars)
+    return "".join(chars)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:

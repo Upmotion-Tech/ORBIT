@@ -7,9 +7,10 @@ from app.repositories.employee_repository import EmployeeRepository
 from app.repositories.notification_repository import NotificationRepository
 from app.schemas.employee import EmployeeCreate, EmployeeUpdate, EmployeeResponse
 from app.models.employee import Employee
-from app.core.security import get_password_hash, verify_password
+from app.core.security import get_password_hash, verify_password, generate_temp_password
 from app.core.time import now_pkt
 from app.core.permissions import has_role
+from app.services.email_service import EmailService
 
 PROBATION_MONTHS = 3
 
@@ -20,10 +21,12 @@ class EmployeeService:
         employee_repo: EmployeeRepository,
         notification_repo: Optional[NotificationRepository] = None,
         audit_repo = None,
+        email_service: Optional[EmailService] = None,
     ):
         self.employee_repo = employee_repo
         self.notification_repo = notification_repo
         self.audit_repo = audit_repo
+        self.email_service = email_service
 
     async def _audit(self, actor: str, action: str, label: str, detail: Optional[str] = None) -> None:
         if self.audit_repo:
@@ -64,8 +67,12 @@ class EmployeeService:
                 detail="An employee with this email already exists.",
             )
 
-        password = data.pop("password", "")
-        password_hash = get_password_hash(password)
+        # Password is never client-supplied — always a fresh random temp
+        # password, mailed to the employee (never returned to the caller
+        # unless the mail itself failed to send, see below).
+        data.pop("password", None)
+        temp_password = generate_temp_password()
+        password_hash = get_password_hash(temp_password)
 
         data["email"] = email
         data["password_hash"] = password_hash
@@ -80,6 +87,12 @@ class EmployeeService:
 
         employee = await self.employee_repo.create(data)
 
+        email_sent = False
+        if self.email_service:
+            email_sent = await self.email_service.send_welcome_email(
+                to_email=employee.email, to_name=employee.name, temp_password=temp_password,
+            )
+
         if self.notification_repo:
             # HR/Owner-relevant only — broadcasting to "all" meant every
             # employee got notified whenever anyone (else) was hired.
@@ -93,7 +106,14 @@ class EmployeeService:
 
         await self._audit(user, "Created", employee.name, f"Role '{employee.role}'")
 
-        return self._to_response(employee, persona)
+        resp = self._to_response(employee, persona)
+        resp.welcome_email_sent = email_sent
+        if not email_sent:
+            # Fallback so the account isn't unreachable — the caller (HR/
+            # Owner) needs some way to hand over the credential if the mail
+            # never arrived.
+            resp.temp_password = temp_password
+        return resp
 
     async def update_employee(
         self, employee_id: str, data: dict, user="anonymous", persona=None, actor_id=None,

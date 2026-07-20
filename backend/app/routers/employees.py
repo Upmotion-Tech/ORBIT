@@ -9,6 +9,7 @@ from app.repositories.employee_repository import EmployeeRepository
 from app.repositories.notification_repository import NotificationRepository
 from app.repositories.audit_log_repository import AuditLogRepository
 from app.services.employee_service import EmployeeService
+from app.services.email_service import EmailService
 from app.schemas.employee import EmployeeCreate, EmployeeUpdate, EmployeeResponse
 
 router = APIRouter(prefix="/api/employees", tags=["Employees"])
@@ -19,6 +20,7 @@ def get_employee_service(db: AsyncSession = Depends(get_db)) -> EmployeeService:
         employee_repo=EmployeeRepository(db),
         notification_repo=NotificationRepository(db),
         audit_repo=AuditLogRepository(db),
+        email_service=EmailService(),
     )
 
 

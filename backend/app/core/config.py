@@ -17,6 +17,18 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 1440
 
+    # Hostinger SMTP — used to email new employees their auto-generated
+    # temporary password. Left blank until real credentials are put in .env;
+    # EmailService treats a blank config as "not configured" and no-ops
+    # rather than erroring, so employee creation still works before this is set up.
+    smtp_host: Optional[str] = None
+    smtp_port: int = 465
+    smtp_username: Optional[str] = None
+    smtp_password: Optional[str] = None
+    smtp_from_email: Optional[str] = None
+    smtp_from_name: str = "Upmotion Tech"
+    orbit_login_url: str = "https://orbit.theupmotion.online"
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
     @property
