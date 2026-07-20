@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     smtp_password: Optional[str] = None
     smtp_from_email: Optional[str] = None
     smtp_from_name: str = "Upmotion Tech"
-    orbit_login_url: str = "https://orbit.theupmotion.online"
+    orbit_login_url: str = "https://orbit-up-motion.vercel.app"
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
