@@ -45,6 +45,7 @@ async def list_leads(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(50, ge=1, le=200, description="Items per page"),
     service: LeadService = Depends(get_lead_service),
+    current_user: dict = Depends(get_current_user),
 ):
     return await service.list_leads(
         search=search,
@@ -58,6 +59,7 @@ async def list_leads(
         sort_dir=sort_dir,
         page=page,
         page_size=page_size,
+        persona_roles=current_user.get("roles"),
     )
 
 
@@ -66,16 +68,18 @@ async def search_leads(
     q: str = Query(..., min_length=1, description="Search query"),
     limit: int = Query(20, ge=1, le=100),
     service: LeadService = Depends(get_lead_service),
+    current_user: dict = Depends(get_current_user),
 ):
-    return await service.search_leads(query=q, limit=limit)
+    return await service.search_leads(query=q, limit=limit, persona_roles=current_user.get("roles"))
 
 
 @router.get("/{lead_id}", response_model=LeadResponse)
 async def get_lead(
     lead_id: str,
     service: LeadService = Depends(get_lead_service),
+    current_user: dict = Depends(get_current_user),
 ):
-    lead = await service.get_lead(lead_id)
+    lead = await service.get_lead(lead_id, persona_roles=current_user.get("roles"))
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
     return lead
@@ -87,7 +91,7 @@ async def create_lead(
     service: LeadService = Depends(get_lead_service),
     current_user: dict = Depends(get_owner_user),
 ):
-    lead, warning = await service.create_lead(data.model_dump(), user=current_user.get("sub", "anonymous"))
+    lead, warning = await service.create_lead(data.model_dump(), user=current_user.get("sub", "anonymous"), persona_roles=current_user.get("roles"))
     return WarningResponse(success=True, warning=warning, data=lead.model_dump())
 
 
@@ -102,7 +106,7 @@ async def update_lead(
     if not update_data:
         raise HTTPException(status_code=400, detail="No fields to update")
 
-    lead, warning, error = await service.update_lead(lead_id, update_data, user=current_user.get("sub", "anonymous"))
+    lead, warning, error = await service.update_lead(lead_id, update_data, user=current_user.get("sub", "anonymous"), persona_roles=current_user.get("roles"))
     if error:
         raise HTTPException(status_code=404, detail=error)
     return WarningResponse(success=True, warning=warning, data=lead.model_dump() if lead else None)
@@ -119,6 +123,7 @@ async def change_lead_stage(
         lead_id, data.stage,
         user=current_user.get("sub", "anonymous"),
         is_owner=True,
+        persona_roles=current_user.get("roles"),
     )
     if error:
         raise HTTPException(status_code=400, detail=error)
@@ -146,7 +151,7 @@ async def upload_scope_document(
 ):
     filename = await storage_service.save(file, prefix="scope_")
     url = storage_service.get_url(filename)
-    lead, error = await service.upload_document(lead_id, "scope_document", url, user=current_user.get("sub", "anonymous"))
+    lead, error = await service.upload_document(lead_id, "scope_document", url, user=current_user.get("sub", "anonymous"), persona_roles=current_user.get("roles"))
     if error:
         raise HTTPException(status_code=404, detail=error)
     return WarningResponse(success=True, data=lead.model_dump() if lead else None)
@@ -161,7 +166,7 @@ async def upload_signed_contract(
 ):
     filename = await storage_service.save(file, prefix="contract_")
     url = storage_service.get_url(filename)
-    lead, error = await service.upload_document(lead_id, "signed_contract", url, user=current_user.get("sub", "anonymous"))
+    lead, error = await service.upload_document(lead_id, "signed_contract", url, user=current_user.get("sub", "anonymous"), persona_roles=current_user.get("roles"))
     if error:
         raise HTTPException(status_code=404, detail=error)
     return WarningResponse(success=True, data=lead.model_dump() if lead else None)
@@ -173,7 +178,7 @@ async def remove_scope_document(
     service: LeadService = Depends(get_lead_service),
     current_user: dict = Depends(get_owner_user),
 ):
-    lead, error = await service.remove_document(lead_id, "scope_document", user=current_user.get("sub", "anonymous"))
+    lead, error = await service.remove_document(lead_id, "scope_document", user=current_user.get("sub", "anonymous"), persona_roles=current_user.get("roles"))
     if error:
         raise HTTPException(status_code=404, detail=error)
     return WarningResponse(success=True, data=lead.model_dump() if lead else None)
@@ -185,7 +190,7 @@ async def remove_signed_contract(
     service: LeadService = Depends(get_lead_service),
     current_user: dict = Depends(get_owner_user),
 ):
-    lead, error = await service.remove_document(lead_id, "signed_contract", user=current_user.get("sub", "anonymous"))
+    lead, error = await service.remove_document(lead_id, "signed_contract", user=current_user.get("sub", "anonymous"), persona_roles=current_user.get("roles"))
     if error:
         raise HTTPException(status_code=404, detail=error)
     return WarningResponse(success=True, data=lead.model_dump() if lead else None)

@@ -2,6 +2,7 @@ from datetime import date
 from typing import Optional
 
 from app.core.time import now_pkt
+from app.core.permissions import has_role
 from app.models.lead import Lead
 from app.repositories.lead_repository import LeadRepository
 from app.repositories.activity_repository import ActivityRepository
@@ -54,6 +55,7 @@ class LeadService:
         sort_dir: str = "desc",
         page: int = 1,
         page_size: int = 50,
+        persona_roles: Optional[list] = None,
     ) -> LeadListResponse:
         total = await self.lead_repo.count(search, stage, source, assigned_rep, date_from, date_to, overdue_only)
         leads = await self.lead_repo.find_all(
@@ -63,20 +65,20 @@ class LeadService:
         total_pages = max(1, (total + page_size - 1) // page_size)
 
         return LeadListResponse(
-            items=[self._to_response(l) for l in leads],
+            items=[self._to_response(l, persona_roles) for l in leads],
             total=total,
             page=page,
             page_size=page_size,
             total_pages=total_pages,
         )
 
-    async def get_lead(self, lead_id: str) -> Optional[LeadResponse]:
+    async def get_lead(self, lead_id: str, persona_roles: Optional[list] = None) -> Optional[LeadResponse]:
         lead = await self.lead_repo.find_by_id(lead_id)
         if not lead:
             return None
-        return self._to_response(lead)
+        return self._to_response(lead, persona_roles)
 
-    async def create_lead(self, data: dict, user: str = "anonymous") -> tuple[LeadResponse, Optional[str]]:
+    async def create_lead(self, data: dict, user: str = "anonymous", persona_roles: Optional[list] = None) -> tuple[LeadResponse, Optional[str]]:
         data["created_by"] = user
         data["updated_by"] = user
         data["created_at"] = now_pkt()
@@ -100,9 +102,9 @@ class LeadService:
         })
         await self._audit(user, "Created", lead.company_name, f"Stage '{lead.stage}'")
 
-        return self._to_response(lead), warning
+        return self._to_response(lead, persona_roles), warning
 
-    async def update_lead(self, lead_id: str, data: dict, user: str = "anonymous") -> tuple[Optional[LeadResponse], Optional[str], Optional[str]]:
+    async def update_lead(self, lead_id: str, data: dict, user: str = "anonymous", persona_roles: Optional[list] = None) -> tuple[Optional[LeadResponse], Optional[str], Optional[str]]:
         lead = await self.lead_repo.find_by_id(lead_id)
         if not lead:
             return None, None, "Lead not found"
@@ -140,9 +142,9 @@ class LeadService:
 
         await self._check_auto_project(lead, user)
 
-        return self._to_response(lead), warning, None
+        return self._to_response(lead, persona_roles), warning, None
 
-    async def change_stage(self, lead_id: str, stage: str, user: str = "anonymous", is_owner: bool = False) -> tuple[Optional[LeadResponse], Optional[str]]:
+    async def change_stage(self, lead_id: str, stage: str, user: str = "anonymous", is_owner: bool = False, persona_roles: Optional[list] = None) -> tuple[Optional[LeadResponse], Optional[str]]:
         lead = await self.lead_repo.find_by_id(lead_id)
         if not lead:
             return None, "Lead not found"
@@ -166,7 +168,7 @@ class LeadService:
 
         await self._check_auto_project(lead, user)
 
-        return self._to_response(lead), None
+        return self._to_response(lead, persona_roles), None
 
     async def delete_lead(self, lead_id: str, user: str = "anonymous") -> bool:
         lead = await self.lead_repo.find_by_id(lead_id)
@@ -184,17 +186,17 @@ class LeadService:
         await self.lead_repo.soft_delete(lead)
         return True
 
-    async def search_leads(self, query: str, limit: int = 20) -> LeadListResponse:
+    async def search_leads(self, query: str, limit: int = 20, persona_roles: Optional[list] = None) -> LeadListResponse:
         leads = await self.lead_repo.search_global(query, limit)
         return LeadListResponse(
-            items=[self._to_response(l) for l in leads],
+            items=[self._to_response(l, persona_roles) for l in leads],
             total=len(leads),
             page=1,
             page_size=limit,
             total_pages=1,
         )
 
-    async def upload_document(self, lead_id: str, doc_type: str, url: str, user: str = "anonymous") -> tuple[Optional[LeadResponse], Optional[str]]:
+    async def upload_document(self, lead_id: str, doc_type: str, url: str, user: str = "anonymous", persona_roles: Optional[list] = None) -> tuple[Optional[LeadResponse], Optional[str]]:
         lead = await self.lead_repo.find_by_id(lead_id)
         if not lead:
             return None, "Lead not found"
@@ -222,9 +224,9 @@ class LeadService:
         
         await self._check_auto_project(lead, user)
 
-        return self._to_response(lead), None
+        return self._to_response(lead, persona_roles), None
 
-    async def remove_document(self, lead_id: str, doc_type: str, user: str = "anonymous") -> tuple[Optional[LeadResponse], Optional[str]]:
+    async def remove_document(self, lead_id: str, doc_type: str, user: str = "anonymous", persona_roles: Optional[list] = None) -> tuple[Optional[LeadResponse], Optional[str]]:
         lead = await self.lead_repo.find_by_id(lead_id)
         if not lead:
             return None, "Lead not found"
@@ -249,7 +251,7 @@ class LeadService:
             "created_by": user,
         })
 
-        return self._to_response(lead), None
+        return self._to_response(lead, persona_roles), None
 
     async def get_activities(self, lead_id: str, page: int = 1, page_size: int = 50) -> ActivityListResponse:
         total = await self.activity_repo.count_by_lead(lead_id)
@@ -269,7 +271,7 @@ class LeadService:
         activity = await self.activity_repo.create(data)
         return ActivityResponse.model_validate(activity), None
 
-    def _to_response(self, lead: Lead) -> LeadResponse:
+    def _to_response(self, lead: Lead, persona_roles: Optional[list] = None) -> LeadResponse:
         today = now_pkt().date()
         is_overdue = (
             lead.follow_up_date is not None
@@ -278,6 +280,13 @@ class LeadService:
         )
         resp = LeadResponse.model_validate(lead)
         resp.is_overdue_follow_up = is_overdue
+
+        # A non-owner employee holding the "crm" access level gets full view
+        # (and can comment), but never sees deal value — mirrors the same
+        # redaction rule already applied to Project.budget for non-owners.
+        if not has_role(persona_roles, "owner"):
+            resp.value = None
+
         return resp
 
     async def _check_auto_project(self, lead: Lead, user: str) -> None:
