@@ -15,6 +15,7 @@ from app.core.time import PKT
 from app.repositories.attendance_repository import AttendanceRepository
 from app.repositories.employee_repository import EmployeeRepository
 from app.repositories.notification_repository import NotificationRepository
+from app.repositories.wfh_request_repository import WfhRequestRepository
 from app.services.attendance_service import AttendanceService
 from app.routers import (
     auth,
@@ -40,6 +41,7 @@ from app.routers import (
     expense_category_budgets,
     crm_sources,
     attendance,
+    wfh_requests,
 )
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
@@ -54,6 +56,7 @@ async def _run_attendance_sweep():
     async with async_session_factory() as db:
         service = AttendanceService(
             AttendanceRepository(db), EmployeeRepository(db), NotificationRepository(db),
+            wfh_repo=WfhRequestRepository(db),
         )
         count = await service.run_end_of_day_sweep()
         await db.commit()
@@ -138,6 +141,7 @@ app.include_router(dashboard_export.router)
 app.include_router(expense_category_budgets.router)
 app.include_router(crm_sources.router)
 app.include_router(attendance.router)
+app.include_router(wfh_requests.router)
 
 
 

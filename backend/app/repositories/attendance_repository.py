@@ -25,6 +25,11 @@ class AttendanceRepository:
         await self.db.flush()
         return record
 
+    async def update_status(self, record: AttendanceRecord, status: str) -> AttendanceRecord:
+        record.status = status
+        await self.db.flush()
+        return record
+
     async def find_for_month_with_employee(
         self, year: int, month: int, employee_id: str | None = None,
     ) -> list[tuple[AttendanceRecord, Employee]]:

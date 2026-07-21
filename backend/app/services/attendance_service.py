@@ -15,10 +15,12 @@ class AttendanceService:
         attendance_repo: AttendanceRepository,
         employee_repo: EmployeeRepository,
         notification_repo=None,
+        wfh_repo=None,
     ):
         self.attendance_repo = attendance_repo
         self.employee_repo = employee_repo
         self.notification_repo = notification_repo
+        self.wfh_repo = wfh_repo
 
     async def mark_attendance(self, employee_id: str) -> AttendanceResponse:
         employee = await self.employee_repo.find_by_id(employee_id)
@@ -104,13 +106,25 @@ class AttendanceService:
             return 0
 
         missing = await self.attendance_repo.find_active_employees_without_record(target_day)
+        absent_count = 0
         for emp in missing:
+            # An approved work-from-home day counts as worked, not absent —
+            # nobody who got WFH approved for today should get swept to
+            # Absent just because they never physically checked in.
+            wfh = await self.wfh_repo.find_approved_for_employee_and_date(emp.id, target_day) if self.wfh_repo else None
+            if wfh:
+                await self.attendance_repo.create({
+                    "employee_id": emp.id, "date": target_day, "status": "WFH", "marked_at": None,
+                })
+                continue
+
             await self.attendance_repo.create({
                 "employee_id": emp.id,
                 "date": target_day,
                 "status": "Absent",
                 "marked_at": None,
             })
+            absent_count += 1
             if self.notification_repo:
                 await self.notification_repo.create(
                     user_id=emp.id,
@@ -118,4 +132,4 @@ class AttendanceService:
                     title="Marked absent",
                     message=f"You have been marked absent for {target_day.strftime('%d %b %Y')} — no attendance was recorded.",
                 )
-        return len(missing)
+        return absent_count
