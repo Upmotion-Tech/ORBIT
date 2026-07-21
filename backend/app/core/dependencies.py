@@ -115,6 +115,36 @@ async def get_finance_user(
     return current_user
 
 
+async def get_crm_editor_user(
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    # Leads can be created/edited/deleted only by Owner or someone with the
+    # "crm" access level — mirrors get_finance_user's exact pattern. Anyone
+    # else granted only view access to the CRM screen (a different access
+    # level that also happens to expose Leads) stays read-only.
+    roles = current_user.get("roles") or []
+    if not any(r in ("owner", "crm") for r in roles):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only Owner or CRM can perform this action.",
+        )
+    return current_user
+
+
+async def get_dev_editor_user(
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    # Same pattern for Projects/Tasks — Owner or "dev" access level gets full
+    # create/edit/delete rights, matching get_finance_user/get_crm_editor_user.
+    roles = current_user.get("roles") or []
+    if not any(r in ("owner", "dev") for r in roles):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only Owner or Dev can perform this action.",
+        )
+    return current_user
+
+
 async def get_audit_user(
     current_user: dict = Depends(get_current_user),
 ) -> dict:

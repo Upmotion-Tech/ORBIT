@@ -56,11 +56,15 @@ class ProjectService:
         date_to: Optional[date] = None,
         persona: str = "owner",
         user_name: str = "",
+        is_dev_editor: bool = False,
     ) -> list[ProjectResponse]:
         # Enforce project visibility: dev only sees projects they are assigned
         # to — was hardcoded to the mock name "Kofi Mensah" regardless of who
         # was actually logged in, so a real employee added to a project's
         # team could never see it themselves. Now uses the real caller.
+        # This visibility scoping is unchanged by the "dev access = full
+        # owner parity" ask below — that's about edit/delete/budget rights on
+        # projects already visible, not about widening which ones show up.
         assigned_to_member = user_name if persona == "dev" else None
 
         projects = await self.project_repo.find_all(
@@ -73,9 +77,9 @@ class ProjectService:
             assigned_to_member=assigned_to_member,
         )
 
-        return [self._to_response(p, persona) for p in projects]
+        return [self._to_response(p, persona, is_dev_editor) for p in projects]
 
-    async def get_project(self, project_id: str, persona: str = "owner", user_name: str = "") -> Optional[ProjectResponse]:
+    async def get_project(self, project_id: str, persona: str = "owner", user_name: str = "", is_dev_editor: bool = False) -> Optional[ProjectResponse]:
         project = await self.project_repo.find_by_id(project_id)
         if not project:
             return None
@@ -87,13 +91,21 @@ class ProjectService:
                 detail="Access denied to this project.",
             )
 
-        return self._to_response(project, persona)
+        return self._to_response(project, persona, is_dev_editor)
 
-    async def create_project(self, data: dict, user: str = "anonymous", persona: str = "owner") -> ProjectResponse:
-        if persona != "owner":
+    async def create_project(self, data: dict, user: str = "anonymous", persona: str = "owner", is_dev_editor: bool = False) -> ProjectResponse:
+        # An employee holding the "dev" access level functions as Owner for
+        # this module — same parity already granted to "finance"/"crm" for
+        # their own modules. is_dev_editor is computed from the caller's full
+        # access_levels list (has_role(roles, "owner", "dev")), not just the
+        # single derived persona string, so it's correct even for someone
+        # whose highest-priority derived persona happens to be something else
+        # (e.g. holds both "finance" and "dev" — persona derives to "finance",
+        # but they still hold "dev" and must get project-edit parity for it).
+        if persona != "owner" and not is_dev_editor:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only owners can create projects.",
+                detail="Only owners or Dev can create projects.",
             )
 
         # Enforce deadline validation: deadline >= the project's own
@@ -145,9 +157,9 @@ class ProjectService:
 
         await self._audit(user, "Created", project.name)
 
-        return self._to_response(project, persona)
+        return self._to_response(project, persona, is_dev_editor)
 
-    async def update_project(self, project_id: str, data: dict, user: str = "anonymous", persona: str = "owner") -> ProjectResponse:
+    async def update_project(self, project_id: str, data: dict, user: str = "anonymous", persona: str = "owner", is_dev_editor: bool = False) -> ProjectResponse:
         project = await self.project_repo.find_by_id(project_id)
         if not project:
             raise HTTPException(
@@ -156,11 +168,13 @@ class ProjectService:
             )
 
         # Anyone with view access to Projects can be assigned/allotted to one
-        # and comment on it, but editing project fields is owner-only.
-        if persona != "owner":
+        # and comment on it. Editing project fields is Owner-or-Dev — see
+        # create_project's comment above for why is_dev_editor (full roles
+        # list) is used instead of the single derived persona string.
+        if persona != "owner" and not is_dev_editor:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only owners can edit project details.",
+                detail="Only owners or Dev can edit project details.",
             )
 
         # Check duplicate name on update
@@ -235,17 +249,17 @@ class ProjectService:
             changed = sorted(k for k in data.keys() if k != "updated_by")
             await self._audit(user, "Updated", updated_project.name, f"Fields updated: {', '.join(changed)}" if changed else None)
 
-        return self._to_response(updated_project, persona)
+        return self._to_response(updated_project, persona, is_dev_editor)
 
-    async def delete_project(self, project_id: str, persona: str = "owner", user: str = "anonymous") -> bool:
+    async def delete_project(self, project_id: str, persona: str = "owner", user: str = "anonymous", is_dev_editor: bool = False) -> bool:
         project = await self.project_repo.find_by_id(project_id)
         if not project:
             return False
 
-        if persona != "owner":
+        if persona != "owner" and not is_dev_editor:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only owners can delete projects.",
+                detail="Only owners or Dev can delete projects.",
             )
 
         await self._audit(user, "Deleted", project.name)
@@ -316,13 +330,14 @@ class ProjectService:
 
         return project
 
-    def _to_response(self, project: Project, persona: str) -> ProjectResponse:
+    def _to_response(self, project: Project, persona: str, is_dev_editor: bool = False) -> ProjectResponse:
         resp = ProjectResponse.model_validate(project)
-        
-        # Enforce financial visibility logic — only owners see budget/spend;
-        # everyone else (whoever is allotted to or has view access on a
-        # project) can see everything else and comment, just not price.
-        if persona != "owner":
+
+        # Budget/spend visibility: Owner or Dev-access-level holders see it
+        # (Dev now functions as Owner for this module); everyone else with
+        # mere view access to Projects can see everything else and comment,
+        # just not price.
+        if persona != "owner" and not is_dev_editor:
             resp.budget = None
-            
+
         return resp

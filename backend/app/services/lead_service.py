@@ -282,10 +282,11 @@ class LeadService:
         resp = LeadResponse.model_validate(lead)
         resp.is_overdue_follow_up = is_overdue
 
-        # A non-owner employee holding the "crm" access level gets full view
-        # (and can comment), but never sees deal value — mirrors the same
-        # redaction rule already applied to Project.budget for non-owners.
-        if not has_role(persona_roles, "owner"):
+        # An employee holding the "crm" access level functions as Owner for
+        # this module — full view, including deal value. Only someone with
+        # neither role (e.g. granted view access to CRM through a different
+        # access level) has value redacted.
+        if not has_role(persona_roles, "owner", "crm"):
             resp.value = None
 
         return resp

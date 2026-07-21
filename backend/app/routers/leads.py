@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_user, get_owner_user
+from app.core.dependencies import get_current_user, get_crm_editor_user
 from app.repositories.lead_repository import LeadRepository
 from app.repositories.activity_repository import ActivityRepository
 from app.schemas.lead import LeadCreate, LeadUpdate, LeadStageUpdate, LeadResponse, LeadListResponse
@@ -89,7 +89,7 @@ async def get_lead(
 async def create_lead(
     data: LeadCreate,
     service: LeadService = Depends(get_lead_service),
-    current_user: dict = Depends(get_owner_user),
+    current_user: dict = Depends(get_crm_editor_user),
 ):
     lead, warning = await service.create_lead(data.model_dump(), user=current_user.get("sub", "anonymous"), persona_roles=current_user.get("roles"))
     return WarningResponse(success=True, warning=warning, data=lead.model_dump())
@@ -100,7 +100,7 @@ async def update_lead(
     lead_id: str,
     data: LeadUpdate,
     service: LeadService = Depends(get_lead_service),
-    current_user: dict = Depends(get_owner_user),
+    current_user: dict = Depends(get_crm_editor_user),
 ):
     update_data = {k: v for k, v in data.model_dump().items() if v is not None}
     if not update_data:
@@ -117,7 +117,7 @@ async def change_lead_stage(
     lead_id: str,
     data: LeadStageUpdate,
     service: LeadService = Depends(get_lead_service),
-    current_user: dict = Depends(get_owner_user),
+    current_user: dict = Depends(get_crm_editor_user),
 ):
     lead, error = await service.change_stage(
         lead_id, data.stage,
@@ -134,7 +134,7 @@ async def change_lead_stage(
 async def delete_lead(
     lead_id: str,
     service: LeadService = Depends(get_lead_service),
-    current_user: dict = Depends(get_owner_user),
+    current_user: dict = Depends(get_crm_editor_user),
 ):
     deleted = await service.delete_lead(lead_id, user=current_user.get("sub", "anonymous"))
     if not deleted:
@@ -147,7 +147,7 @@ async def upload_scope_document(
     lead_id: str,
     file: UploadFile = File(...),
     service: LeadService = Depends(get_lead_service),
-    current_user: dict = Depends(get_owner_user),
+    current_user: dict = Depends(get_crm_editor_user),
 ):
     filename = await storage_service.save(file, prefix="scope_")
     url = storage_service.get_url(filename)
@@ -162,7 +162,7 @@ async def upload_signed_contract(
     lead_id: str,
     file: UploadFile = File(...),
     service: LeadService = Depends(get_lead_service),
-    current_user: dict = Depends(get_owner_user),
+    current_user: dict = Depends(get_crm_editor_user),
 ):
     filename = await storage_service.save(file, prefix="contract_")
     url = storage_service.get_url(filename)
@@ -176,7 +176,7 @@ async def upload_signed_contract(
 async def remove_scope_document(
     lead_id: str,
     service: LeadService = Depends(get_lead_service),
-    current_user: dict = Depends(get_owner_user),
+    current_user: dict = Depends(get_crm_editor_user),
 ):
     lead, error = await service.remove_document(lead_id, "scope_document", user=current_user.get("sub", "anonymous"), persona_roles=current_user.get("roles"))
     if error:
@@ -188,7 +188,7 @@ async def remove_scope_document(
 async def remove_signed_contract(
     lead_id: str,
     service: LeadService = Depends(get_lead_service),
-    current_user: dict = Depends(get_owner_user),
+    current_user: dict = Depends(get_crm_editor_user),
 ):
     lead, error = await service.remove_document(lead_id, "signed_contract", user=current_user.get("sub", "anonymous"), persona_roles=current_user.get("roles"))
     if error:

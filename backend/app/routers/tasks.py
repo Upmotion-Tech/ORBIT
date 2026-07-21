@@ -5,7 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import get_persona_role, get_current_user
+from app.core.dependencies import get_persona_role, get_persona_roles, get_current_user
+from app.core.permissions import has_role
 from app.repositories.task_repository import TaskRepository
 from app.repositories.project_repository import ProjectRepository
 from app.repositories.notification_repository import NotificationRepository
@@ -72,13 +73,14 @@ async def get_task(
 async def create_task(
     data: TaskCreate,
     persona: str = Depends(get_persona_role),
+    roles: list = Depends(get_persona_roles),
     current_user: dict = Depends(get_current_user),
     service: TaskService = Depends(get_task_service),
 ):
     # Was a hardcoded "Jordan Blake" placeholder — see projects.py's
     # create_project/update_project for the full explanation of the same fix.
     user_name = current_user.get("name") or persona
-    return await service.create_task(data.model_dump(), user=user_name, persona=persona)
+    return await service.create_task(data.model_dump(), user=user_name, persona=persona, is_dev_editor=has_role(roles, "owner", "dev"))
 
 
 @router.put("/{task_id}", response_model=TaskResponse)
@@ -86,6 +88,7 @@ async def update_task(
     task_id: str,
     data: TaskUpdate,
     persona: str = Depends(get_persona_role),
+    roles: list = Depends(get_persona_roles),
     current_user: dict = Depends(get_current_user),
     service: TaskService = Depends(get_task_service),
 ):
@@ -95,6 +98,7 @@ async def update_task(
         data.model_dump(exclude_unset=True),
         user=user_name,
         persona=persona,
+        is_dev_editor=has_role(roles, "owner", "dev"),
     )
 
 
@@ -102,11 +106,12 @@ async def update_task(
 async def delete_task(
     task_id: str,
     persona: str = Depends(get_persona_role),
+    roles: list = Depends(get_persona_roles),
     current_user: dict = Depends(get_current_user),
     service: TaskService = Depends(get_task_service),
 ):
     user_name = current_user.get("name") or persona
-    success = await service.delete_task(task_id, persona=persona, user=user_name)
+    success = await service.delete_task(task_id, persona=persona, user=user_name, is_dev_editor=has_role(roles, "owner", "dev"))
     if not success:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

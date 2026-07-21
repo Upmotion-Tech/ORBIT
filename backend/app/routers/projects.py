@@ -6,7 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import get_persona_role, get_current_user
+from app.core.dependencies import get_persona_role, get_persona_roles, get_current_user
+from app.core.permissions import has_role
 from app.repositories.project_repository import ProjectRepository
 from app.repositories.lead_repository import LeadRepository
 from app.repositories.notification_repository import NotificationRepository
@@ -39,6 +40,7 @@ async def list_projects(
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
     persona: str = Depends(get_persona_role),
+    roles: list = Depends(get_persona_roles),
     current_user: dict = Depends(get_current_user),
     service: ProjectService = Depends(get_project_service),
 ):
@@ -51,6 +53,7 @@ async def list_projects(
         date_to=date_to,
         persona=persona,
         user_name=current_user.get("name", ""),
+        is_dev_editor=has_role(roles, "owner", "dev"),
     )
 
 
@@ -58,10 +61,11 @@ async def list_projects(
 async def get_project(
     project_id: str,
     persona: str = Depends(get_persona_role),
+    roles: list = Depends(get_persona_roles),
     current_user: dict = Depends(get_current_user),
     service: ProjectService = Depends(get_project_service),
 ):
-    project = await service.get_project(project_id, persona, current_user.get("name", ""))
+    project = await service.get_project(project_id, persona, current_user.get("name", ""), has_role(roles, "owner", "dev"))
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -74,6 +78,7 @@ async def get_project(
 async def create_project(
     data: ProjectCreate,
     persona: str = Depends(get_persona_role),
+    roles: list = Depends(get_persona_roles),
     current_user: dict = Depends(get_current_user),
     service: ProjectService = Depends(get_project_service),
 ):
@@ -84,7 +89,7 @@ async def create_project(
     # logged-in person. Matches the pattern delete_project/upload_attachment/
     # add_comment in this same file already use correctly.
     user_name = current_user.get("name") or persona
-    return await service.create_project(data.model_dump(), user=user_name, persona=persona)
+    return await service.create_project(data.model_dump(), user=user_name, persona=persona, is_dev_editor=has_role(roles, "owner", "dev"))
 
 
 @router.put("/{project_id}", response_model=ProjectResponse)
@@ -92,6 +97,7 @@ async def update_project(
     project_id: str,
     data: ProjectUpdate,
     persona: str = Depends(get_persona_role),
+    roles: list = Depends(get_persona_roles),
     current_user: dict = Depends(get_current_user),
     service: ProjectService = Depends(get_project_service),
 ):
@@ -101,6 +107,7 @@ async def update_project(
         data.model_dump(exclude_unset=True),
         user=user_name,
         persona=persona,
+        is_dev_editor=has_role(roles, "owner", "dev"),
     )
 
 
@@ -108,11 +115,12 @@ async def update_project(
 async def delete_project(
     project_id: str,
     persona: str = Depends(get_persona_role),
+    roles: list = Depends(get_persona_roles),
     current_user: dict = Depends(get_current_user),
     service: ProjectService = Depends(get_project_service),
 ):
     user_name = current_user.get("name") or persona
-    success = await service.delete_project(project_id, persona=persona, user=user_name)
+    success = await service.delete_project(project_id, persona=persona, user=user_name, is_dev_editor=has_role(roles, "owner", "dev"))
     if not success:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -158,13 +166,11 @@ async def upload_attachment(
             detail=f"Allowed file types: {', '.join(storage_service.ALLOWED_EXTENSIONS)}",
         )
 
-    # 3. Check for replacement permissions
+    # Replacing an existing attachment is allowed for anyone who can reach
+    # this endpoint at all — Dev-access holders function as Owner for
+    # Projects (see project_service.py), so there's no separate restriction
+    # left to enforce here beyond the endpoint's own gating.
     existing = await service.project_repo.find_attachment_by_id_and_filename(project_id, file.filename)
-    if existing and persona == "dev":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Dev members cannot replace existing attachments.",
-        )
 
     # If it is a replacement, remove the old file
     if existing:
@@ -229,12 +235,8 @@ async def delete_attachment(
     persona: str = Depends(get_persona_role),
     service: ProjectService = Depends(get_project_service),
 ):
-    if persona == "dev":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Dev members cannot delete attachments.",
-        )
-
+    # Dev-access holders function as Owner for Projects (see
+    # project_service.py) — no separate attachment-delete restriction left.
     attachment = await service.project_repo.find_attachment_by_id_and_filename(project_id, filename)
     if not attachment:
         raise HTTPException(

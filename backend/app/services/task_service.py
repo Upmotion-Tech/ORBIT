@@ -87,8 +87,14 @@ class TaskService:
 
         return TaskResponse.model_validate(task)
 
-    async def create_task(self, data: dict, user: str = "anonymous", persona: str = "owner") -> TaskResponse:
-        if persona not in ("owner", "admin", "finance"):
+    async def create_task(self, data: dict, user: str = "anonymous", persona: str = "owner", is_dev_editor: bool = False) -> TaskResponse:
+        # "admin"/"finance" here predate this ask and are left as-is; "dev"
+        # access-level holders now also get full parity, matching Projects.
+        # is_dev_editor is computed from the caller's full access_levels list
+        # (has_role(roles, "owner", "dev")) rather than the single derived
+        # persona string, so it's correct even when some other role outranks
+        # "dev" in that derivation (e.g. holding both "finance" and "dev").
+        if persona not in ("owner", "admin", "finance") and not is_dev_editor:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You do not have permission to create tasks.",
@@ -131,7 +137,7 @@ class TaskService:
 
         return TaskResponse.model_validate(task)
 
-    async def update_task(self, task_id: str, data: dict, user: str = "anonymous", persona: str = "owner") -> TaskResponse:
+    async def update_task(self, task_id: str, data: dict, user: str = "anonymous", persona: str = "owner", is_dev_editor: bool = False) -> TaskResponse:
         task = await self.task_repo.find_by_id(task_id)
         if not task:
             raise HTTPException(
@@ -139,12 +145,12 @@ class TaskService:
                 detail="Task not found.",
             )
 
-        # Enforce task permissions: dev cannot edit tasks
-        if persona == "dev":
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Dev members cannot edit task parameters.",
-            )
+        # Previously blocked only persona == "dev" specifically (everyone
+        # else who could reach this endpoint at all was already allowed to
+        # edit) — Dev-access-level holders now function as Owner for this
+        # module (see create_task above), so that one restriction is removed
+        # rather than replaced; nothing else here becomes more permissive or
+        # more restrictive than it already was.
 
         old_assignee = task.assignee
         old_status = task.status
@@ -171,16 +177,14 @@ class TaskService:
 
         return TaskResponse.model_validate(updated_task)
 
-    async def delete_task(self, task_id: str, persona: str = "owner", user: str = "anonymous") -> bool:
+    async def delete_task(self, task_id: str, persona: str = "owner", user: str = "anonymous", is_dev_editor: bool = False) -> bool:
         task = await self.task_repo.find_by_id(task_id)
         if not task:
             return False
 
-        if persona == "dev":
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Dev members cannot delete tasks.",
-            )
+        # Dev-access-level holders now function as Owner for this module —
+        # the prior "dev cannot delete tasks" restriction is removed, same
+        # reasoning as update_task above.
 
         await self._audit(user, "Deleted", task.title)
         await self.task_repo.soft_delete(task)
