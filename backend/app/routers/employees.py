@@ -69,7 +69,7 @@ async def create_employee(
 ):
     return await service.create_employee(
         body.model_dump(),
-        user=current_user.get("sub", "anonymous"),
+        user=current_user.get("user_id", "anonymous"),
         persona=persona,
     )
 
@@ -85,7 +85,7 @@ async def update_employee(
     return await service.update_employee(
         employee_id,
         body.model_dump(exclude_none=True),
-        user=current_user.get("sub", "anonymous"),
+        user=current_user.get("user_id", "anonymous"),
         persona=persona,
         actor_id=current_user.get("user_id"),
     )
@@ -119,7 +119,7 @@ async def upload_employee_contract(
     url = storage_service.get_url(filename)
     return await service.upload_contract(
         employee_id, url,
-        user=current_user.get("sub", "anonymous"),
+        user=current_user.get("user_id", "anonymous"),
         persona=persona,
     )
 
@@ -133,7 +133,7 @@ async def remove_employee_contract(
 ):
     return await service.remove_contract(
         employee_id,
-        user=current_user.get("sub", "anonymous"),
+        user=current_user.get("user_id", "anonymous"),
         persona=persona,
     )
 
@@ -147,7 +147,7 @@ async def deactivate_employee_account(
 ):
     return await service.set_account_active(
         employee_id, is_active=False,
-        user=current_user.get("sub", "anonymous"),
+        user=current_user.get("user_id", "anonymous"),
         actor_id=current_user.get("user_id"),
         persona=persona,
     )
@@ -162,7 +162,7 @@ async def activate_employee_account(
 ):
     return await service.set_account_active(
         employee_id, is_active=True,
-        user=current_user.get("sub", "anonymous"),
+        user=current_user.get("user_id", "anonymous"),
         persona=persona,
     )
 
@@ -174,7 +174,7 @@ async def delete_employee(
     persona: list = Depends(get_persona_roles),
     service: EmployeeService = Depends(get_employee_service),
 ):
-    await service.delete_employee(employee_id, persona=persona, user=current_user.get("sub", "anonymous"))
+    await service.delete_employee(employee_id, persona=persona, user=current_user.get("user_id", "anonymous"))
 
 
 @router.delete("/{employee_id}/permanent", status_code=status.HTTP_200_OK)
@@ -186,7 +186,7 @@ async def permanently_delete_employee_account(
 ):
     name = await service.permanently_delete_employee(
         employee_id,
-        user=current_user.get("sub", "anonymous"),
+        user=current_user.get("user_id", "anonymous"),
         actor_id=current_user.get("user_id"),
         persona=persona,
     )

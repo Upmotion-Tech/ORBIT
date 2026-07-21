@@ -8,6 +8,11 @@ from app.core.time import to_pkt
 class LeadCreate(BaseModel):
     company_name: str = Field(..., min_length=1, max_length=255)
     client_contact_name: str = Field(..., min_length=1, max_length=255)
+    # If set, links to that existing Customer directly (the "select from
+    # previous customers" dropdown option) — skips the auto-match/auto-create
+    # step in lead_service.create_lead entirely. If omitted, that step runs:
+    # match an existing customer by company_name, or auto-create one.
+    customer_id: Optional[str] = Field(None, max_length=36)
     assigned_rep: Optional[str] = Field(None, max_length=255)
     source: Optional[str] = Field(None, max_length=100)
     medium: Optional[str] = Field(None, max_length=100)
@@ -35,6 +40,7 @@ class LeadCreate(BaseModel):
 class LeadUpdate(BaseModel):
     company_name: Optional[str] = Field(None, min_length=1, max_length=255)
     client_contact_name: Optional[str] = Field(None, min_length=1, max_length=255)
+    customer_id: Optional[str] = Field(None, max_length=36)
     assigned_rep: Optional[str] = Field(None, max_length=255)
     source: Optional[str] = Field(None, max_length=100)
     medium: Optional[str] = Field(None, max_length=100)
@@ -56,6 +62,7 @@ class LeadResponse(BaseModel):
     id: str
     company_name: str
     client_contact_name: str
+    customer_id: Optional[str] = None
     assigned_rep: Optional[str] = None
     source: Optional[str] = None
     medium: Optional[str] = None

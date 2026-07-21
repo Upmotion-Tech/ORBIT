@@ -41,7 +41,7 @@ async def update_leave_policy(
 ):
     return await service.update_policy(
         body.model_dump(),
-        user=current_user.get("sub", "anonymous"),
+        user=current_user.get("user_id", "anonymous"),
         persona=persona,
     )
 

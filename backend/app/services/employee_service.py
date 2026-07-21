@@ -53,10 +53,10 @@ class EmployeeService:
     async def create_employee(
         self, data: dict, user="anonymous", persona=None,
     ) -> EmployeeResponse:
-        if not has_role(persona, "owner", "finance"):
+        if not has_role(persona, "owner", "hr", "finance"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only Owner or Finance can add employees.",
+                detail="Only Owner, HR, or Finance can add employees.",
             )
 
         email = data.get("email", "").strip().lower()
@@ -271,10 +271,10 @@ class EmployeeService:
                 detail="Employee not found.",
             )
 
-        if not has_role(persona, "hr"):
+        if not has_role(persona, "owner", "hr"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only HR can deactivate employees.",
+                detail="Only Owner or HR can deactivate employees.",
             )
 
         await self._audit(user, "Deactivated", employee.name)

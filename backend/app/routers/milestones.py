@@ -63,7 +63,7 @@ async def create_milestone(
     service: MilestoneService = Depends(get_milestone_service),
     current_user: dict = Depends(get_finance_user),
 ):
-    milestone = await service.create_milestone(body.model_dump(), user=current_user.get("sub", "anonymous"))
+    milestone = await service.create_milestone(body.model_dump(), user=current_user.get("user_id", "anonymous"))
     return _map_milestone_response(milestone)
 
 @router.put("/{milestone_id}", response_model=MilestoneResponse)
@@ -76,7 +76,7 @@ async def update_milestone(
     milestone = await service.update_milestone(
         milestone_id,
         body.model_dump(exclude_none=True),
-        user=current_user.get("sub", "anonymous")
+        user=current_user.get("user_id", "anonymous")
     )
     return _map_milestone_response(milestone)
 
@@ -86,4 +86,4 @@ async def delete_milestone(
     service: MilestoneService = Depends(get_milestone_service),
     current_user: dict = Depends(get_finance_user),
 ):
-    await service.delete_milestone(milestone_id, user=current_user.get("sub", "anonymous"))
+    await service.delete_milestone(milestone_id, user=current_user.get("user_id", "anonymous"))

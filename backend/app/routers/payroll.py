@@ -46,9 +46,9 @@ async def list_payroll_slips(
 
     # 2. Get or create slip for each employee
     slips = []
-    user_name = current_user.get("sub", "anonymous")
+    actor_id = current_user.get("user_id", "anonymous")
     for emp in employees:
-        slip = await service.get_or_create_slip(emp.id, month, emp.salary, user=user_name)
+        slip = await service.get_or_create_slip(emp.id, month, emp.salary, user=actor_id)
         # Verify status matches filter
         if payment_status and slip.payment_status != payment_status:
             continue
@@ -80,7 +80,7 @@ async def update_salary_slip(
     slip = await service.update_slip(
         slip_id,
         body.model_dump(exclude_none=True),
-        user=current_user.get("sub", "anonymous")
+        user=current_user.get("user_id", "anonymous")
     )
     return _map_slip_response(slip)
 

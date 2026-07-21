@@ -3426,3 +3426,139 @@ Ask: remove the "Password" input from the New Employee form entirely — a temp 
 Backend: `ast.parse` on all six touched/new files, `from app.main import app` import check (105 routes, unchanged — no new endpoints). Live end-to-end via `httpx.AsyncClient`/`ASGITransport` against the local dev SQLite DB (`DATABASE_URL` forced empty for the test run — `.env` currently points at the live Neon production DB, deliberately never touched by this verification): (1) `EmailService._build_message` directly — confirmed the real logo embeds as `Content-ID: <upmotion_logo>`/`image/png`, and the name/temp-password/login-URL all appear correctly in both the plain-text and HTML parts; (2) `_send_sync` with blank SMTP creds — confirmed it returns `False` without raising; (3) `POST /api/employees` with **no `password` field in the payload at all** → `201`, `welcome_email_sent: false` (SMTP still unconfigured), `temp_password` present as the fallback, `must_change_password: true`; (4) logged in with that exact auto-generated temp password → `200`, confirming the generated/hashed password round-trips correctly through real auth; (5) cleaned up the test employee via the real permanent-delete endpoint afterward. Frontend: `node --check`, tag-balance (`sc-if` 251/251, `div` 667/667, `x-import` 224/224, `{{ }}` 1876/1876 — down from 1878/1878 by exactly the 2 removed `{{ }}` uses, `efoPassword`/`onEfoPassword` — all balanced), scaffolded-binding cross-check clean (only the usual harmless sc-for loop-alias false positives). Repackaged into all three bundle copies — byte-identical (1,109,036 bytes each); confirmed via direct JSON-decode of the written bundle that `efoPassword`/`onEfoPassword`/the old `placeholder="default: 1234"` are **fully gone**, and the new helper copy + `welcome_email_sent`/`temp_password` toast handling are present.
 
 **Still needs doing before this is live for real**: the user still needs to fill in the real Hostinger mailbox credentials (`SMTP_USERNAME`/`SMTP_PASSWORD`/`SMTP_FROM_EMAIL`) in `.env` — until then, employee creation works exactly as verified above (account created, temp password shown as a toast fallback instead of emailed). Once real credentials are added, the very next employee creation will be the first real end-to-end send — worth a first real check that the email actually lands (spam folder, Hostinger sending limits, etc.) rather than assuming it's fine from this session's SMTP-unconfigured-path verification alone. Also, same as every other backend change in this file's history: this only exists in the local backend code right now, not deployed — needs a push to reach Render before it affects the production app. **Not** browser-tested (standing workflow).
+
+---
+
+## Update (2026-07-21) — Employee ID migration completed: assignments now use stable UUIDs, not name strings
+
+**The critical bug this fixes**: an employee named "Hashim" renamed themselves to "Syed Hashim Tirmizi" and every task/project/comment previously attributed to the old name silently vanished from their view — because Tasks/Projects/Comments/Audit referenced people by **name string**, not a stable ID. A prior session had already migrated the DB *models* to use ID-based FKs (`Task.assignee_id`, `Project.team_ids`, `ProjectComment.author_id`, `AuditLog.actor_id`) but left the routers, some services, and the frontend still working in names — this round finished the migration end to end.
+
+### Backend
+- `app/schemas/task.py`: `TaskCreate`/`TaskUpdate`/`TaskResponse` — `assignee`→`assignee_id`, added `created_by_id`/`updated_by_id`.
+- `app/schemas/project.py`: `ProjectCreate`/`Update`/`Response` — `team`→`team_ids` (list of employee IDs), `created_by`/`updated_by`→`created_by_id`/`updated_by_id`.
+- `app/schemas/comment.py`: `CommentResponse.author`→`author_id`.
+- `app/repositories/project_repository.py`: `add_comment()` now takes/writes `author_id` (was still constructing `ProjectComment(author=...)` against a model that only has `author_id` — a real `TypeError` on every comment post).
+- `app/services/project_service.py`: full rewrite of the ID-migration gaps —
+  - `create_project`/`update_project`/`delete_project`/`_to_response` all referenced an `is_dev_editor` variable that **was never a function parameter** (an earlier automated cleanup pass stripped the parameter declaration but left every usage) — a guaranteed `NameError` on any non-owner request. Since `_to_response` runs on *every* project returned to a non-owner, this alone made Projects invisible/broken for anyone who wasn't literally Owner.
+  - Notification targeting called `self._resolve_member_notification_target(member)` — a method that was **never defined anywhere in the file**. Removed entirely: `team_ids`/`assignee_id` already hold real employee IDs post-migration, so no name-to-ID resolution step is needed at all — the ID *is* the notification target.
+  - `check_and_create_project_from_lead` still built its project dict with the old `team`/`created_by`/`updated_by` keys, which don't exist on the model anymore.
+- `app/routers/projects.py` + `app/routers/tasks.py`: fully rewritten to match the ID-based service signatures — pass `current_user["user_id"]` instead of `current_user["name"]`, `team_ids` instead of `team`, `author_id` instead of `author`.
+- Frontend team/assignee pickers, filters, and Kanban/list rendering all converted from operating on employee **names** to employee **IDs** — a new module-level `EMPLOYEE_CACHE`/`setEmployeeCache()`/`getEmployeeName()`/`getEmployeeId()` (populated from `loadEmployees()`) resolves an ID to a display name anywhere the UI needs to show one. `devEmployeeOptions`'s department filter was also stale (`'Software Dev'`, the pre-migration department name — fixed to `'Dev Member'`).
+- Found and fixed the exact same "scaffolded but unwired" bug class in the New Task form: `tfAssignee`/`onTfAssignee` still read/wrote `taskForm.assignee` while the actual state field had already been renamed to `assignee_id` elsewhere.
+
+### Verification
+Full functional smoke test via `httpx.AsyncClient`/`ASGITransport` against a throwaway DB: dev-persona employee correctly sees only projects/tasks they're assigned to (by ID), can comment (`author_id` round-trips correctly), notifications target the real assignee ID directly, a plain employee is correctly blocked (403) from creating a task. Frontend: `node --check`, tag-balance, scaffolded-binding cross-check all clean; repackaged into all three bundle copies.
+
+**Important workflow finding from this round**: `pack.py` only ever reads `unpacked/template.html` — it never reads `unpacked/script.js` directly. A separate `unpacked/sync_script.py` must be run first to merge `script.js`'s content into `template.html`'s embedded `<script type="text/x-dc">` tag before `pack.py` will pick up any script.js edit. Earlier script.js-only edits in prior rounds never actually reached the bundle because of this — worth remembering as the correct sequence going forward: edit `script.js` → `node --check` → `python unpacked/sync_script.py` → tag-balance/scaffolded-binding check on the now-updated `template.html` → `python pack.py`.
+
+---
+
+## Update (2026-07-21, later) — "My Orbit project and my tasks disappeared" — real root cause found and fixed, both in code and in production data
+
+User report: after a name change (the exact scenario the ID migration above was meant to prevent), their "Orbit Portal" project and all their tasks were gone. Root-caused live against the **real production Neon database**, not guessed.
+
+### Root cause #1: the `is_dev_editor` NameError from the entry above was still live
+Confirmed the bug described above was real and currently affecting production: any non-owner listing/viewing a project hit the undefined `is_dev_editor` reference in `_to_response` → 500. Fixed as described above.
+
+### Root cause #2: `AuditLogRepository.log()` still constructed `AuditLog(actor=...)` against a model that only has `actor_id`
+A **separate, even more severe** bug: `AuditLog.actor` was renamed to `actor_id` (a real FK) in an earlier session, but `audit_log_repository.py`'s `log()` method was never updated to match — every single call raised a `TypeError: 'actor' is an invalid keyword argument for AuditLog`. Since every service's `_audit()` call happens *inside* the same DB transaction as the actual create/update (not wrapped in a try/except), this meant **every audited action across the entire app — Leads, Projects, Tasks, Employees — was silently rolling back its own transaction** the instant it tried to write an audit log entry. A project could appear to "save" in the response but the whole request (including the audit call) would raise before the response ever got built, so in practice **project/task creation was completely broken for everyone**, not just after a name change. Fixed `log()` to construct `AuditLog(actor_id=actor, ...)`; fixed the matching `AuditLogResponse` schema field (`actor`→`actor_id`).
+
+### Root cause #3: production Neon's schema was never migrated to match the ID-based models
+Confirmed via direct schema introspection that Neon still had the **old** columns (`projects.team`, `tasks.assignee`, no `author_id`/`actor_id`/`created_by_id` anywhere) — the ID migration's model changes had only ever been run against local SQLite in prior sessions. Backed up every affected table to JSON (`backend/neon_backup_before_id_migration_*/`, gitignored), then additively added the missing `*_id` columns (`team_ids`, `assignee_id`, `created_by_id`, `updated_by_id`, `author_id`, `actor_id`, `approved_by_id` — nothing dropped) and backfilled every row by matching the old name-based values against real employees. Specifically resolved the user's **pre-rename name** ("Hashim"/"Hash") to their current employee ID across the "Med AI" project's team, one task, and 10 comments — reproducing and fixing the exact reported scenario, not just the general case.
+
+### Root cause #4: a stale deep-link URL hash was re-opening a closed drawer on every refresh
+Separately reported: refreshing the page kept re-opening the Orbit project's detail drawer even when the user wasn't looking at it. Every Lead/Project/Task/Employee row navigates via a real `#/type/id` anchor (so ctrl-click/middle-click "open in new tab" works) — but **nothing ever cleared that hash again once the drawer closed**, so it stayed in the address bar indefinitely; any later refresh, on any screen, re-triggered the deep-link resolver. Added `clearDeepLinkHash()` (uses `history.replaceState`, so closing a drawer doesn't pollute back-button history) and wired it into all eight places a Lead/Project/Task/Employee drawer can close (the four normal close handlers, two delete-success handlers, the project→subtask drawer transition, and the forced sign-out after changing your own password).
+
+### Root cause #5: `{{ st.assignee }} never resolved` console warning
+The Project drawer's own "Subtasks" list read `st.assignee` (a plain display-name field that never existed on a merged task object) instead of resolving `st.assignee_id` to a name — fixed by adding a real `assignee` display-name field to `mergeTask()`'s output (resolved via `getEmployeeName()`), and separately fixed the Task drawer's "Owner" `<select>`, which was bound to the same nonexistent `selectedTask.assignee` instead of `assignee_id` — meaning it could never show the correct current assignee and (per this app's own documented native-`<select>`-with-unmatched-value quirk) silently displayed whichever employee happened to be first in the list as if selected.
+
+### Verification
+All five root causes verified independently: functional smoke test against a throwaway DB (NameError gone, audit TypeError gone), then a **live check against the real production Neon database** — minted a JWT for the user's real account and confirmed `GET /api/projects`/`GET /api/tasks` now correctly return "Orbit Portal"/"Med AI" and all of their real tasks. Frontend changes verified via `node --check`/tag-balance/scaffolded-binding checks and repackaged into all three bundle copies.
+
+---
+
+## Update (2026-07-21, later still) — department-conditional Projects permission model: Dev Member engineers vs. everyone else
+
+User-specified rule, confirmed in three passes before implementation:
+
+1. **Owner department** → always full access (no change, already correct).
+2. **Dev Member department + "dev"(Projects) access level** → can view *only* their assigned project (already correct) and comment (already correct) — but should **not** see price/budget, **not** edit any field, and **not** create new projects. Previously, "dev" access level granted full Owner-parity unconditionally (a deliberate earlier design), which over-granted rights specifically to Dev Member department engineers.
+3. **Any other department (Employee/Finance/Owner) + "dev" access level** → full Owner-parity (create/edit/see price) — e.g. a PM/coordinator who isn't an engineer. Finance and Leads access levels remain unconditional regardless of department (no equivalent carve-out) — Dev Member is the *one* department-specific exception in the whole system, because it's the one case where "holds the access level" and "is the person being managed by it" overlap.
+
+### Backend
+- `app/core/permissions.py`: new `is_project_editor(roles, department)` — Owner, or "dev" access held by anyone **outside** Dev Member department.
+- `app/core/dependencies.py`: `get_current_user` now attaches the employee's `department` to the returned payload (off the same DB lookup already done for the active-account check — no extra query, always current, no re-login needed when department changes).
+- `app/routers/projects.py`: every `has_role(roles, "owner", "dev")` call site replaced with `is_project_editor(...)`; added the same check to `upload_attachment`/`delete_attachment` (previously completely ungated — anyone who could reach the endpoint could upload/delete).
+- `app/services/project_service.py`: `list_projects`/`get_project`'s "dev only sees assigned projects" restriction now only applies when the caller is *not* already a project editor — so an Employee-department "dev"-access person sees **all** projects (owner-like), not just their assigned one.
+
+### Frontend
+- `isDevEditor` now checks department the same way as the backend.
+- `showProjectFinance` (budget visibility, Delete Project, attachment remove/upload, team-picker add/remove) was still keyed off the literal `persona === 'owner'` cosmetic flavor — a stale check from before Dev-access parity existed at all, which would have hidden budget from an Employee-department "dev"-access person too. Fixed to use the corrected `isDevOwner`.
+- "New Project" button was gated by `isOwnerReal` (literal owner only) — fixed to `isDevOwner` so Employee-department dev-access holders can create projects, matching the backend.
+
+### Verification
+Full 3-scenario functional test against a throwaway DB (Owner/Dev-Member/Employee-department-with-dev-access), each checked for: list visibility, GET-by-id 403/200, budget presence/absence, edit 403/200, create 403/201, comment 403/200. All passed exactly as specified.
+
+---
+
+## Update (2026-07-21, later still) — a second, much wider actor-ID sweep: 12 routers, plus two more real bugs found along the way (a guaranteed payroll crash, and leave decisions never actually being recorded)
+
+Three-part ask: (1) HR access level should behave like Owner in the Employees segment, (2) Audit Trail should work completely for Owner or anyone with Setup access, (3) Leave Policy save should confirm the actual saved numbers. Investigating (2) surfaced a much larger, systemic version of the exact bug class fixed for Projects/Tasks/Audit earlier this same day — this round found and fixed it everywhere.
+
+### 1. HR/Employees Owner-level parity
+- `employee_service.py`: `create_employee` only allowed Owner/Finance — a real HR-access holder (the person this feature exists for) **could not add an employee at all**. Now allows Owner/HR/Finance. `delete_employee` (deactivate to Terminated) was HR-only, backwards — Owner couldn't do it. Now allows both.
+- Frontend: "Add Employee" (both the open button and the form's submit button) was gated by `isFinanceEditor` only — a stale reuse from an earlier, unrelated Finance-parity request. Added a real `isHrEditor` flag (Owner or HR), combined with the existing Finance parity rather than replacing it.
+
+### 2. Audit Trail — the real reasons it wasn't "working completely"
+- The User column was blank on every row: `auditRows` still read `a.actor` (renamed to `actor_id` earlier this session) and was never updated at this one call site. Fixed to resolve the ID to a name via `getEmployeeName()`, with a `'System'` fallback for historical rows with no resolvable actor.
+- **The much bigger issue**: `AuditLog.actor_id` is a real FK to `employees.id`, but **12 separate router files** (`employees.py`, `leads.py`, `expenses.py`, `invoices.py`, `milestones.py`, `leaves.py`, `payroll.py`, `wfh_requests.py`, `job_openings.py`, `expense_category_budgets.py`, `settings.py`, `settings_hr.py`) were still passing `current_user.get("sub")` — the JWT email — as the audit actor instead of the real employee ID. On Postgres this violates the FK constraint and rolls back the *entire request*, meaning actions across nearly every module in the app could silently fail outright, not just log the wrong value. Fixed all 12 to use `current_user.get("user_id")`.
+- Found two further, independent bugs while sweeping through this:
+  - **`app/services/salary_slip_service.py` was guaranteed to crash** every time a new payroll slip needed creating — `get_or_create_slip`'s create-path passed `"created_by": user, "updated_by": user"` straight into `SalarySlip(**data)`, a real SQLAlchemy model constructor that raises a plain Python `TypeError` for any unrecognized keyword (the model only has `created_by_id`/`updated_by_id`). This is not a Postgres-only issue — it's a guaranteed crash on *any* database, the moment `GET /api/finance/payroll` needed to initialize a slip for a new employee/month. Fixed all three call sites to `created_by_id`/`updated_by_id`.
+  - **Leave approve/reject never actually recorded who made the decision.** `LeaveRequest.approved_by_id` (a real FK, renamed from a plain `approved_by` string in an earlier session) was never actually written — `leave_service.py`'s `approve_leave` still built its update dict with the old key name, which the repository's blind `setattr()` loop silently accepted as a harmless non-persisted Python attribute (no error, no data loss visible anywhere — just permanently empty). `reject_leave` never attempted to record a decider at all. Fixed both to write `approved_by_id` (used for both approve *and* reject — "who decided", not literally "who approved"), and fixed `LeaveResponse`'s schema field name to match (`approved_by`→`approved_by_id`).
+- Also fixed `check_and_create_project_from_lead` in `project_service.py`, which had previously been patched to resolve `user` as an *email* via `find_by_email()` (a workaround for `leads.py` passing the email at the time) — now that `leads.py` passes the real employee ID directly, simplified to use `user` as the ID directly, no lookup needed.
+- Added a missing "No audit trail records yet" empty-state message, matching every other table in the app.
+
+### 3. Leave Policy save confirmation
+`saveLeavePolicy`'s toast changed from a generic "Leave policy saved." to one that echoes back the real, server-confirmed numbers: *"Leave policy saved for 2026 — Casual: 12/yr, Sick: 7/yr, Annual: 14/yr."*
+
+### Verification
+Full functional smoke test via `httpx.AsyncClient`/`ASGITransport` against a throwaway DB covering all of the above in one pass: payroll slip auto-creation (previously a guaranteed `TypeError`, now succeeds), lead/expense/invoice/milestone creation each producing a correctly-attributed audit log entry (real employee ID, never an email), leave approve **and** reject both correctly persisting `approved_by_id`, and a final check confirming zero audit rows anywhere contain an `@` (i.e. an email) in `actor_id`. HR create/deactivate permission changes verified separately (HR can now create and deactivate; Owner can now also deactivate). No Neon migration needed this round — the affected columns already existed, only the *values* being written were wrong.
+
+---
+
+## Update (2026-07-21, later still) — new module: Customers, with a dedicated access level, auto-linked from Lead creation
+
+Three-part ask: (1) a new "Customers" sidebar item with its own access level (Owner gets it automatically; anyone else granted it operates like Owner in that segment — unconditional, no department carve-out, unlike Projects' Dev Member exception), (2) creating a Lead should auto-create (or reuse) a linked Customer profile from the company name + point of contact, with a dropdown to pick an existing customer instead of creating a duplicate, (3) a Customer detail drawer with several optional fields.
+
+### Backend
+- New `customers` table (`app/models/customer.py`): `company_name` (the only required field), `primary_contact_name/email/phone`, `industry`, `website`, `address`, `notes`, plus the standard `created_by_id`/`updated_by_id`/`deleted_at` soft-delete columns already used throughout this app.
+- New `CustomerRepository`/`CustomerService`/`router` (`GET/POST /api/customers`, `GET/PUT/DELETE /api/customers/{id}`) — `list`/`get` open to any authenticated user, `create`/`update`/`delete` gated by `has_role(persona, "owner", "customers")`.
+- `Lead` gained a nullable `customer_id` FK. `lead_service.create_lead` now resolves it: if the frontend sent an explicit `customer_id` (the "select existing customer" dropdown path), links directly; otherwise matches an existing customer by company name (case-insensitive exact match — deliberately not "contains", to avoid false-positive matches on an unrelated company) and reuses it, or auto-creates a new one from the lead's `company_name`/`client_contact_name`. `CustomerResponse` includes a real `lead_count` (a batch-counted aggregate, not N+1 queries).
+- `"customers"` added to `ACCESS_LEVELS` in `app/schemas/employee.py`.
+- Neon migrated additively (new `customers` table via the app's own `create_all` mechanism, plus an explicit `ALTER TABLE leads ADD COLUMN IF NOT EXISTS customer_id` — `create_all` can't add columns to an already-existing table) — done proactively since this project's local dev backend connects directly to Neon by default (confirmed earlier this session), so the feature would otherwise be broken the moment it was tested locally. No existing data touched; verified via `information_schema` afterward.
+
+### Frontend
+- New "Customers" sidebar section (`access.customers`-gated), its own screen (plain searchable list — Company/Contact/Email/Phone/Lead count columns — no kanban needed), a "New Customer" popup, and a detail drawer with all the optional fields, auto-saving per field like every other drawer in the app. Delete button (Owner/Customers-access only) and the same `crm-overlay-fade`/`crm-panel-slide`/`crm-pop` animation classes and `_closeWithAnimation` close sequence used everywhere else in the app.
+- New Lead form gained a "Customer" search box above Company Name: type to search existing customers, click a result to link + auto-fill (shows a "Change" chip once selected); leave it untouched and just type a company name to fall through to the auto-create/auto-reuse path on the backend.
+- `mergeAccess()`/`deriveLandingFromAccess()`/`ACCESS_LEVEL_OPTIONS` (the Employee form's tick-boxes) all updated for the new access level. Deep-link support (`#/customer/id`) added alongside the existing lead/project/task/employee types.
+- `isCustomersEditor` flag: Owner or "customers" access level, unconditional (no department check) — matches the explicit "operate like Owners" request, distinct from Projects' Dev Member carve-out.
+
+### Verification
+Full functional smoke test via `httpx.AsyncClient`/`ASGITransport`: permission gating (plain employee blocked from creating a customer directly but can still view the list; "customers"-access employee can create), a new lead with a brand-new company name auto-creates a customer, a second lead with the *same* company name reuses it rather than duplicating (confirmed exactly one customer row, `lead_count` incremented to 2), an explicit `customer_id` on lead creation is honored directly, and customer detail fields are editable and persist. Frontend: `node --check`, tag-balance (all tag types recounted with proper word-boundary regex after an initial false alarm from `sc-raw-th` incidentally matching inside `sc-raw-thead`), scaffolded-binding cross-check all clean. Repackaged into all three bundle copies, byte-identical.
+
+---
+
+## Update (2026-07-21, later still) — My Attendance: real monthly totals, and a real WFH-day color bug
+
+Ask: show Total Present/Absent/WFH for the currently-selected month on the My Attendance screen, and polish the visual presentation. The month picker already defaulted to the current PKT month correctly (`attendanceMonth: todayISO().slice(0, 7)`) — confirmed, no change needed there.
+
+- Added a "*Month* summary" row (Present/Absent/Work From Home counts) computed client-side from the exact attendance records already being fetched for the selected month (`AttendanceRecord.status` already carries all three values — `"WFH"` is written by the backend's own end-of-day sweep for an approved work-from-home day — so no new API call was needed).
+- **Real bug found while computing this**: the day-by-day history table (and the equivalent HR-facing "Today" table) collapsed status to a plain two-way `Present ? success : danger` tone — meaning an approved WFH day rendered in the same alarming red as an unexcused absence. Fixed with a shared `attendanceStatusTone()` helper (Present→success, Absent→danger, WFH→info, anything else→neutral, preserving the HR table's existing "Not Marked Yet"→neutral behavior).
+- Visual polish: the today-status card now has a colored icon (green check when marked, amber warning when not yet marked on a working day, muted calendar on weekends) with a matching tinted background, instead of plain text on a flat white card. New stat cards match the same Dashboard-style layout already used elsewhere in the app (label + big bold number).
+
+### Verification
+No backend changes needed (the data was already correct and already being fetched). Frontend: `node --check`, tag-balance, scaffolded-binding cross-check all clean. Repackaged into all three bundle copies, byte-identical.
+
+---
+
+**Standing note for the next session**: none of this round's work has been committed or pushed, per explicit standing instruction ("don't push, I'll say when"). The Neon production database *was* migrated directly during this round (additive schema changes only, for both the ID-migration backfill and the new Customers table/column) — but the **application code** fixing all of the above still only exists locally and needs an actual `git push` + Render redeploy before the live app reflects any of it.

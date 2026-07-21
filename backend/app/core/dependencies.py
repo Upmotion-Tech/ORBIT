@@ -5,6 +5,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.permissions import is_project_editor
 from app.core.security import decode_access_token
 from app.repositories.employee_repository import EmployeeRepository
 
@@ -39,6 +40,13 @@ async def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Your account has been deactivated by the Owner. Contact Admin.",
         )
+
+    # Department isn't in the JWT itself (would require re-login whenever it
+    # changes) — attached fresh here instead, off the same DB lookup already
+    # done above for the is_active check, so it's always current. Used by
+    # is_project_editor() to distinguish a Dev Member department engineer
+    # (view + comment only) from anyone else holding the "dev" access level.
+    payload["department"] = employee.department
 
     return payload
 
@@ -134,13 +142,14 @@ async def get_crm_editor_user(
 async def get_dev_editor_user(
     current_user: dict = Depends(get_current_user),
 ) -> dict:
-    # Same pattern for Projects/Tasks — Owner or "dev" access level gets full
-    # create/edit/delete rights, matching get_finance_user/get_crm_editor_user.
-    roles = current_user.get("roles") or []
-    if not any(r in ("owner", "dev") for r in roles):
+    # Owner, or "dev" access level held by someone outside the Dev Member
+    # department (e.g. a PM/coordinator), gets full Projects create/edit/
+    # delete rights. A Dev Member department engineer holding "dev" access
+    # is deliberately excluded — see is_project_editor()'s own docstring.
+    if not is_project_editor(current_user.get("roles"), current_user.get("department")):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only Owner or Dev can perform this action.",
+            detail="Only Owner or Dev (outside Dev Member department) can perform this action.",
         )
     return current_user
 

@@ -64,7 +64,7 @@ async def create_expense(
     service: ExpenseService = Depends(get_expense_service),
     current_user: dict = Depends(get_finance_user),
 ):
-    exp = await service.create_expense(body.model_dump(), user=current_user.get("sub", "anonymous"))
+    exp = await service.create_expense(body.model_dump(), user=current_user.get("user_id", "anonymous"))
     return _map_expense_response(exp)
 
 @router.put("/{expense_id}", response_model=ExpenseResponse)
@@ -77,7 +77,7 @@ async def update_expense(
     exp = await service.update_expense(
         expense_id,
         body.model_dump(exclude_none=True),
-        user=current_user.get("sub", "anonymous")
+        user=current_user.get("user_id", "anonymous")
     )
     return _map_expense_response(exp)
 
@@ -87,4 +87,4 @@ async def delete_expense(
     service: ExpenseService = Depends(get_expense_service),
     current_user: dict = Depends(get_finance_user),
 ):
-    await service.delete_expense(expense_id, user=current_user.get("sub", "anonymous"))
+    await service.delete_expense(expense_id, user=current_user.get("user_id", "anonymous"))

@@ -24,6 +24,7 @@ from app.models.expense_category_budget import ExpenseCategoryBudget
 from app.models.crm_source import CrmSource
 from app.models.attendance import AttendanceRecord
 from app.models.wfh_request import WfhRequest
+from app.models.customer import Customer
 
 __all__ = [
     "Lead",
@@ -52,5 +53,6 @@ __all__ = [
     "CrmSource",
     "AttendanceRecord",
     "WfhRequest",
+    "Customer",
 ]
 

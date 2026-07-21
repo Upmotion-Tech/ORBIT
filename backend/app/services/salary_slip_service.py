@@ -32,8 +32,8 @@ class SalarySlipService:
                 "net_salary": base_salary,
                 "payment_status": "Unpaid",
                 "notes": "",
-                "created_by": user,
-                "updated_by": user
+                "created_by_id": user,
+                "updated_by_id": user
             }
             slip = await self.slip_repo.create(data)
             return slip
@@ -49,7 +49,7 @@ class SalarySlipService:
             data = {
                 "gross_salary": base_salary,
                 "net_salary": base_salary + slip.allowances + slip.bonus - slip.tax - slip.other_deductions,
-                "updated_by": user,
+                "updated_by_id": user,
             }
             slip = await self.slip_repo.update(slip, data)
         return slip
@@ -73,7 +73,7 @@ class SalarySlipService:
         allowances = data.get("allowances", slip.allowances)
         
         data["net_salary"] = gross + allowances + bonus - tax - deductions
-        data["updated_by"] = user
+        data["updated_by_id"] = user
         
         old_status = slip.payment_status
         new_status = data.get("payment_status", old_status)

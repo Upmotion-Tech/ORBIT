@@ -69,7 +69,7 @@ async def create_opening(
 ):
     return await service.create_opening(
         body.model_dump(),
-        user=current_user.get("sub", "anonymous"),
+        user=current_user.get("user_id", "anonymous"),
         persona=persona,
     )
 
@@ -85,7 +85,7 @@ async def update_opening(
     return await service.update_opening(
         opening_id,
         body.model_dump(exclude_none=True),
-        user=current_user.get("sub", "anonymous"),
+        user=current_user.get("user_id", "anonymous"),
         persona=persona,
     )
 

@@ -75,7 +75,7 @@ async def create_leave(
 ):
     return await service.create_leave(
         body.model_dump(),
-        user=current_user.get("sub", "anonymous"),
+        user=current_user.get("user_id", "anonymous"),
         persona=persona,
     )
 
@@ -91,7 +91,7 @@ async def approve_leave(
     return await service.approve_leave(
         leave_id,
         note=body.note,
-        approved_by=current_user.get("sub", "HR Admin"),
+        approved_by=current_user.get("user_id"),
         persona=persona,
     )
 
@@ -107,6 +107,6 @@ async def reject_leave(
     return await service.reject_leave(
         leave_id,
         rejection_reason=body.rejection_reason,
-        rejected_by=current_user.get("sub", "HR Admin"),
+        rejected_by=current_user.get("user_id"),
         persona=persona,
     )

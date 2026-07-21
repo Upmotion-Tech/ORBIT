@@ -85,7 +85,7 @@ async def create_invoice(
     service: InvoiceService = Depends(get_invoice_service),
     current_user: dict = Depends(get_finance_user),
 ):
-    inv = await service.create_invoice(body.model_dump(), user=current_user.get("sub", "anonymous"))
+    inv = await service.create_invoice(body.model_dump(), user=current_user.get("user_id", "anonymous"))
     return _map_invoice_response(inv)
 
 @router.put("/{invoice_id}", response_model=InvoiceResponse)
@@ -98,7 +98,7 @@ async def update_invoice(
     inv = await service.update_invoice(
         invoice_id,
         body.model_dump(exclude_none=True),
-        user=current_user.get("sub", "anonymous")
+        user=current_user.get("user_id", "anonymous")
     )
     return _map_invoice_response(inv)
 
@@ -108,4 +108,4 @@ async def delete_invoice(
     service: InvoiceService = Depends(get_invoice_service),
     current_user: dict = Depends(get_finance_user),
 ):
-    await service.delete_invoice(invoice_id, user=current_user.get("sub", "anonymous"))
+    await service.delete_invoice(invoice_id, user=current_user.get("user_id", "anonymous"))

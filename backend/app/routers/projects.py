@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.dependencies import get_persona_role, get_persona_roles, get_current_user
-from app.core.permissions import has_role
+from app.core.permissions import is_project_editor
 from app.repositories.project_repository import ProjectRepository
 from app.repositories.lead_repository import LeadRepository
 from app.repositories.notification_repository import NotificationRepository
@@ -53,7 +53,7 @@ async def list_projects(
         date_to=date_to,
         persona=persona,
         user_id=current_user.get("user_id", ""),
-        is_dev_editor=has_role(roles, "owner", "dev"),
+        is_dev_editor=is_project_editor(roles, current_user.get("department")),
     )
 
 
@@ -69,7 +69,7 @@ async def get_project(
         project_id,
         persona=persona,
         user_id=current_user.get("user_id", ""),
-        is_dev_editor=has_role(roles, "owner", "dev"),
+        is_dev_editor=is_project_editor(roles, current_user.get("department")),
     )
     if not project:
         raise HTTPException(
@@ -90,7 +90,7 @@ async def create_project(
     # created_by_id/updated_by_id are real FKs to employees.id, so this must
     # be the caller's employee ID, not their name.
     user_id = current_user.get("user_id") or persona
-    return await service.create_project(data.model_dump(), user=user_id, persona=persona, is_dev_editor=has_role(roles, "owner", "dev"))
+    return await service.create_project(data.model_dump(), user=user_id, persona=persona, is_dev_editor=is_project_editor(roles, current_user.get("department")))
 
 
 @router.put("/{project_id}", response_model=ProjectResponse)
@@ -108,7 +108,7 @@ async def update_project(
         data.model_dump(exclude_unset=True),
         user=user_id,
         persona=persona,
-        is_dev_editor=has_role(roles, "owner", "dev"),
+        is_dev_editor=is_project_editor(roles, current_user.get("department")),
     )
 
 
@@ -121,7 +121,7 @@ async def delete_project(
     service: ProjectService = Depends(get_project_service),
 ):
     user_id = current_user.get("user_id") or persona
-    success = await service.delete_project(project_id, persona=persona, user=user_id, is_dev_editor=has_role(roles, "owner", "dev"))
+    success = await service.delete_project(project_id, persona=persona, user=user_id, is_dev_editor=is_project_editor(roles, current_user.get("department")))
     if not success:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -137,9 +137,16 @@ async def upload_attachment(
     project_id: str,
     file: UploadFile = File(...),
     persona: str = Depends(get_persona_role),
+    roles: list = Depends(get_persona_roles),
     current_user: dict = Depends(get_current_user),
     service: ProjectService = Depends(get_project_service),
 ):
+    if not is_project_editor(roles, current_user.get("department")):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to upload attachments on this project.",
+        )
+
     project = await service.project_repo.find_by_id(project_id)
     if not project:
         raise HTTPException(
@@ -167,10 +174,6 @@ async def upload_attachment(
             detail=f"Allowed file types: {', '.join(storage_service.ALLOWED_EXTENSIONS)}",
         )
 
-    # Replacing an existing attachment is allowed for anyone who can reach
-    # this endpoint at all — Dev-access holders function as Owner for
-    # Projects (see project_service.py), so there's no separate restriction
-    # left to enforce here beyond the endpoint's own gating.
     existing = await service.project_repo.find_attachment_by_id_and_filename(project_id, file.filename)
 
     # If it is a replacement, remove the old file
@@ -230,10 +233,16 @@ async def delete_attachment(
     project_id: str,
     filename: str,
     persona: str = Depends(get_persona_role),
+    roles: list = Depends(get_persona_roles),
+    current_user: dict = Depends(get_current_user),
     service: ProjectService = Depends(get_project_service),
 ):
-    # Dev-access holders function as Owner for Projects (see
-    # project_service.py) — no separate attachment-delete restriction left.
+    if not is_project_editor(roles, current_user.get("department")):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to delete attachments on this project.",
+        )
+
     attachment = await service.project_repo.find_attachment_by_id_and_filename(project_id, filename)
     if not attachment:
         raise HTTPException(
@@ -267,6 +276,7 @@ async def add_comment(
     project_id: str,
     data: CommentCreate,
     persona: str = Depends(get_persona_role),
+    roles: list = Depends(get_persona_roles),
     current_user: dict = Depends(get_current_user),
     service: ProjectService = Depends(get_project_service),
 ):
@@ -280,8 +290,9 @@ async def add_comment(
     user_id = current_user.get("user_id") or persona
     user_name = current_user.get("name") or persona
 
-    # Check dev project visibility
-    if persona == "dev" and user_id not in (project.team_ids or []):
+    # Check dev project visibility — same is_dev_editor exception as
+    # list_projects/get_project in project_service.py.
+    if persona == "dev" and not is_project_editor(roles, current_user.get("department")) and user_id not in (project.team_ids or []):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot comment on projects you are not assigned to.",

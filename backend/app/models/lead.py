@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import String, Float, Date, DateTime, Boolean, Text, Index
+from sqlalchemy import String, Float, Date, DateTime, Boolean, Text, ForeignKey, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -19,6 +19,7 @@ class Lead(Base):
 
     company_name: Mapped[str] = mapped_column(String(255), nullable=False)
     client_contact_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    customer_id: Mapped[str] = mapped_column(String(36), ForeignKey("customers.id"), nullable=True)
     assigned_rep: Mapped[str] = mapped_column(String(255), nullable=True)
     source: Mapped[str] = mapped_column(String(100), nullable=True)
     medium: Mapped[str] = mapped_column(String(100), nullable=True)
@@ -65,4 +66,5 @@ class Lead(Base):
         Index("ix_leads_deleted_at", "deleted_at"),
         Index("ix_leads_date_received", "date_received"),
         Index("ix_leads_follow_up_date", "follow_up_date"),
+        Index("ix_leads_customer_id", "customer_id"),
     )

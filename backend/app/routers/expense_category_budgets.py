@@ -32,6 +32,6 @@ async def set_expense_category_budget(
 ):
     return await service.set_budget(
         category, body.monthly_budget_usd,
-        user=current_user.get("sub", "anonymous"),
+        user=current_user.get("user_id", "anonymous"),
         persona=persona,
     )

@@ -29,7 +29,7 @@ class LeaveResponse(BaseModel):
     reason: Optional[str] = None
     status: str
     applied_at: Optional[datetime] = None
-    approved_by: Optional[str] = None
+    approved_by_id: Optional[str] = None
     approved_at: Optional[datetime] = None
     rejection_reason: Optional[str] = None
     approval_note: Optional[str] = None

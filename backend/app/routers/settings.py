@@ -28,4 +28,4 @@ async def update_currency_settings(
     service: SettingsService = Depends(get_settings_service),
     current_user: dict = Depends(get_owner_user),
 ):
-    return await service.update_currency_settings(data.usd_to_pkr_rate, user=current_user.get("sub", "anonymous"))
+    return await service.update_currency_settings(data.usd_to_pkr_rate, user=current_user.get("user_id", "anonymous"))

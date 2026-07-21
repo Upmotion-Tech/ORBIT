@@ -12,7 +12,7 @@ from app.core.time import to_pkt
 # module access beyond the base Me/Leave/Policies screens every employee
 # gets. An employee can hold any combination of these (multi-select), and
 # ends up seeing exactly the union of the screens they're ticked for.
-ACCESS_LEVELS = ("owner", "dashboard", "crm", "dev", "finance", "hr", "permissions", "employee")
+ACCESS_LEVELS = ("owner", "dashboard", "crm", "dev", "finance", "hr", "permissions", "customers", "employee")
 
 EMAIL_REGEX = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 # +92 followed by exactly 10 digits (Pakistani mobile format) — the frontend

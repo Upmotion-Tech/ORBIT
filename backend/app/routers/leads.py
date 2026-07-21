@@ -16,6 +16,7 @@ from app.services.storage_service import storage_service
 from app.repositories.project_repository import ProjectRepository
 from app.repositories.notification_repository import NotificationRepository
 from app.repositories.audit_log_repository import AuditLogRepository
+from app.repositories.customer_repository import CustomerRepository
 
 router = APIRouter(prefix="/api/leads", tags=["Leads"])
 
@@ -27,6 +28,7 @@ def get_lead_service(db: AsyncSession = Depends(get_db)) -> LeadService:
         ProjectRepository(db),
         NotificationRepository(db),
         AuditLogRepository(db),
+        CustomerRepository(db),
     )
 
 
@@ -91,7 +93,7 @@ async def create_lead(
     service: LeadService = Depends(get_lead_service),
     current_user: dict = Depends(get_crm_editor_user),
 ):
-    lead, warning = await service.create_lead(data.model_dump(), user=current_user.get("sub", "anonymous"), persona_roles=current_user.get("roles"))
+    lead, warning = await service.create_lead(data.model_dump(), user=current_user.get("user_id", "anonymous"), persona_roles=current_user.get("roles"))
     return WarningResponse(success=True, warning=warning, data=lead.model_dump())
 
 
@@ -106,7 +108,7 @@ async def update_lead(
     if not update_data:
         raise HTTPException(status_code=400, detail="No fields to update")
 
-    lead, warning, error = await service.update_lead(lead_id, update_data, user=current_user.get("sub", "anonymous"), persona_roles=current_user.get("roles"))
+    lead, warning, error = await service.update_lead(lead_id, update_data, user=current_user.get("user_id", "anonymous"), persona_roles=current_user.get("roles"))
     if error:
         raise HTTPException(status_code=404, detail=error)
     return WarningResponse(success=True, warning=warning, data=lead.model_dump() if lead else None)
@@ -121,7 +123,7 @@ async def change_lead_stage(
 ):
     lead, error = await service.change_stage(
         lead_id, data.stage,
-        user=current_user.get("sub", "anonymous"),
+        user=current_user.get("user_id", "anonymous"),
         is_owner=True,
         persona_roles=current_user.get("roles"),
     )
@@ -136,7 +138,7 @@ async def delete_lead(
     service: LeadService = Depends(get_lead_service),
     current_user: dict = Depends(get_crm_editor_user),
 ):
-    deleted = await service.delete_lead(lead_id, user=current_user.get("sub", "anonymous"))
+    deleted = await service.delete_lead(lead_id, user=current_user.get("user_id", "anonymous"))
     if not deleted:
         raise HTTPException(status_code=404, detail="Lead not found")
     return None
@@ -151,7 +153,7 @@ async def upload_scope_document(
 ):
     filename = await storage_service.save(file, prefix="scope_")
     url = storage_service.get_url(filename)
-    lead, error = await service.upload_document(lead_id, "scope_document", url, user=current_user.get("sub", "anonymous"), persona_roles=current_user.get("roles"))
+    lead, error = await service.upload_document(lead_id, "scope_document", url, user=current_user.get("user_id", "anonymous"), persona_roles=current_user.get("roles"))
     if error:
         raise HTTPException(status_code=404, detail=error)
     return WarningResponse(success=True, data=lead.model_dump() if lead else None)
@@ -166,7 +168,7 @@ async def upload_signed_contract(
 ):
     filename = await storage_service.save(file, prefix="contract_")
     url = storage_service.get_url(filename)
-    lead, error = await service.upload_document(lead_id, "signed_contract", url, user=current_user.get("sub", "anonymous"), persona_roles=current_user.get("roles"))
+    lead, error = await service.upload_document(lead_id, "signed_contract", url, user=current_user.get("user_id", "anonymous"), persona_roles=current_user.get("roles"))
     if error:
         raise HTTPException(status_code=404, detail=error)
     return WarningResponse(success=True, data=lead.model_dump() if lead else None)
@@ -178,7 +180,7 @@ async def remove_scope_document(
     service: LeadService = Depends(get_lead_service),
     current_user: dict = Depends(get_crm_editor_user),
 ):
-    lead, error = await service.remove_document(lead_id, "scope_document", user=current_user.get("sub", "anonymous"), persona_roles=current_user.get("roles"))
+    lead, error = await service.remove_document(lead_id, "scope_document", user=current_user.get("user_id", "anonymous"), persona_roles=current_user.get("roles"))
     if error:
         raise HTTPException(status_code=404, detail=error)
     return WarningResponse(success=True, data=lead.model_dump() if lead else None)
@@ -190,7 +192,7 @@ async def remove_signed_contract(
     service: LeadService = Depends(get_lead_service),
     current_user: dict = Depends(get_crm_editor_user),
 ):
-    lead, error = await service.remove_document(lead_id, "signed_contract", user=current_user.get("sub", "anonymous"), persona_roles=current_user.get("roles"))
+    lead, error = await service.remove_document(lead_id, "signed_contract", user=current_user.get("user_id", "anonymous"), persona_roles=current_user.get("roles"))
     if error:
         raise HTTPException(status_code=404, detail=error)
     return WarningResponse(success=True, data=lead.model_dump() if lead else None)
@@ -216,7 +218,7 @@ async def create_activity(
     activity, error = await service.create_activity(
         lead_id,
         data.model_dump(),
-        user=current_user.get("sub", "anonymous"),
+        user=current_user.get("user_id", "anonymous"),
     )
     if error:
         raise HTTPException(status_code=404, detail=error)

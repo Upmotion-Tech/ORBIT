@@ -42,6 +42,7 @@ from app.routers import (
     crm_sources,
     attendance,
     wfh_requests,
+    customers,
 )
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
@@ -142,6 +143,7 @@ app.include_router(expense_category_budgets.router)
 app.include_router(crm_sources.router)
 app.include_router(attendance.router)
 app.include_router(wfh_requests.router)
+app.include_router(customers.router)
 
 
 

@@ -31,12 +31,14 @@ class LeadService:
         project_repo = None,
         notification_repo = None,
         audit_repo = None,
+        customer_repo = None,
     ):
         self.lead_repo = lead_repo
         self.activity_repo = activity_repo
         self.project_repo = project_repo
         self.notification_repo = notification_repo
         self.audit_repo = audit_repo
+        self.customer_repo = customer_repo
 
     async def _audit(self, actor: str, action: str, label: str, detail: Optional[str] = None) -> None:
         if self.audit_repo:
@@ -84,6 +86,8 @@ class LeadService:
         data["created_at"] = now_pkt()
         data["updated_at"] = now_pkt()
 
+        await self._resolve_customer(data, user)
+
         warning = None
         duplicates = await self.lead_repo.find_duplicates(
             company_name=data.get("company_name"),
@@ -103,6 +107,31 @@ class LeadService:
         await self._audit(user, "Created", lead.company_name, f"Stage '{lead.stage}'")
 
         return self._to_response(lead, persona_roles), warning
+
+    async def _resolve_customer(self, data: dict, user: str) -> None:
+        # A Lead's company_name/client_contact_name auto-creates (or reuses)
+        # a Customer profile — either the one explicitly picked via the
+        # frontend's "select existing customer" dropdown (customer_id
+        # already set), or matched/created by company name here.
+        if not self.customer_repo:
+            return
+
+        customer_id = data.get("customer_id")
+        if customer_id:
+            existing = await self.customer_repo.find_by_id(customer_id)
+            if existing:
+                return
+            # A stale/invalid id shouldn't block lead creation — fall
+            # through to the normal match-or-create path below instead.
+            data["customer_id"] = None
+
+        from app.services.customer_service import CustomerService
+        customer_service = CustomerService(self.customer_repo, self.audit_repo)
+        customer = await customer_service.find_or_create_from_lead(
+            data.get("company_name"), data.get("client_contact_name"), user,
+        )
+        if customer:
+            data["customer_id"] = customer.id
 
     async def update_lead(self, lead_id: str, data: dict, user: str = "anonymous", persona_roles: Optional[list] = None) -> tuple[Optional[LeadResponse], Optional[str], Optional[str]]:
         lead = await self.lead_repo.find_by_id(lead_id)

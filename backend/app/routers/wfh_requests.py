@@ -32,7 +32,7 @@ async def create_wfh_request(
 ):
     return await service.create_request(
         current_user.get("user_id"), body.date, body.description,
-        user=current_user.get("sub", "anonymous"),
+        user=current_user.get("user_id", "anonymous"),
     )
 
 
@@ -62,7 +62,7 @@ async def approve_wfh_request(
     service: WfhRequestService = Depends(get_wfh_service),
 ):
     return await service.approve_request(
-        request_id, body.note, current_user.get("sub", "HR Admin"), persona=persona_roles,
+        request_id, body.note, current_user.get("user_id"), persona=persona_roles,
     )
 
 
@@ -75,5 +75,5 @@ async def reject_wfh_request(
     service: WfhRequestService = Depends(get_wfh_service),
 ):
     return await service.reject_request(
-        request_id, body.note, current_user.get("sub", "HR Admin"), persona=persona_roles,
+        request_id, body.note, current_user.get("user_id"), persona=persona_roles,
     )

@@ -42,9 +42,13 @@ class ProjectService:
         user_id: str = "",
         is_dev_editor: bool = False,
     ) -> list[ProjectResponse]:
-        # Enforce project visibility: dev only sees projects they are assigned
-        # to (by employee ID) — previously hardcoded to a mock name.
-        assigned_to_member_id = user_id if persona == "dev" else None
+        # Enforce project visibility: a "dev"-persona employee only sees
+        # projects they're assigned to — UNLESS they're an is_dev_editor
+        # (Owner, or "dev" access held by someone outside the Dev Member
+        # department), who behaves like Owner and sees everything. A Dev
+        # Member department engineer holding plain "dev" access is the one
+        # who actually gets scoped down to just their own assignments.
+        assigned_to_member_id = user_id if (persona == "dev" and not is_dev_editor) else None
 
         projects = await self.project_repo.find_all(
             search=search,
@@ -63,8 +67,9 @@ class ProjectService:
         if not project:
             return None
 
-        # Dev member visibility check
-        if persona == "dev" and user_id not in (project.team_ids or []):
+        # Dev member visibility check — same is_dev_editor exception as
+        # list_projects above.
+        if persona == "dev" and not is_dev_editor and user_id not in (project.team_ids or []):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied to this project.",
@@ -269,14 +274,11 @@ class ProjectService:
             counter += 1
             proj_name = f"{base_name} {counter}"
 
-        # `user` here is whatever leads.py passes (currently the JWT "sub",
-        # i.e. an email) — resolve it to a real employee ID so created_by_id/
-        # updated_by_id (real FKs to employees.id) don't get a raw email
-        # string, which would violate the FK constraint on Postgres.
-        created_by_id = None
-        if self.employee_repo and user:
-            creator = await self.employee_repo.find_by_email(user)
-            created_by_id = creator.id if creator else None
+        # `user` is the real employee ID now (leads.py passes
+        # current_user["user_id"], not the JWT "sub"/email anymore) — used
+        # directly, no email lookup needed. created_by_id/updated_by_id are
+        # real FKs to employees.id, so this must never be a raw email string.
+        created_by_id = user if user and user != "anonymous" else None
 
         project_data = {
             "name": proj_name,

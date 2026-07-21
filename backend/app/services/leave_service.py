@@ -104,7 +104,7 @@ class LeaveService:
 
     async def approve_leave(
         self, leave_id: str, note: Optional[str] = None,
-        approved_by="HR Admin", persona=None,
+        approved_by=None, persona=None,
     ) -> LeaveResponse:
         leave = await self.leave_repo.find_by_id(leave_id)
         if not leave:
@@ -125,14 +125,9 @@ class LeaveService:
                 detail="Only pending requests can be approved.",
             )
 
-        leave.status = "Approved"
-        leave.approved_by = approved_by
-        leave.approved_at = now_pkt()
-        leave.approval_note = note
-
         leave = await self.leave_repo.update(leave, {
             "status": "Approved",
-            "approved_by": approved_by,
+            "approved_by_id": approved_by,
             "approved_at": now_pkt(),
             "approval_note": note,
         })
@@ -158,7 +153,7 @@ class LeaveService:
 
     async def reject_leave(
         self, leave_id: str, rejection_reason: Optional[str] = None,
-        rejected_by="HR Admin", persona=None,
+        rejected_by=None, persona=None,
     ) -> LeaveResponse:
         leave = await self.leave_repo.find_by_id(leave_id)
         if not leave:
@@ -179,12 +174,13 @@ class LeaveService:
                 detail="Only pending requests can be rejected.",
             )
 
-        leave.status = "Rejected"
-        leave.rejection_reason = rejection_reason
-
         leave = await self.leave_repo.update(leave, {
             "status": "Rejected",
             "rejection_reason": rejection_reason,
+            # approved_by_id records who made the decision either way — was
+            # never set on reject at all (only approve_leave used to try,
+            # and even that silently failed, see the fix above).
+            "approved_by_id": rejected_by,
         })
 
         if self.notification_repo:
