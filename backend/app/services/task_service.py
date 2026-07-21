@@ -31,47 +31,32 @@ class TaskService:
         if self.audit_repo:
             await self.audit_repo.log(actor, action, "Task", label, detail)
 
-    async def _resolve_assignee_notification_target(self, assignee_name: Optional[str]) -> str:
-        # Notifications need a real employee id to actually reach that one
-        # person — `team`/`assignee` fields store plain display names, not
-        # ids. Resolve the assignee's real id by exact (case-insensitive)
-        # name match so the notification targets *them specifically*.
-        # Falls back to "owner" (never "all") when no exact match is found —
-        # a broadcast-to-everyone here would leak this task's activity to
-        # random employees just because of a name-matching miss.
-        if not assignee_name or not self.employee_repo:
-            return "owner"
-        matches = await self.employee_repo.find_by_name(assignee_name)
-        exact = next((e for e in matches if e.name.strip().lower() == assignee_name.strip().lower()), None)
-        return exact.id if exact else "owner"
-
     async def list_tasks(
         self,
         search: Optional[str] = None,
         project_id: Optional[str] = None,
-        assignee: Optional[str] = None,
+        assignee_id: Optional[str] = None,
         status_filter: Optional[str] = None,
         date_from: Optional[date] = None,
         date_to: Optional[date] = None,
         persona: str = "owner",
-        user_name: str = "",
+        user_id: str = "",
     ) -> list[TaskResponse]:
-        # Was hardcoded to the mock name "Kofi Mensah" — see project_service's
-        # identical fix for the full explanation. Now uses the real caller.
-        assigned_to_member = user_name if persona == "dev" else None
+        # Dev members only see tasks assigned to them specifically
+        assigned_to_member_id = user_id if persona == "dev" else None
 
         tasks = await self.task_repo.find_all(
             search=search,
             project_id=project_id,
-            assignee=assignee,
+            assignee_id=assignee_id,
             status=status_filter,
             date_from=date_from,
             date_to=date_to,
-            assigned_to_member=assigned_to_member,
+            assigned_to_member_id=assigned_to_member_id,
         )
         return [TaskResponse.model_validate(t) for t in tasks]
 
-    async def get_task(self, task_id: str, persona: str = "owner", user_name: str = "") -> Optional[TaskResponse]:
+    async def get_task(self, task_id: str, persona: str = "owner", user_id: str = "") -> Optional[TaskResponse]:
         task = await self.task_repo.find_by_id(task_id)
         if not task:
             return None
@@ -79,7 +64,7 @@ class TaskService:
         # Dev member visibility check
         if persona == "dev":
             project = await self.project_repo.find_by_id(task.project_id)
-            if task.assignee != user_name and (not project or user_name not in project.team):
+            if task.assignee_id != user_id and (not project or user_id not in (project.team_ids or [])):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Access denied to this task.",
@@ -87,7 +72,7 @@ class TaskService:
 
         return TaskResponse.model_validate(task)
 
-    async def create_task(self, data: dict, user: str = "anonymous", persona: str = "owner", is_dev_editor: bool = False) -> TaskResponse:
+    async def create_task(self, data: dict, user: str = "anonymous", persona: str = "owner") -> TaskResponse:
         # Only owners can create tasks. Dev members can view and comment on
         # tasks assigned to them, but cannot create or edit.
         if persona != "owner":
@@ -103,27 +88,22 @@ class TaskService:
                 detail="Project not found.",
             )
 
-        # Automatic assignee assignment: project creator or default to Ana Reyes (Dev Head)
-        if not data.get("assignee"):
-            data["assignee"] = project.created_by or "Ana Reyes"
-
         # Defaults to today, but the caller can set it earlier (e.g. backfilling
         # work that already started) — never forced, only filled in if omitted.
         if not data.get("start_date"):
             data["start_date"] = now_pkt().date()
 
-        data["created_by"] = user
-        data["updated_by"] = user
+        data["created_by_id"] = user  # Store the creator's employee ID
+        data["updated_by_id"] = user
         data["created_at"] = now_pkt()
         data["updated_at"] = now_pkt()
 
         task = await self.task_repo.create(data)
 
         # Generate notification for assigned developer
-        if self.notification_repo and task.assignee:
-            target_user = await self._resolve_assignee_notification_target(task.assignee)
+        if self.notification_repo and task.assignee_id:
             await self.notification_repo.create(
-                user_id=target_user,
+                user_id=task.assignee_id,  # Target the assigned employee by their ID
                 notif_type="Task Assigned",
                 title="Assigned to new task",
                 message=f"You have been assigned to task '{task.title}' under project '{project.name}'.",
@@ -133,7 +113,7 @@ class TaskService:
 
         return TaskResponse.model_validate(task)
 
-    async def update_task(self, task_id: str, data: dict, user: str = "anonymous", persona: str = "owner", is_dev_editor: bool = False) -> TaskResponse:
+    async def update_task(self, task_id: str, data: dict, user: str = "anonymous", persona: str = "owner") -> TaskResponse:
         task = await self.task_repo.find_by_id(task_id)
         if not task:
             raise HTTPException(
@@ -149,18 +129,17 @@ class TaskService:
                 detail="Only owners can edit tasks.",
             )
 
-        old_assignee = task.assignee
+        old_assignee_id = task.assignee_id
         old_status = task.status
-        data["updated_by"] = user
+        data["updated_by_id"] = user
         updated_task = await self.task_repo.update(task, data)
 
         # Notify if assignee changed
-        if self.notification_repo and "assignee" in data and updated_task.assignee != old_assignee:
+        if self.notification_repo and "assignee_id" in data and updated_task.assignee_id != old_assignee_id:
             project = await self.project_repo.find_by_id(updated_task.project_id)
             proj_name = project.name if project else "Unknown Project"
-            target_user = await self._resolve_assignee_notification_target(updated_task.assignee)
             await self.notification_repo.create(
-                user_id=target_user,
+                user_id=updated_task.assignee_id,  # Target by employee ID
                 notif_type="Task Assigned",
                 title="Assigned to task",
                 message=f"You have been assigned to task '{updated_task.title}' under project '{proj_name}'.",
@@ -169,12 +148,12 @@ class TaskService:
         if "status" in data and updated_task.status != old_status:
             await self._audit(user, "Status Changed", updated_task.title, f"'{old_status}' → '{updated_task.status}'")
         else:
-            changed = sorted(k for k in data.keys() if k != "updated_by")
+            changed = sorted(k for k in data.keys() if k not in ("updated_by_id", "updated_at"))
             await self._audit(user, "Updated", updated_task.title, f"Fields updated: {', '.join(changed)}" if changed else None)
 
         return TaskResponse.model_validate(updated_task)
 
-    async def delete_task(self, task_id: str, persona: str = "owner", user: str = "anonymous", is_dev_editor: bool = False) -> bool:
+    async def delete_task(self, task_id: str, persona: str = "owner", user: str = "anonymous") -> bool:
         task = await self.task_repo.find_by_id(task_id)
         if not task:
             return False

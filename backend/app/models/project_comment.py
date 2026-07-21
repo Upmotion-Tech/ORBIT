@@ -20,7 +20,7 @@ class ProjectComment(Base):
     project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), nullable=True)
     task_id: Mapped[str] = mapped_column(String(36), ForeignKey("tasks.id"), nullable=True)
     parent_id: Mapped[str] = mapped_column(String(36), ForeignKey("project_comments.id"), nullable=True)
-    author: Mapped[str] = mapped_column(String(255), nullable=False)
+    author_id: Mapped[str] = mapped_column(String(36), ForeignKey("employees.id"), nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(

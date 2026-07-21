@@ -29,8 +29,8 @@ class SalarySlip(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_pkt)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_pkt, onupdate=now_pkt)
     deleted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
-    created_by: Mapped[str] = mapped_column(String(255), nullable=True)
-    updated_by: Mapped[str] = mapped_column(String(255), nullable=True)
+    created_by_id: Mapped[str] = mapped_column(String(36), ForeignKey("employees.id"), nullable=True)
+    updated_by_id: Mapped[str] = mapped_column(String(36), ForeignKey("employees.id"), nullable=True)
 
     # Relationship
     employee = relationship("Employee")

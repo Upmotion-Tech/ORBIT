@@ -19,7 +19,7 @@ class Task(Base):
 
     project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
-    assignee: Mapped[str] = mapped_column(String(255), nullable=True)
+    assignee_id: Mapped[str] = mapped_column(String(36), ForeignKey("employees.id"), nullable=True)
     start_date: Mapped[date] = mapped_column(Date, nullable=True)
     deadline: Mapped[date] = mapped_column(Date, nullable=True)
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="Not Started")
@@ -37,8 +37,8 @@ class Task(Base):
         default=now_pkt,
         onupdate=now_pkt,
     )
-    created_by: Mapped[str] = mapped_column(String(255), nullable=True)
-    updated_by: Mapped[str] = mapped_column(String(255), nullable=True)
+    created_by_id: Mapped[str] = mapped_column(String(36), ForeignKey("employees.id"), nullable=True)
+    updated_by_id: Mapped[str] = mapped_column(String(36), ForeignKey("employees.id"), nullable=True)
     deleted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships

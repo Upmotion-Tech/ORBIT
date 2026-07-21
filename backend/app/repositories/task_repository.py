@@ -19,14 +19,14 @@ class TaskRepository:
         self,
         search: Optional[str] = None,
         project_id: Optional[str] = None,
-        assignee: Optional[str] = None,
+        assignee_id: Optional[str] = None,
         status: Optional[str] = None,
         date_from: Optional[date] = None,
         date_to: Optional[date] = None,
-        assigned_to_member: Optional[str] = None,  # Dev member visibility filter
+        assigned_to_member_id: Optional[str] = None,  # Dev member visibility filter (employee ID)
     ) -> int:
         query = select(func.count(Task.id)).join(Project).where(Task.deleted_at.is_(None), Project.deleted_at.is_(None))
-        query = self._apply_filters(query, search, project_id, assignee, status, date_from, date_to, assigned_to_member)
+        query = self._apply_filters(query, search, project_id, assignee_id, status, date_from, date_to, assigned_to_member_id)
         result = await self.db.execute(query)
         return result.scalar_one()
 
@@ -34,18 +34,18 @@ class TaskRepository:
         self,
         search: Optional[str] = None,
         project_id: Optional[str] = None,
-        assignee: Optional[str] = None,
+        assignee_id: Optional[str] = None,
         status: Optional[str] = None,
         date_from: Optional[date] = None,
         date_to: Optional[date] = None,
-        assigned_to_member: Optional[str] = None,  # Dev member visibility filter
+        assigned_to_member_id: Optional[str] = None,  # Dev member visibility filter (employee ID)
         sort_by: str = "created_at",
         sort_dir: str = "desc",
         page: int = 1,
         page_size: int = 100,
     ) -> list[Task]:
         query = select(Task).join(Project).where(Task.deleted_at.is_(None), Project.deleted_at.is_(None))
-        query = self._apply_filters(query, search, project_id, assignee, status, date_from, date_to, assigned_to_member)
+        query = self._apply_filters(query, search, project_id, assignee_id, status, date_from, date_to, assigned_to_member_id)
 
         # Apply sorting
         sort_column = getattr(Task, sort_by, Task.created_at)
@@ -89,13 +89,13 @@ class TaskRepository:
         await self.db.flush()
         return task
 
-    async def add_comment(self, task_id: str, author: str, text: str, parent_id: Optional[str] = None, project_id: Optional[str] = None) -> ProjectComment:
+    async def add_comment(self, task_id: str, author_id: str, text: str, parent_id: Optional[str] = None, project_id: Optional[str] = None) -> ProjectComment:
         comment = ProjectComment(
             id=str(uuid.uuid4()),
             project_id=project_id,
             task_id=task_id,
             parent_id=parent_id,
-            author=author,
+            author_id=author_id,
             text=text,
         )
         self.db.add(comment)
@@ -112,38 +112,33 @@ class TaskRepository:
         query,
         search,
         project_id,
-        assignee,
+        assignee_id,
         status,
         date_from,
         date_to,
-        assigned_to_member,
+        assigned_to_member_id,
     ):
         if search:
             q = search.strip().lower()
             query = query.where(
                 or_(
                     func.lower(Task.title).contains(q),
-                    func.lower(Task.assignee).contains(q),
                     func.lower(Task.description).contains(q),
                 )
             )
         if project_id:
             query = query.where(Task.project_id == project_id)
-        if assignee:
-            query = query.where(Task.assignee == assignee)
+        if assignee_id:
+            query = query.where(Task.assignee_id == assignee_id)
         if status:
             query = query.where(Task.status == status)
         if date_from:
             query = query.where(Task.deadline >= date_from)
         if date_to:
             query = query.where(Task.deadline <= date_to)
-        if assigned_to_member:
+        if assigned_to_member_id:
             # Dev team member visibility: only tasks actually assigned to
-            # them — being on a project's team no longer implies visibility
-            # into every task on that project (that was the previous
-            # behavior; explicitly narrowed per request so "My Tasks" really
-            # only shows tasks assigned to the logged-in person, not every
-            # task belonging to a project they happen to be a team member
-            # of).
-            query = query.where(Task.assignee == assigned_to_member)
+            # them (by employee ID) — being on a project's team no longer
+            # implies visibility into every task on that project.
+            query = query.where(Task.assignee_id == assigned_to_member_id)
         return query

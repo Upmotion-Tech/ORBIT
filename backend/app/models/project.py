@@ -30,7 +30,7 @@ class Project(Base):
     at_risk: Mapped[bool] = mapped_column(Boolean, default=False)
     budget: Mapped[float] = mapped_column(Float, default=0.0)
     description: Mapped[str] = mapped_column(Text, nullable=True)
-    team: Mapped[list[str]] = mapped_column(JSON, default=list)
+    team_ids: Mapped[list[str]] = mapped_column(JSON, default=list)  # Employee IDs
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -41,8 +41,8 @@ class Project(Base):
         default=now_pkt,
         onupdate=now_pkt,
     )
-    created_by: Mapped[str] = mapped_column(String(255), nullable=True)
-    updated_by: Mapped[str] = mapped_column(String(255), nullable=True)
+    created_by_id: Mapped[str] = mapped_column(String(36), ForeignKey("employees.id"), nullable=True)
+    updated_by_id: Mapped[str] = mapped_column(String(36), ForeignKey("employees.id"), nullable=True)
     deleted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships

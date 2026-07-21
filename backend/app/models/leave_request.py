@@ -33,7 +33,7 @@ class LeaveRequest(Base):
         DateTime(timezone=True),
         default=now_pkt,
     )
-    approved_by: Mapped[str] = mapped_column(String(255), nullable=True)
+    approved_by_id: Mapped[str] = mapped_column(String(36), ForeignKey("employees.id"), nullable=True)
     approved_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=True,
     )

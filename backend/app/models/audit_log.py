@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, DateTime, Index
+from sqlalchemy import String, DateTime, Index, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -17,7 +17,7 @@ class AuditLog(Base):
         default=lambda: str(uuid.uuid4()),
     )
 
-    actor: Mapped[str] = mapped_column(String(255), nullable=False)
+    actor_id: Mapped[str] = mapped_column(String(36), ForeignKey("employees.id"), nullable=False)
     action: Mapped[str] = mapped_column(String(100), nullable=False)
     entity_type: Mapped[str] = mapped_column(String(100), nullable=False)
     entity_label: Mapped[str] = mapped_column(String(255), nullable=False)
