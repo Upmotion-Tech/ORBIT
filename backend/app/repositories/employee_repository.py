@@ -1,6 +1,6 @@
 from typing import Optional
 
-from sqlalchemy import select, func, or_, and_, delete as sql_delete
+from sqlalchemy import select, func, or_, and_, delete as sql_delete, update as sql_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.employee import Employee
@@ -8,6 +8,14 @@ from app.models.leave_request import LeaveRequest
 from app.models.salary_slip import SalarySlip
 from app.models.expense import Expense
 from app.models.notification import Notification
+from app.models.attendance import AttendanceRecord
+from app.models.wfh_request import WfhRequest
+
+from app.models.audit_log import AuditLog
+from app.models.project_comment import ProjectComment
+from app.models.task import Task
+from app.models.project import Project
+from app.models.customer import Customer
 from app.core.time import now_pkt
 
 
@@ -113,14 +121,32 @@ class EmployeeRepository:
 
     async def hard_delete_with_related_data(self, employee: Employee) -> None:
         # Genuine, irreversible removal — distinct from soft_delete above.
-        # employees.id is a nullable=False FK on LeaveRequest.employee_id,
-        # SalarySlip.employee_id, and Expense.submitted_by_id, so the row
-        # can't be deleted while any of those still reference it.
-        # Notification.user_id is a plain string (not a real FK) but is
-        # cleared too since "all data of them will be wiped" was explicit.
+        # Clear/unlink all foreign keys referencing employees.id before deleting.
+        
+        # 1. Unlink nullable FK references to this employee
+        await self.db.execute(sql_update(LeaveRequest).where(LeaveRequest.approved_by_id == employee.id).values(approved_by_id=None))
+        await self.db.execute(sql_update(SalarySlip).where(SalarySlip.created_by_id == employee.id).values(created_by_id=None))
+        await self.db.execute(sql_update(SalarySlip).where(SalarySlip.updated_by_id == employee.id).values(updated_by_id=None))
+        await self.db.execute(sql_update(Task).where(Task.assignee_id == employee.id).values(assignee_id=None))
+        await self.db.execute(sql_update(Task).where(Task.created_by_id == employee.id).values(created_by_id=None))
+        await self.db.execute(sql_update(Task).where(Task.updated_by_id == employee.id).values(updated_by_id=None))
+        await self.db.execute(sql_update(Project).where(Project.created_by_id == employee.id).values(created_by_id=None))
+        await self.db.execute(sql_update(Project).where(Project.updated_by_id == employee.id).values(updated_by_id=None))
+        await self.db.execute(sql_update(Customer).where(Customer.created_by_id == employee.id).values(created_by_id=None))
+        await self.db.execute(sql_update(Customer).where(Customer.updated_by_id == employee.id).values(updated_by_id=None))
+
+        # 2. Delete related records belonging directly to this employee
+        await self.db.execute(sql_delete(AttendanceRecord).where(AttendanceRecord.employee_id == employee.id))
+        await self.db.execute(sql_delete(WfhRequest).where(WfhRequest.employee_id == employee.id))
+
+        await self.db.execute(sql_delete(AuditLog).where(AuditLog.actor_id == employee.id))
+        await self.db.execute(sql_delete(ProjectComment).where(ProjectComment.author_id == employee.id))
         await self.db.execute(sql_delete(LeaveRequest).where(LeaveRequest.employee_id == employee.id))
         await self.db.execute(sql_delete(SalarySlip).where(SalarySlip.employee_id == employee.id))
         await self.db.execute(sql_delete(Expense).where(Expense.submitted_by_id == employee.id))
         await self.db.execute(sql_delete(Notification).where(Notification.user_id == employee.id))
+
+        # 3. Delete employee record
         await self.db.delete(employee)
         await self.db.flush()
+

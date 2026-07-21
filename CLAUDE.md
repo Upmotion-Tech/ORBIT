@@ -3584,4 +3584,17 @@ No backend changes needed (the data was already correct and already being fetche
   4. Repackaged frontend (`sync_script.py` + `pack.py`) so all 3 bundle copies (`ORBIT.html`, `backend/static/index.html`, `frontend/index.html`) are in sync. Verified end-to-end with an automated integration test against the real backend/database.
   5. Fixed missing `get_db` and `get_persona_role` dependency imports in `app/routers/projects.py` and `app/routers/tasks.py`. Verified `app.main` loads cleanly (124 routes).
 
+---
+
+## Update (2026-07-22) — Fix permanent employee account deletion foreign key constraint error
+
+- **Issue**: Permanently deleting an employee account failed with a PostgreSQL `ForeignKeyViolationError` (`IntegrityError: update or delete on table "employees" violates foreign key constraint "attendance_records_employee_id_fkey" on table "attendance_records"`).
+- **Root cause**: `EmployeeRepository.hard_delete_with_related_data()` was missing deletion/unlinking for several tables that reference `employees.id` (`AttendanceRecord`, `WfhRequest`, `AuditLog`, `ProjectComment`, and nullable FKs in `Task`, `Project`, `Customer`, etc.).
+- **Fix**: Updated `hard_delete_with_related_data()` to:
+  1. Set nullable FK references (`Task.assignee_id`, `Task.created_by_id`, `Project.created_by_id`, `Customer.created_by_id`, `LeaveRequest.approved_by_id`, etc.) to `NULL`.
+  2. Delete all related records in `AttendanceRecord`, `WfhRequest`, `AuditLog`, `ProjectComment`, `LeaveRequest`, `SalarySlip`, `Expense`, and `Notification`.
+  3. Delete the employee record itself.
+- **Verification**: Verified end-to-end against live PostgreSQL (Neon) by creating an employee with attendance records, WFH requests, and audit logs, then executing hard deletion — succeeded cleanly without any foreign key errors.
+
+
 
