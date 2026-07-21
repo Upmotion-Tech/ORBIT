@@ -1,13 +1,12 @@
 from datetime import timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.time import now_pkt
 from app.repositories.time_entry_repository import TimeEntryRepository
-from app.schemas.time_entry import TimeEntryCreate, TimeEntryResponse
 
 router = APIRouter(prefix="/api/time-entries", tags=["Time Entries"])
 
@@ -57,12 +56,3 @@ async def list_time_entries(
         "time_entries": time_rows,
         "allocations": allocations,
     }
-
-
-@router.post("", response_model=TimeEntryResponse, status_code=status.HTTP_201_CREATED)
-async def create_time_entry(
-    data: TimeEntryCreate,
-    repo: TimeEntryRepository = Depends(get_time_entry_repository),
-):
-    entry = await repo.create(data.model_dump())
-    return TimeEntryResponse.model_validate(entry)
