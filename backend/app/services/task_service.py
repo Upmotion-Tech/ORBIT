@@ -166,7 +166,8 @@ class TaskService:
         if "status" in data and updated_task.status != old_status:
             await self._audit(user, "Status Changed", updated_task.title, f"'{old_status}' → '{updated_task.status}'")
         else:
-            await self._audit(user, "Updated", updated_task.title)
+            changed = sorted(k for k in data.keys() if k != "updated_by")
+            await self._audit(user, "Updated", updated_task.title, f"Fields updated: {', '.join(changed)}" if changed else None)
 
         return TaskResponse.model_validate(updated_task)
 

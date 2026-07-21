@@ -91,7 +91,8 @@ class InvoiceService:
         if old_status != new_status:
             await self._audit(user, "Status Changed", updated_invoice.invoice_number, f"'{old_status}' → '{new_status}'")
         else:
-            await self._audit(user, "Updated", updated_invoice.invoice_number)
+            changed = sorted(k for k in data.keys() if k != "updated_by")
+            await self._audit(user, "Updated", updated_invoice.invoice_number, f"Fields updated: {', '.join(changed)}" if changed else None)
 
         return updated_invoice
 

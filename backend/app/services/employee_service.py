@@ -197,7 +197,8 @@ class EmployeeService:
         if password_changed:
             await self._audit(user, "Password Changed", employee.name)
         else:
-            await self._audit(user, "Updated", employee.name)
+            changed = sorted(k for k in data.keys() if k not in ("updated_by", "updated_at", "probation_end", "password_hash", "must_change_password"))
+            await self._audit(user, "Updated", employee.name, f"Fields updated: {', '.join(changed)}" if changed else None)
 
         return self._to_response(employee, persona)
 

@@ -74,10 +74,16 @@ async def get_project(
 async def create_project(
     data: ProjectCreate,
     persona: str = Depends(get_persona_role),
+    current_user: dict = Depends(get_current_user),
     service: ProjectService = Depends(get_project_service),
 ):
-    # Map Jordan Blake for owner role, or persona role
-    user_name = "Jordan Blake" if persona in ("owner", "finance") else persona
+    # Was a hardcoded "Jordan Blake" placeholder for the owner/finance
+    # persona, from before real per-user auth existed — every project
+    # created/updated by any owner/finance employee showed that same fake
+    # name in created_by/updated_by and the Audit Trail, never the real
+    # logged-in person. Matches the pattern delete_project/upload_attachment/
+    # add_comment in this same file already use correctly.
+    user_name = current_user.get("name") or persona
     return await service.create_project(data.model_dump(), user=user_name, persona=persona)
 
 
@@ -86,9 +92,10 @@ async def update_project(
     project_id: str,
     data: ProjectUpdate,
     persona: str = Depends(get_persona_role),
+    current_user: dict = Depends(get_current_user),
     service: ProjectService = Depends(get_project_service),
 ):
-    user_name = "Jordan Blake" if persona in ("owner", "finance") else persona
+    user_name = current_user.get("name") or persona
     return await service.update_project(
         project_id,
         data.model_dump(exclude_unset=True),

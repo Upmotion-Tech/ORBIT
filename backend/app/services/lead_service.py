@@ -138,7 +138,8 @@ class LeadService:
             })
             await self._audit(user, "Stage Changed", lead.company_name, f"'{old_stage}' → '{lead.stage}'")
         else:
-            await self._audit(user, "Updated", lead.company_name)
+            changed = sorted(k for k in data.keys() if k != "updated_by")
+            await self._audit(user, "Updated", lead.company_name, f"Fields updated: {', '.join(changed)}" if changed else None)
 
         await self._check_auto_project(lead, user)
 

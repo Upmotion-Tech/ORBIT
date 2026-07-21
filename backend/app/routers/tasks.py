@@ -72,9 +72,12 @@ async def get_task(
 async def create_task(
     data: TaskCreate,
     persona: str = Depends(get_persona_role),
+    current_user: dict = Depends(get_current_user),
     service: TaskService = Depends(get_task_service),
 ):
-    user_name = "Jordan Blake" if persona in ("owner", "finance") else persona
+    # Was a hardcoded "Jordan Blake" placeholder — see projects.py's
+    # create_project/update_project for the full explanation of the same fix.
+    user_name = current_user.get("name") or persona
     return await service.create_task(data.model_dump(), user=user_name, persona=persona)
 
 
@@ -83,9 +86,10 @@ async def update_task(
     task_id: str,
     data: TaskUpdate,
     persona: str = Depends(get_persona_role),
+    current_user: dict = Depends(get_current_user),
     service: TaskService = Depends(get_task_service),
 ):
-    user_name = "Jordan Blake" if persona in ("owner", "finance") else persona
+    user_name = current_user.get("name") or persona
     return await service.update_task(
         task_id,
         data.model_dump(exclude_unset=True),

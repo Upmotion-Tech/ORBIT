@@ -1,13 +1,21 @@
 import os
+import logging
 from contextlib import asynccontextmanager
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
-from app.core.database import engine, Base
+from app.core.database import engine, Base, async_session_factory
+from app.core.time import PKT
+from app.repositories.attendance_repository import AttendanceRepository
+from app.repositories.employee_repository import EmployeeRepository
+from app.repositories.notification_repository import NotificationRepository
+from app.services.attendance_service import AttendanceService
 from app.routers import (
     auth,
     leads,
@@ -31,9 +39,25 @@ from app.routers import (
     dashboard_export,
     expense_category_budgets,
     crm_sources,
+    attendance,
 )
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
+logger = logging.getLogger("orbit.attendance")
+
+
+async def _run_attendance_sweep():
+    # Own session, independent of any request — this runs off a scheduled
+    # trigger, not an HTTP call. Marks anyone with no attendance row for
+    # today as Absent and notifies them; no-ops entirely on weekends (see
+    # AttendanceService.run_end_of_day_sweep).
+    async with async_session_factory() as db:
+        service = AttendanceService(
+            AttendanceRepository(db), EmployeeRepository(db), NotificationRepository(db),
+        )
+        count = await service.run_end_of_day_sweep()
+        await db.commit()
+        logger.info(f"[attendance] end-of-day sweep marked {count} employee(s) absent")
 
 
 @asynccontextmanager
@@ -49,7 +73,17 @@ async def lifespan(app: FastAPI):
     # invoices/expenses/milestones/salary-slips straight into production.
     # Run `python -m scripts.seed_hr` / `python -m scripts.seed_finance`
     # manually against a specific DATABASE_URL when real seeding is wanted.
+
+    # Runs once daily at 23:55 PKT — anyone who never marked attendance that
+    # day gets swept to Absent + notified. In-process scheduler: fine for
+    # this app's current single-instance deployment, but would double-fire
+    # per day if this ever runs as more than one worker process.
+    scheduler = AsyncIOScheduler(timezone=PKT)
+    scheduler.add_job(_run_attendance_sweep, CronTrigger(hour=23, minute=55, timezone=PKT))
+    scheduler.start()
+
     yield
+    scheduler.shutdown(wait=False)
     await engine.dispose()
 
 
@@ -103,6 +137,7 @@ app.include_router(expense_categories.router)
 app.include_router(dashboard_export.router)
 app.include_router(expense_category_budgets.router)
 app.include_router(crm_sources.router)
+app.include_router(attendance.router)
 
 
 

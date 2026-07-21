@@ -22,6 +22,7 @@ from app.models.audit_log import AuditLog
 from app.models.expense_category import ExpenseCategory
 from app.models.expense_category_budget import ExpenseCategoryBudget
 from app.models.crm_source import CrmSource
+from app.models.attendance import AttendanceRecord
 
 __all__ = [
     "Lead",
@@ -48,5 +49,6 @@ __all__ = [
     "ExpenseCategory",
     "ExpenseCategoryBudget",
     "CrmSource",
+    "AttendanceRecord",
 ]
 

@@ -54,7 +54,8 @@ class MilestoneService:
         if old_status != new_status:
             await self._audit(user, "Status Changed", updated_milestone.name, f"'{old_status}' → '{new_status}'")
         else:
-            await self._audit(user, "Updated", updated_milestone.name)
+            changed = sorted(k for k in data.keys() if k != "updated_by")
+            await self._audit(user, "Updated", updated_milestone.name, f"Fields updated: {', '.join(changed)}" if changed else None)
 
         return updated_milestone
 

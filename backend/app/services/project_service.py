@@ -232,7 +232,8 @@ class ProjectService:
         if "status" in data and updated_project.status != old_status:
             await self._audit(user, "Status Changed", updated_project.name, f"'{old_status}' → '{updated_project.status}'")
         else:
-            await self._audit(user, "Updated", updated_project.name)
+            changed = sorted(k for k in data.keys() if k != "updated_by")
+            await self._audit(user, "Updated", updated_project.name, f"Fields updated: {', '.join(changed)}" if changed else None)
 
         return self._to_response(updated_project, persona)
 
