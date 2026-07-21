@@ -19,7 +19,7 @@ def _clean_tags(v: Optional[list[str]]) -> list[str]:
 class TaskCreate(BaseModel):
     project_id: str = Field(..., max_length=36)
     title: str = Field(..., min_length=1, max_length=255)
-    assignee: Optional[str] = Field(None, max_length=255)
+    assignee_id: Optional[str] = Field(None, max_length=36)
     start_date: Optional[date] = None
     deadline: Optional[date] = None
     status: str = Field(default="Not Started", pattern=r"^(Not Started|In Progress|Delayed|Completed)$")
@@ -35,7 +35,7 @@ class TaskCreate(BaseModel):
 class TaskUpdate(BaseModel):
     project_id: Optional[str] = Field(None, max_length=36)
     title: Optional[str] = Field(None, min_length=1, max_length=255)
-    assignee: Optional[str] = Field(None, max_length=255)
+    assignee_id: Optional[str] = Field(None, max_length=36)
     start_date: Optional[date] = None
     deadline: Optional[date] = None
     status: Optional[str] = Field(None, pattern=r"^(Not Started|In Progress|Delayed|Completed)$")
@@ -52,7 +52,7 @@ class TaskResponse(BaseModel):
     id: str
     project_id: str
     title: str
-    assignee: Optional[str] = None
+    assignee_id: Optional[str] = None
     start_date: Optional[date] = None
     deadline: Optional[date] = None
     status: str
@@ -60,8 +60,8 @@ class TaskResponse(BaseModel):
     tags: list[str] = Field(default_factory=list)
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-    created_by: Optional[str] = None
-    updated_by: Optional[str] = None
+    created_by_id: Optional[str] = None
+    updated_by_id: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

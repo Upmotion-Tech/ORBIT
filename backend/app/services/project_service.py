@@ -30,70 +30,48 @@ class ProjectService:
         if self.audit_repo:
             await self.audit_repo.log(actor, action, "Project", label, detail)
 
-    async def _resolve_member_notification_target(self, member_name: Optional[str]) -> str:
-        # Team-member names on a project are plain display strings, not
-        # employee ids — notifications need a real id to reach that specific
-        # person rather than broadcasting to "all". Same fix already applied
-        # to TaskService's assignee notifications; this was the one
-        # deliberately-deferred instance of it (see project history).
-        # Falls back to "owner" (not "all") when a name can't be resolved to
-        # a real employee — a broadcast-to-everyone here would leak an
-        # unrelated project's activity to random employees just because of a
-        # name-matching miss.
-        if not member_name or not self.employee_repo:
-            return "owner"
-        matches = await self.employee_repo.find_by_name(member_name)
-        exact = next((e for e in matches if e.name.strip().lower() == member_name.strip().lower()), None)
-        return exact.id if exact else "owner"
-
     async def list_projects(
         self,
         search: Optional[str] = None,
         client: Optional[str] = None,
         status_filter: Optional[str] = None,
-        team_member: Optional[str] = None,
+        team_member_id: Optional[str] = None,
         date_from: Optional[date] = None,
         date_to: Optional[date] = None,
         persona: str = "owner",
-        user_name: str = "",
-        is_dev_editor: bool = False,
+        user_id: str = "",
     ) -> list[ProjectResponse]:
         # Enforce project visibility: dev only sees projects they are assigned
-        # to — was hardcoded to the mock name "Kofi Mensah" regardless of who
-        # was actually logged in, so a real employee added to a project's
-        # team could never see it themselves. Now uses the real caller.
-        # This visibility scoping is unchanged by the "dev access = full
-        # owner parity" ask below — that's about edit/delete/budget rights on
-        # projects already visible, not about widening which ones show up.
-        assigned_to_member = user_name if persona == "dev" else None
+        # to (by employee ID) — previously hardcoded to a mock name.
+        assigned_to_member_id = user_id if persona == "dev" else None
 
         projects = await self.project_repo.find_all(
             search=search,
             client=client,
             status=status_filter,
-            team_member=team_member,
+            team_member=team_member_id,
             date_from=date_from,
             date_to=date_to,
-            assigned_to_member=assigned_to_member,
+            assigned_to_member=assigned_to_member_id,
         )
 
-        return [self._to_response(p, persona, is_dev_editor) for p in projects]
+        return [self._to_response(p, persona) for p in projects]
 
-    async def get_project(self, project_id: str, persona: str = "owner", user_name: str = "", is_dev_editor: bool = False) -> Optional[ProjectResponse]:
+    async def get_project(self, project_id: str, persona: str = "owner", user_id: str = "") -> Optional[ProjectResponse]:
         project = await self.project_repo.find_by_id(project_id)
         if not project:
             return None
 
         # Dev member visibility check
-        if persona == "dev" and user_name not in project.team:
+        if persona == "dev" and user_id not in project.team_ids:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied to this project.",
             )
 
-        return self._to_response(project, persona, is_dev_editor)
+        return self._to_response(project, persona)
 
-    async def create_project(self, data: dict, user: str = "anonymous", persona: str = "owner", is_dev_editor: bool = False) -> ProjectResponse:
+    async def create_project(self, data: dict, user: str = "anonymous", persona: str = "owner") -> ProjectResponse:
         # An employee holding the "dev" access level functions as Owner for
         # this module — same parity already granted to "finance"/"crm" for
         # their own modules. is_dev_editor is computed from the caller's full
@@ -145,8 +123,8 @@ class ProjectService:
         project = await self.project_repo.create(data)
 
         # Generate notifications for assigned team members
-        if self.notification_repo and project.team:
-            for member in project.team:
+        if self.notification_repo and project.team_ids:
+            for member in project.team_ids:
                 target_user = await self._resolve_member_notification_target(member)
                 await self.notification_repo.create(
                     user_id=target_user,
@@ -157,9 +135,9 @@ class ProjectService:
 
         await self._audit(user, "Created", project.name)
 
-        return self._to_response(project, persona, is_dev_editor)
+        return self._to_response(project, persona)
 
-    async def update_project(self, project_id: str, data: dict, user: str = "anonymous", persona: str = "owner", is_dev_editor: bool = False) -> ProjectResponse:
+    async def update_project(self, project_id: str, data: dict, user: str = "anonymous", persona: str = "owner") -> ProjectResponse:
         project = await self.project_repo.find_by_id(project_id)
         if not project:
             raise HTTPException(
@@ -207,14 +185,14 @@ class ProjectService:
                     detail=f"Project deadline cannot be before start date ({start}).",
                 )
 
-        old_team = set(project.team or [])
+        old_team = set(project.team_ids or [])
         old_status = project.status
         data["updated_by"] = user
         updated_project = await self.project_repo.update(project, data)
 
         # Handle notifications for team assignment changes
         if self.notification_repo and "team" in data:
-            new_team = set(updated_project.team or [])
+            new_team = set(updated_project.team_ids or [])
             added = new_team - old_team
             removed = old_team - new_team
 
@@ -249,9 +227,9 @@ class ProjectService:
             changed = sorted(k for k in data.keys() if k != "updated_by")
             await self._audit(user, "Updated", updated_project.name, f"Fields updated: {', '.join(changed)}" if changed else None)
 
-        return self._to_response(updated_project, persona, is_dev_editor)
+        return self._to_response(updated_project, persona)
 
-    async def delete_project(self, project_id: str, persona: str = "owner", user: str = "anonymous", is_dev_editor: bool = False) -> bool:
+    async def delete_project(self, project_id: str, persona: str = "owner", user: str = "anonymous") -> bool:
         project = await self.project_repo.find_by_id(project_id)
         if not project:
             return False
@@ -330,7 +308,7 @@ class ProjectService:
 
         return project
 
-    def _to_response(self, project: Project, persona: str, is_dev_editor: bool = False) -> ProjectResponse:
+    def _to_response(self, project: Project, persona: str) -> ProjectResponse:
         resp = ProjectResponse.model_validate(project)
 
         # Budget/spend visibility: Owner or Dev-access-level holders see it
