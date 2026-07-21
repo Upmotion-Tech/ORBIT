@@ -41,7 +41,7 @@ class LeaveRequest(Base):
     approval_note: Mapped[str] = mapped_column(Text, nullable=True)
     balance_snapshot: Mapped[dict] = mapped_column(JSON, nullable=True)
 
-    employee = relationship("Employee", lazy="joined")
+    employee = relationship("Employee", lazy="joined", foreign_keys=[employee_id])
 
     __table_args__ = (
         Index("ix_leave_requests_employee_id", "employee_id"),

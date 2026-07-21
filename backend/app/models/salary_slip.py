@@ -33,7 +33,7 @@ class SalarySlip(Base):
     updated_by_id: Mapped[str] = mapped_column(String(36), ForeignKey("employees.id"), nullable=True)
 
     # Relationship
-    employee = relationship("Employee")
+    employee = relationship("Employee", foreign_keys=[employee_id])
 
     __table_args__ = (
         Index("ix_salary_slips_employee_id", "employee_id"),
