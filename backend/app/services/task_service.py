@@ -88,16 +88,12 @@ class TaskService:
         return TaskResponse.model_validate(task)
 
     async def create_task(self, data: dict, user: str = "anonymous", persona: str = "owner", is_dev_editor: bool = False) -> TaskResponse:
-        # "admin"/"finance" here predate this ask and are left as-is; "dev"
-        # access-level holders now also get full parity, matching Projects.
-        # is_dev_editor is computed from the caller's full access_levels list
-        # (has_role(roles, "owner", "dev")) rather than the single derived
-        # persona string, so it's correct even when some other role outranks
-        # "dev" in that derivation (e.g. holding both "finance" and "dev").
-        if persona not in ("owner", "admin", "finance") and not is_dev_editor:
+        # Only owners can create tasks. Dev members can view and comment on
+        # tasks assigned to them, but cannot create or edit.
+        if persona != "owner":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="You do not have permission to create tasks.",
+                detail="Only owners can create tasks.",
             )
 
         project = await self.project_repo.find_by_id(data["project_id"])
@@ -145,12 +141,13 @@ class TaskService:
                 detail="Task not found.",
             )
 
-        # Previously blocked only persona == "dev" specifically (everyone
-        # else who could reach this endpoint at all was already allowed to
-        # edit) — Dev-access-level holders now function as Owner for this
-        # module (see create_task above), so that one restriction is removed
-        # rather than replaced; nothing else here becomes more permissive or
-        # more restrictive than it already was.
+        # Only owners can edit tasks. Dev members can view and comment on
+        # tasks assigned to them, but cannot edit.
+        if persona != "owner":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only owners can edit tasks.",
+            )
 
         old_assignee = task.assignee
         old_status = task.status
@@ -182,9 +179,12 @@ class TaskService:
         if not task:
             return False
 
-        # Dev-access-level holders now function as Owner for this module —
-        # the prior "dev cannot delete tasks" restriction is removed, same
-        # reasoning as update_task above.
+        # Only owners can delete tasks. Dev members cannot delete tasks.
+        if persona != "owner":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only owners can delete tasks.",
+            )
 
         await self._audit(user, "Deleted", task.title)
         await self.task_repo.soft_delete(task)
