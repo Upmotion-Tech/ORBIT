@@ -38,6 +38,12 @@ class EmployeeCreate(BaseModel):
     employment_type: str = Field(default="Full-time")
     start_date: date
     salary: float = Field(default=0.0, ge=0)
+    # Was missing entirely — the frontend's New Employee form has always
+    # required and sent a Password field, but since this schema never
+    # declared it, Pydantic silently dropped it from every request before it
+    # reached the service layer, which then always fell back to generating
+    # its own random password regardless of what was actually typed.
+    password: str = Field(..., min_length=1, max_length=255)
     access_levels: list[str] = Field(default_factory=lambda: ["employee"])
     status: str = Field(default="Active")
     probation_end: Optional[date] = None

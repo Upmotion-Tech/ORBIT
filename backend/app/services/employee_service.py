@@ -67,12 +67,21 @@ class EmployeeService:
                 detail="An employee with this email already exists.",
             )
 
-        # Password is never client-supplied — always a fresh random temp
-        # password, mailed to the employee (never returned to the caller
-        # unless the mail itself failed to send, see below).
-        data.pop("password", None)
-        temp_password = generate_temp_password()
-        password_hash = get_password_hash(temp_password)
+        # Use whatever password the Owner/Finance actually typed into the
+        # New Employee form — this used to unconditionally discard it and
+        # generate a random one instead (a leftover from an earlier
+        # auto-generated-password-by-email feature; when that was reverted
+        # back to a manual Password field, only the *frontend* form came
+        # back — this backend logic was never actually reverted with it, so
+        # every new employee's real password silently became a random
+        # string the Owner never saw, while the login screen still showed
+        # whatever they'd typed as if it had been accepted). Falls back to a
+        # random password only if the field is somehow empty (defensive —
+        # the frontend already requires it).
+        password = (data.pop("password", None) or "").strip()
+        if not password:
+            password = generate_temp_password()
+        password_hash = get_password_hash(password)
 
         data["email"] = email
         data["password_hash"] = password_hash
@@ -90,7 +99,7 @@ class EmployeeService:
         email_sent = False
         if self.email_service:
             email_sent = await self.email_service.send_welcome_email(
-                to_email=employee.email, to_name=employee.name, temp_password=temp_password,
+                to_email=employee.email, to_name=employee.name, temp_password=password,
             )
 
         if self.notification_repo:
@@ -111,8 +120,10 @@ class EmployeeService:
         if not email_sent:
             # Fallback so the account isn't unreachable — the caller (HR/
             # Owner) needs some way to hand over the credential if the mail
-            # never arrived.
-            resp.temp_password = temp_password
+            # never arrived. Now that this is the real password they typed
+            # (not a random one), this is really just confirming it back to
+            # them rather than handing over a secret they never saw.
+            resp.temp_password = password
         return resp
 
     async def update_employee(
