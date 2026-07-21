@@ -7,7 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.dependencies import get_persona_role, get_persona_roles, get_current_user
-from app.core.permissions import is_project_editor
+from app.core.permissions import is_project_editor, is_dev_member
+
+
+
 from app.repositories.project_repository import ProjectRepository
 from app.repositories.lead_repository import LeadRepository
 from app.repositories.notification_repository import NotificationRepository
@@ -54,6 +57,8 @@ async def list_projects(
         persona=persona,
         user_id=current_user.get("user_id", ""),
         is_dev_editor=is_project_editor(roles, current_user.get("department")),
+        department=current_user.get("department", ""),
+        roles=roles,
     )
 
 
@@ -70,6 +75,8 @@ async def get_project(
         persona=persona,
         user_id=current_user.get("user_id", ""),
         is_dev_editor=is_project_editor(roles, current_user.get("department")),
+        department=current_user.get("department", ""),
+        roles=roles,
     )
     if not project:
         raise HTTPException(
@@ -77,6 +84,7 @@ async def get_project(
             detail="Project not found.",
         )
     return project
+
 
 
 @router.post("", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
@@ -290,13 +298,14 @@ async def add_comment(
     user_id = current_user.get("user_id") or persona
     user_name = current_user.get("name") or persona
 
-    # Check dev project visibility — same is_dev_editor exception as
+    # Check dev project visibility — same is_dev_member exception as
     # list_projects/get_project in project_service.py.
-    if persona == "dev" and not is_project_editor(roles, current_user.get("department")) and user_id not in (project.team_ids or []):
+    if is_dev_member(roles, current_user.get("department")) and user_id not in (project.team_ids or []):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot comment on projects you are not assigned to.",
         )
+
 
     comment = await service.project_repo.add_comment(
         project_id=project_id,

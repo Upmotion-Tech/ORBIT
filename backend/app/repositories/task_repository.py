@@ -2,7 +2,8 @@ import uuid
 from datetime import date
 from typing import Optional
 
-from sqlalchemy import select, func, or_, and_
+from sqlalchemy import select, func, or_, and_, cast, String
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.time import now_pkt
@@ -137,8 +138,12 @@ class TaskRepository:
         if date_to:
             query = query.where(Task.deadline <= date_to)
         if assigned_to_member_id:
-            # Dev team member visibility: only tasks actually assigned to
-            # them (by employee ID) — being on a project's team no longer
-            # implies visibility into every task on that project.
-            query = query.where(Task.assignee_id == assigned_to_member_id)
+            # Dev team member visibility: tasks assigned to them directly OR tasks belonging to a project where they are on the team
+            query = query.where(
+                or_(
+                    Task.assignee_id == assigned_to_member_id,
+                    cast(Project.team_ids, String).like(f'%"{assigned_to_member_id}"%')
+                )
+            )
         return query
+

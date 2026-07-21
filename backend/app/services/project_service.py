@@ -11,6 +11,9 @@ from app.repositories.notification_repository import NotificationRepository
 from app.schemas.project import ProjectResponse
 
 
+from app.core.permissions import is_dev_member
+
+
 class ProjectService:
     def __init__(
         self,
@@ -41,14 +44,12 @@ class ProjectService:
         persona: str = "owner",
         user_id: str = "",
         is_dev_editor: bool = False,
+        department: str = "",
+        roles: Optional[list] = None,
     ) -> list[ProjectResponse]:
-        # Enforce project visibility: a "dev"-persona employee only sees
-        # projects they're assigned to — UNLESS they're an is_dev_editor
-        # (Owner, or "dev" access held by someone outside the Dev Member
-        # department), who behaves like Owner and sees everything. A Dev
-        # Member department engineer holding plain "dev" access is the one
-        # who actually gets scoped down to just their own assignments.
-        assigned_to_member_id = user_id if (persona == "dev" and not is_dev_editor) else None
+        # Enforce project visibility: a Dev Member department employee (who is
+        # not an Owner) only sees projects they are assigned to.
+        assigned_to_member_id = user_id if is_dev_member(roles, department) else None
 
         projects = await self.project_repo.find_all(
             search=search,
@@ -62,20 +63,28 @@ class ProjectService:
 
         return [self._to_response(p, persona, is_dev_editor) for p in projects]
 
-    async def get_project(self, project_id: str, persona: str = "owner", user_id: str = "", is_dev_editor: bool = False) -> Optional[ProjectResponse]:
+    async def get_project(
+        self,
+        project_id: str,
+        persona: str = "owner",
+        user_id: str = "",
+        is_dev_editor: bool = False,
+        department: str = "",
+        roles: Optional[list] = None,
+    ) -> Optional[ProjectResponse]:
         project = await self.project_repo.find_by_id(project_id)
         if not project:
             return None
 
-        # Dev member visibility check — same is_dev_editor exception as
-        # list_projects above.
-        if persona == "dev" and not is_dev_editor and user_id not in (project.team_ids or []):
+        # Dev Member department visibility check
+        if is_dev_member(roles, department) and user_id not in (project.team_ids or []):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied to this project.",
             )
 
         return self._to_response(project, persona, is_dev_editor)
+
 
     async def create_project(self, data: dict, user: str = "anonymous", persona: str = "owner", is_dev_editor: bool = False) -> ProjectResponse:
         # An employee holding the "dev" access level functions as Owner for

@@ -3,6 +3,7 @@ from typing import Optional
 
 from fastapi import HTTPException, status
 
+from app.core.permissions import is_dev_member
 from app.core.time import now_pkt
 from app.models.task import Task
 from app.repositories.task_repository import TaskRepository
@@ -41,9 +42,11 @@ class TaskService:
         date_to: Optional[date] = None,
         persona: str = "owner",
         user_id: str = "",
+        department: str = "",
+        roles: Optional[list] = None,
     ) -> list[TaskResponse]:
-        # Dev members only see tasks assigned to them specifically
-        assigned_to_member_id = user_id if persona == "dev" else None
+        # Dev Member department employees only see tasks assigned to them directly or on their assigned projects
+        assigned_to_member_id = user_id if is_dev_member(roles, department) else None
 
         tasks = await self.task_repo.find_all(
             search=search,
@@ -56,13 +59,20 @@ class TaskService:
         )
         return [TaskResponse.model_validate(t) for t in tasks]
 
-    async def get_task(self, task_id: str, persona: str = "owner", user_id: str = "") -> Optional[TaskResponse]:
+    async def get_task(
+        self,
+        task_id: str,
+        persona: str = "owner",
+        user_id: str = "",
+        department: str = "",
+        roles: Optional[list] = None,
+    ) -> Optional[TaskResponse]:
         task = await self.task_repo.find_by_id(task_id)
         if not task:
             return None
 
-        # Dev member visibility check
-        if persona == "dev":
+        # Dev Member department visibility check
+        if is_dev_member(roles, department):
             project = await self.project_repo.find_by_id(task.project_id)
             if task.assignee_id != user_id and (not project or user_id not in (project.team_ids or [])):
                 raise HTTPException(
@@ -71,6 +81,7 @@ class TaskService:
                 )
 
         return TaskResponse.model_validate(task)
+
 
     async def create_task(self, data: dict, user: str = "anonymous", persona: str = "owner") -> TaskResponse:
         # Only owners can create tasks. Dev members can view and comment on

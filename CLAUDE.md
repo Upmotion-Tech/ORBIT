@@ -3561,4 +3561,27 @@ No backend changes needed (the data was already correct and already being fetche
 
 ---
 
-**Standing note for the next session**: none of this round's work has been committed or pushed, per explicit standing instruction ("don't push, I'll say when"). The Neon production database *was* migrated directly during this round (additive schema changes only, for both the ID-migration backfill and the new Customers table/column) — but the **application code** fixing all of the above still only exists locally and needs an actual `git push` + Render redeploy before the live app reflects any of it.
+---
+
+## Update (2026-07-21, later still) — Neon database schema fix for legacy NOT NULL constraints
+
+- **Issue**: Adding an employee (or performing any audited action) returned a `500 Internal Server Error` with `sqlalchemy.exc.IntegrityError: null value in column "actor" of relation "audit_logs" violates not-null constraint`.
+- **Root cause**: The live PostgreSQL (Neon) database retained `NOT NULL` constraints on legacy columns (`audit_logs.actor`, `project_comments.author`, `projects.team`) that were superseded by `*_id` foreign key columns (`actor_id`, `author_id`, `team_ids`). Because the Python code now inserts into the `*_id` columns, PostgreSQL received `NULL` for the legacy `actor` column and rejected the insert.
+- **Fix**: Executed schema alteration on Neon PostgreSQL database (`ALTER TABLE ... ALTER COLUMN ... DROP NOT NULL`) for `audit_logs.actor`, `project_comments.author`, and `projects.team`. Verified that all three columns now have `is_nullable = YES`. Tested employee creation and audit log insertion end-to-end on live Neon PostgreSQL database — succeeded cleanly with 200 OK.
+
+---
+
+## Update (2026-07-21, later still) — Project and Task visibility scoping for Dev Member department employees
+
+- **Issue**: A user belonging to the `Dev Member` department who was granted `dev` (Projects) access could view all projects and tasks across the company (including projects where they were not listed in the team).
+- **Root cause**:
+  1. `project_service.py`'s `list_projects` and `get_project` relied on `(persona == "dev" and not is_dev_editor)` for project scoping. If a user had multiple roles (e.g. `["dev", "crm"]`), `get_persona_role` resolved `persona` to `"crm"` or `"hr"`, which bypassed project scoping completely.
+  2. `task_service.py`'s `list_tasks` and `get_task` only checked `persona == "dev"` without checking the user's actual department (`"Dev Member"`), and did not filter tasks to include both direct task assignments and project team assignments.
+- **Fix**:
+  1. Added `is_dev_member(roles, department)` helper in `app/core/permissions.py` — returns `True` if `department == "Dev Member"` and the user does not hold the `owner` role.
+  2. Updated `ProjectService.list_projects` and `get_project` to enforce visibility scoping using `is_dev_member(roles, department)`. If `True`, only projects where `user_id in project.team_ids` are returned. Direct `get_project` requests for unassigned projects return `403 Forbidden`.
+  3. Updated `TaskRepository._apply_filters`, `TaskService.list_tasks`, and `get_task` to filter tasks for `Dev Member` department users to only include tasks assigned to them directly (`assignee_id == user_id`) OR tasks belonging to projects where they are in `team_ids`.
+  4. Repackaged frontend (`sync_script.py` + `pack.py`) so all 3 bundle copies (`ORBIT.html`, `backend/static/index.html`, `frontend/index.html`) are in sync. Verified end-to-end with an automated integration test against the real backend/database.
+  5. Fixed missing `get_db` and `get_persona_role` dependency imports in `app/routers/projects.py` and `app/routers/tasks.py`. Verified `app.main` loads cleanly (124 routes).
+
+

@@ -19,3 +19,14 @@ def is_project_editor(roles: Optional[list], department: Optional[str]) -> bool:
     if has_role(roles, "owner"):
         return True
     return has_role(roles, "dev") and department != "Dev Member"
+
+
+def is_dev_member(roles: Optional[list], department: Optional[str]) -> bool:
+    """
+    Returns True if the user belongs to the Dev Member department and does not hold the 'owner' role.
+    Dev Member department employees are restricted to viewing only projects they are assigned to (or tasks on those projects).
+    """
+    if has_role(roles, "owner"):
+        return False
+    return department == "Dev Member"
+

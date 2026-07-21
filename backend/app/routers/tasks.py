@@ -5,7 +5,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import get_persona_role, get_current_user
+from app.core.dependencies import get_persona_role, get_persona_roles, get_current_user
+from app.core.permissions import is_dev_member
+
+
 from app.repositories.task_repository import TaskRepository
 from app.repositories.project_repository import ProjectRepository
 from app.repositories.notification_repository import NotificationRepository
@@ -37,6 +40,7 @@ async def list_tasks(
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
     persona: str = Depends(get_persona_role),
+    roles: list = Depends(get_persona_roles),
     current_user: dict = Depends(get_current_user),
     service: TaskService = Depends(get_task_service),
 ):
@@ -49,6 +53,8 @@ async def list_tasks(
         date_to=date_to,
         persona=persona,
         user_id=current_user.get("user_id", ""),
+        department=current_user.get("department", ""),
+        roles=roles,
     )
 
 
@@ -56,16 +62,24 @@ async def list_tasks(
 async def get_task(
     task_id: str,
     persona: str = Depends(get_persona_role),
+    roles: list = Depends(get_persona_roles),
     current_user: dict = Depends(get_current_user),
     service: TaskService = Depends(get_task_service),
 ):
-    task = await service.get_task(task_id, persona=persona, user_id=current_user.get("user_id", ""))
+    task = await service.get_task(
+        task_id,
+        persona=persona,
+        user_id=current_user.get("user_id", ""),
+        department=current_user.get("department", ""),
+        roles=roles,
+    )
     if not task:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Task not found.",
         )
     return task
+
 
 
 @router.post("", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
@@ -124,6 +138,7 @@ async def add_comment(
     task_id: str,
     data: CommentCreate,
     persona: str = Depends(get_persona_role),
+    roles: list = Depends(get_persona_roles),
     current_user: dict = Depends(get_current_user),
     service: TaskService = Depends(get_task_service),
 ):
@@ -139,11 +154,12 @@ async def add_comment(
 
     # Permissions/Visibility check
     project = await service.project_repo.find_by_id(task.project_id)
-    if persona == "dev" and task.assignee_id != user_id and (not project or user_id not in (project.team_ids or [])):
+    if is_dev_member(roles, current_user.get("department")) and task.assignee_id != user_id and (not project or user_id not in (project.team_ids or [])):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot comment on tasks you are not assigned to.",
         )
+
 
     comment = await service.task_repo.add_comment(
         task_id=task_id,
