@@ -41,14 +41,14 @@ async def get_current_user(
             detail="Your account has been deactivated by the Owner. Contact Admin.",
         )
 
-    # Department isn't in the JWT itself (would require re-login whenever it
-    # changes) — attached fresh here instead, off the same DB lookup already
-    # done above for the is_active check, so it's always current. Used by
-    # is_project_editor() to distinguish a Dev Member department engineer
-    # (view + comment only) from anyone else holding the "dev" access level.
+    # Department and roles aren't frozen to the old JWT values — attached fresh
+    # here instead off the DB lookup already done for is_active, so access level
+    # changes take effect immediately without requiring a re-login.
+    payload["roles"] = employee.access_levels or ["employee"]
     payload["department"] = employee.department
 
     return payload
+
 
 
 async def get_owner_user(

@@ -7,11 +7,12 @@ from app.core.time import to_pkt
 
 class AuditLogResponse(BaseModel):
     id: str
-    actor_id: str
+    actor_id: Optional[str] = None
     action: str
     entity_type: str
     entity_label: str
     detail: Optional[str] = None
+
     created_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
