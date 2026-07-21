@@ -1,6 +1,7 @@
+import os
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -10,6 +11,7 @@ from app.repositories.notification_repository import NotificationRepository
 from app.repositories.audit_log_repository import AuditLogRepository
 from app.services.employee_service import EmployeeService
 from app.services.email_service import EmailService
+from app.services.storage_service import storage_service
 from app.schemas.employee import EmployeeCreate, EmployeeUpdate, EmployeeResponse
 
 router = APIRouter(prefix="/api/employees", tags=["Employees"])
@@ -86,6 +88,53 @@ async def update_employee(
         user=current_user.get("sub", "anonymous"),
         persona=persona,
         actor_id=current_user.get("user_id"),
+    )
+
+
+@router.post("/{employee_id}/contract", response_model=EmployeeResponse)
+async def upload_employee_contract(
+    employee_id: str,
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+    persona: list = Depends(get_persona_roles),
+    service: EmployeeService = Depends(get_employee_service),
+):
+    MAX_SIZE = 10 * 1024 * 1024
+    content = await file.read()
+    if len(content) > MAX_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="File size exceeds maximum limit of 10MB.",
+        )
+    await file.seek(0)
+
+    ext = os.path.splitext(file.filename or ".bin")[1].lower()
+    if ext not in storage_service.ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=f"Allowed file types: {', '.join(storage_service.ALLOWED_EXTENSIONS)}",
+        )
+
+    filename = await storage_service.save(file, prefix=f"contract_{employee_id}_")
+    url = storage_service.get_url(filename)
+    return await service.upload_contract(
+        employee_id, url,
+        user=current_user.get("sub", "anonymous"),
+        persona=persona,
+    )
+
+
+@router.delete("/{employee_id}/contract", response_model=EmployeeResponse)
+async def remove_employee_contract(
+    employee_id: str,
+    current_user: dict = Depends(get_current_user),
+    persona: list = Depends(get_persona_roles),
+    service: EmployeeService = Depends(get_employee_service),
+):
+    return await service.remove_contract(
+        employee_id,
+        user=current_user.get("sub", "anonymous"),
+        persona=persona,
     )
 
 

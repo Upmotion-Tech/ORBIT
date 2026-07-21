@@ -40,16 +40,15 @@ STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    try:
-        from scripts.seed_hr import seed as seed_hr
-        await seed_hr()
-    except Exception as e:
-        print(f"[seed] HR seed skipped/errored: {e}")
-    try:
-        from scripts.seed_finance import seed as seed_finance
-        await seed_finance()
-    except Exception as e:
-        print(f"[seed] Finance seed skipped/errored: {e}")
+    # Demo/seed data must never run automatically on server startup — it has
+    # no way to know whether it's pointed at a fresh local dev DB or live
+    # production, and an "empty table means seed it" check is true for both.
+    # This once fired against the real production Neon database (an empty
+    # `invoices` table there, post go-live wipe, looked identical to a fresh
+    # local DB to seed_finance.py's own check) and inserted fake demo
+    # invoices/expenses/milestones/salary-slips straight into production.
+    # Run `python -m scripts.seed_hr` / `python -m scripts.seed_finance`
+    # manually against a specific DATABASE_URL when real seeding is wanted.
     yield
     await engine.dispose()
 

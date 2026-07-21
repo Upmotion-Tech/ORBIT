@@ -201,6 +201,54 @@ class EmployeeService:
 
         return self._to_response(employee, persona)
 
+    async def upload_contract(
+        self, employee_id: str, url: str, user="anonymous", persona=None,
+    ) -> EmployeeResponse:
+        employee = await self.employee_repo.find_by_id(employee_id)
+        if not employee:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found.")
+        if not has_role(persona, "owner", "hr", "finance"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only Owner, HR, or Finance can upload a contract file.",
+            )
+        # Replacing an existing contract — remove the old physical file so
+        # storage doesn't accumulate orphaned uploads.
+        if employee.contract_file_url:
+            from app.services.storage_service import storage_service
+            old_filename = employee.contract_file_url.rsplit("/", 1)[-1]
+            await storage_service.delete(old_filename)
+
+        employee = await self.employee_repo.update(employee, {
+            "contract_file_url": url, "updated_by": user, "updated_at": now_pkt(),
+        })
+        await self._audit(user, "Contract Uploaded", employee.name)
+        return self._to_response(employee, persona)
+
+    async def remove_contract(
+        self, employee_id: str, user="anonymous", persona=None,
+    ) -> EmployeeResponse:
+        employee = await self.employee_repo.find_by_id(employee_id)
+        if not employee:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found.")
+        if not has_role(persona, "owner", "hr", "finance"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only Owner, HR, or Finance can remove a contract file.",
+            )
+        if not employee.contract_file_url:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No contract file attached.")
+
+        from app.services.storage_service import storage_service
+        filename = employee.contract_file_url.rsplit("/", 1)[-1]
+        await storage_service.delete(filename)
+
+        employee = await self.employee_repo.update(employee, {
+            "contract_file_url": None, "updated_by": user, "updated_at": now_pkt(),
+        })
+        await self._audit(user, "Contract Removed", employee.name)
+        return self._to_response(employee, persona)
+
     async def delete_employee(
         self, employee_id: str, persona=None, user="anonymous",
     ) -> None:

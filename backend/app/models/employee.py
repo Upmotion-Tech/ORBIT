@@ -39,7 +39,16 @@ class Employee(Base):
     access_levels: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=lambda: ["employee"])
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="Active")
     probation_end: Mapped[date] = mapped_column(Date, nullable=True)
-    contract_file: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Real file reference (storage_service URL), replacing what used to be a
+    # placeholder boolean flag with no upload feature ever built behind it.
+    contract_file_url: Mapped[str] = mapped_column(String(500), nullable=True)
+    birthdate: Mapped[date] = mapped_column(Date, nullable=True)
+    # Personal contact numbers — always stored as "+92" + 10 digits (enforced
+    # client-side; kept as a plain string here since it's a phone number, not
+    # a numeric value to compute with).
+    phone: Mapped[str] = mapped_column(String(20), nullable=True)
+    emergency_contact: Mapped[str] = mapped_column(String(20), nullable=True)
+    emergency_contact_relation: Mapped[str] = mapped_column(String(100), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

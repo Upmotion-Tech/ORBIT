@@ -15,6 +15,18 @@ from app.core.time import to_pkt
 ACCESS_LEVELS = ("owner", "dashboard", "crm", "dev", "finance", "hr", "permissions", "employee")
 
 EMAIL_REGEX = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+# +92 followed by exactly 10 digits (Pakistani mobile format) — the frontend
+# locks the "+92" prefix in the input itself, this is the server-side
+# authoritative check in case that's ever bypassed.
+PHONE_REGEX = re.compile(r"^\+92\d{10}$")
+
+
+def _validate_phone(v: Optional[str]) -> Optional[str]:
+    if v is None or v == "":
+        return None
+    if not PHONE_REGEX.match(v):
+        raise ValueError("Enter a valid number: +92 followed by 10 digits.")
+    return v
 
 
 class EmployeeCreate(BaseModel):
@@ -29,7 +41,10 @@ class EmployeeCreate(BaseModel):
     access_levels: list[str] = Field(default_factory=lambda: ["employee"])
     status: str = Field(default="Active")
     probation_end: Optional[date] = None
-    contract_file: bool = False
+    birthdate: Optional[date] = None
+    phone: Optional[str] = Field(None, max_length=20)
+    emergency_contact: Optional[str] = Field(None, max_length=20)
+    emergency_contact_relation: Optional[str] = Field(None, max_length=100)
 
     @field_validator("email")
     @classmethod
@@ -48,6 +63,11 @@ class EmployeeCreate(BaseModel):
             raise ValueError(f"Invalid access level(s): {', '.join(invalid)}.")
         return v
 
+    @field_validator("phone", "emergency_contact")
+    @classmethod
+    def _validate_phone_fields(cls, v: Optional[str]) -> Optional[str]:
+        return _validate_phone(v)
+
 
 class EmployeeUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255)
@@ -62,7 +82,10 @@ class EmployeeUpdate(BaseModel):
     access_levels: Optional[list[str]] = Field(None)
     status: Optional[str] = Field(None)
     probation_end: Optional[date] = None
-    contract_file: Optional[bool] = None
+    birthdate: Optional[date] = None
+    phone: Optional[str] = Field(None, max_length=20)
+    emergency_contact: Optional[str] = Field(None, max_length=20)
+    emergency_contact_relation: Optional[str] = Field(None, max_length=100)
 
     @field_validator("email")
     @classmethod
@@ -83,6 +106,11 @@ class EmployeeUpdate(BaseModel):
             raise ValueError(f"Invalid access level(s): {', '.join(invalid)}.")
         return v
 
+    @field_validator("phone", "emergency_contact")
+    @classmethod
+    def _validate_phone_fields(cls, v: Optional[str]) -> Optional[str]:
+        return _validate_phone(v)
+
 
 class EmployeeResponse(BaseModel):
     id: str
@@ -100,7 +128,11 @@ class EmployeeResponse(BaseModel):
     # "In Probation" / "Cleared" — computed server-side from probation_end
     # vs today (PKT), never trust a client-sent value for this.
     probation_status: Optional[str] = None
-    contract_file: bool
+    contract_file_url: Optional[str] = None
+    birthdate: Optional[date] = None
+    phone: Optional[str] = None
+    emergency_contact: Optional[str] = None
+    emergency_contact_relation: Optional[str] = None
     must_change_password: bool = True
     is_active: bool = True
     created_at: Optional[datetime] = None
