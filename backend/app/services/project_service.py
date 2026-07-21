@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date
 from typing import Optional
 
 from fastapi import HTTPException, status
@@ -40,6 +40,7 @@ class ProjectService:
         date_to: Optional[date] = None,
         persona: str = "owner",
         user_id: str = "",
+        is_dev_editor: bool = False,
     ) -> list[ProjectResponse]:
         # Enforce project visibility: dev only sees projects they are assigned
         # to (by employee ID) — previously hardcoded to a mock name.
@@ -55,23 +56,23 @@ class ProjectService:
             assigned_to_member=assigned_to_member_id,
         )
 
-        return [self._to_response(p, persona) for p in projects]
+        return [self._to_response(p, persona, is_dev_editor) for p in projects]
 
-    async def get_project(self, project_id: str, persona: str = "owner", user_id: str = "") -> Optional[ProjectResponse]:
+    async def get_project(self, project_id: str, persona: str = "owner", user_id: str = "", is_dev_editor: bool = False) -> Optional[ProjectResponse]:
         project = await self.project_repo.find_by_id(project_id)
         if not project:
             return None
 
         # Dev member visibility check
-        if persona == "dev" and user_id not in project.team_ids:
+        if persona == "dev" and user_id not in (project.team_ids or []):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied to this project.",
             )
 
-        return self._to_response(project, persona)
+        return self._to_response(project, persona, is_dev_editor)
 
-    async def create_project(self, data: dict, user: str = "anonymous", persona: str = "owner") -> ProjectResponse:
+    async def create_project(self, data: dict, user: str = "anonymous", persona: str = "owner", is_dev_editor: bool = False) -> ProjectResponse:
         # An employee holding the "dev" access level functions as Owner for
         # this module — same parity already granted to "finance"/"crm" for
         # their own modules. is_dev_editor is computed from the caller's full
@@ -115,19 +116,20 @@ class ProjectService:
                     detail="A project with this name already exists.",
                 )
 
-        data["created_by"] = user
-        data["updated_by"] = user
+        data["created_by_id"] = user
+        data["updated_by_id"] = user
         data["created_at"] = now_pkt()
         data["updated_at"] = now_pkt()
 
         project = await self.project_repo.create(data)
 
-        # Generate notifications for assigned team members
+        # Generate notifications for assigned team members. team_ids holds
+        # employee IDs directly (not names) since the ID migration, so no
+        # name-resolution step is needed — the ID *is* the notification target.
         if self.notification_repo and project.team_ids:
-            for member in project.team_ids:
-                target_user = await self._resolve_member_notification_target(member)
+            for member_id in project.team_ids:
                 await self.notification_repo.create(
-                    user_id=target_user,
+                    user_id=member_id,
                     notif_type="Project Assigned",
                     title="Assigned to new project",
                     message=f"You have been assigned to project '{project.name}'.",
@@ -135,9 +137,9 @@ class ProjectService:
 
         await self._audit(user, "Created", project.name)
 
-        return self._to_response(project, persona)
+        return self._to_response(project, persona, is_dev_editor)
 
-    async def update_project(self, project_id: str, data: dict, user: str = "anonymous", persona: str = "owner") -> ProjectResponse:
+    async def update_project(self, project_id: str, data: dict, user: str = "anonymous", persona: str = "owner", is_dev_editor: bool = False) -> ProjectResponse:
         project = await self.project_repo.find_by_id(project_id)
         if not project:
             raise HTTPException(
@@ -187,28 +189,27 @@ class ProjectService:
 
         old_team = set(project.team_ids or [])
         old_status = project.status
-        data["updated_by"] = user
+        data["updated_by_id"] = user
         updated_project = await self.project_repo.update(project, data)
 
-        # Handle notifications for team assignment changes
-        if self.notification_repo and "team" in data:
+        # Handle notifications for team assignment changes. team_ids holds
+        # employee IDs directly, so no name-resolution step is needed.
+        if self.notification_repo and "team_ids" in data:
             new_team = set(updated_project.team_ids or [])
             added = new_team - old_team
             removed = old_team - new_team
 
-            for member in added:
-                target_user = await self._resolve_member_notification_target(member)
+            for member_id in added:
                 await self.notification_repo.create(
-                    user_id=target_user,
+                    user_id=member_id,
                     notif_type="Project Assigned",
                     title="Assigned to project",
                     message=f"You have been assigned to project '{project.name}'.",
                 )
 
-            for member in removed:
-                target_user = await self._resolve_member_notification_target(member)
+            for member_id in removed:
                 await self.notification_repo.create(
-                    user_id=target_user,
+                    user_id=member_id,
                     notif_type="Removed from Project",
                     title="Removed from project",
                     message=f"You have been removed from project '{project.name}'.",
@@ -224,12 +225,12 @@ class ProjectService:
         if "status" in data and updated_project.status != old_status:
             await self._audit(user, "Status Changed", updated_project.name, f"'{old_status}' → '{updated_project.status}'")
         else:
-            changed = sorted(k for k in data.keys() if k != "updated_by")
+            changed = sorted(k for k in data.keys() if k != "updated_by_id")
             await self._audit(user, "Updated", updated_project.name, f"Fields updated: {', '.join(changed)}" if changed else None)
 
-        return self._to_response(updated_project, persona)
+        return self._to_response(updated_project, persona, is_dev_editor)
 
-    async def delete_project(self, project_id: str, persona: str = "owner", user: str = "anonymous") -> bool:
+    async def delete_project(self, project_id: str, persona: str = "owner", user: str = "anonymous", is_dev_editor: bool = False) -> bool:
         project = await self.project_repo.find_by_id(project_id)
         if not project:
             return False
@@ -268,6 +269,15 @@ class ProjectService:
             counter += 1
             proj_name = f"{base_name} {counter}"
 
+        # `user` here is whatever leads.py passes (currently the JWT "sub",
+        # i.e. an email) — resolve it to a real employee ID so created_by_id/
+        # updated_by_id (real FKs to employees.id) don't get a raw email
+        # string, which would violate the FK constraint on Postgres.
+        created_by_id = None
+        if self.employee_repo and user:
+            creator = await self.employee_repo.find_by_email(user)
+            created_by_id = creator.id if creator else None
+
         project_data = {
             "name": proj_name,
             "client": lead.company_name,
@@ -277,9 +287,9 @@ class ProjectService:
             "status": "Not Started",
             "budget": lead.value,
             "description": lead.description or f"Project generated automatically from Won CRM Lead: {lead.company_name}",
-            "team": [],
-            "created_by": user,
-            "updated_by": user,
+            "team_ids": [],
+            "created_by_id": created_by_id,
+            "updated_by_id": created_by_id,
             "created_at": now_pkt(),
             "updated_at": now_pkt(),
         }
@@ -308,7 +318,7 @@ class ProjectService:
 
         return project
 
-    def _to_response(self, project: Project, persona: str) -> ProjectResponse:
+    def _to_response(self, project: Project, persona: str, is_dev_editor: bool = False) -> ProjectResponse:
         resp = ProjectResponse.model_validate(project)
 
         # Budget/spend visibility: Owner or Dev-access-level holders see it

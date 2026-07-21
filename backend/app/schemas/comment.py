@@ -17,7 +17,7 @@ class CommentResponse(BaseModel):
     project_id: Optional[str] = None
     task_id: Optional[str] = None
     parent_id: Optional[str] = None
-    author: str
+    author_id: str
     text: str
     created_at: Optional[datetime] = None
 

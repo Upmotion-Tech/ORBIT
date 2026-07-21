@@ -15,7 +15,7 @@ class ProjectCreate(BaseModel):
     at_risk: bool = Field(default=False)
     budget: float = Field(default=0.0, ge=0)
     description: Optional[str] = None
-    team: list[str] = Field(default_factory=list)
+    team_ids: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_deadline_on_create(self):
@@ -34,7 +34,7 @@ class ProjectUpdate(BaseModel):
     at_risk: Optional[bool] = None
     budget: Optional[float] = Field(None, ge=0)
     description: Optional[str] = None
-    team: Optional[list[str]] = None
+    team_ids: Optional[list[str]] = None
 
 
 class ProjectResponse(BaseModel):
@@ -48,11 +48,11 @@ class ProjectResponse(BaseModel):
     at_risk: bool
     budget: Optional[float] = None  # None if hidden for dev
     description: Optional[str] = None
-    team: list[str]
+    team_ids: list[str]
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-    created_by: Optional[str] = None
-    updated_by: Optional[str] = None
+    created_by_id: Optional[str] = None
+    updated_by_id: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

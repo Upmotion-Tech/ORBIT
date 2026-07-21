@@ -5,8 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import get_persona_role, get_persona_roles, get_current_user
-from app.core.permissions import has_role
+from app.core.dependencies import get_persona_role, get_current_user
 from app.repositories.task_repository import TaskRepository
 from app.repositories.project_repository import ProjectRepository
 from app.repositories.notification_repository import NotificationRepository
@@ -44,12 +43,12 @@ async def list_tasks(
     return await service.list_tasks(
         search=search,
         project_id=project_id,
-        assignee=assignee,
+        assignee_id=assignee,
         status_filter=status,
         date_from=date_from,
         date_to=date_to,
         persona=persona,
-        user_name=current_user.get("name", ""),
+        user_id=current_user.get("user_id", ""),
     )
 
 
@@ -60,7 +59,7 @@ async def get_task(
     current_user: dict = Depends(get_current_user),
     service: TaskService = Depends(get_task_service),
 ):
-    task = await service.get_task(task_id, persona, current_user.get("name", ""))
+    task = await service.get_task(task_id, persona=persona, user_id=current_user.get("user_id", ""))
     if not task:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -73,14 +72,15 @@ async def get_task(
 async def create_task(
     data: TaskCreate,
     persona: str = Depends(get_persona_role),
-    roles: list = Depends(get_persona_roles),
     current_user: dict = Depends(get_current_user),
     service: TaskService = Depends(get_task_service),
 ):
-    # Was a hardcoded "Jordan Blake" placeholder — see projects.py's
-    # create_project/update_project for the full explanation of the same fix.
-    user_name = current_user.get("name") or persona
-    return await service.create_task(data.model_dump(), user=user_name, persona=persona, is_dev_editor=has_role(roles, "owner", "dev"))
+    # created_by_id/updated_by_id are real FKs to employees.id, so this must
+    # be the caller's employee ID, not their name. TaskService enforces
+    # owner-only creation itself (Tasks were deliberately never given the
+    # Dev-editor parity Projects/Finance/CRM have — see task_service.py).
+    user_id = current_user.get("user_id") or persona
+    return await service.create_task(data.model_dump(), user=user_id, persona=persona)
 
 
 @router.put("/{task_id}", response_model=TaskResponse)
@@ -88,17 +88,15 @@ async def update_task(
     task_id: str,
     data: TaskUpdate,
     persona: str = Depends(get_persona_role),
-    roles: list = Depends(get_persona_roles),
     current_user: dict = Depends(get_current_user),
     service: TaskService = Depends(get_task_service),
 ):
-    user_name = current_user.get("name") or persona
+    user_id = current_user.get("user_id") or persona
     return await service.update_task(
         task_id,
         data.model_dump(exclude_unset=True),
-        user=user_name,
+        user=user_id,
         persona=persona,
-        is_dev_editor=has_role(roles, "owner", "dev"),
     )
 
 
@@ -106,12 +104,11 @@ async def update_task(
 async def delete_task(
     task_id: str,
     persona: str = Depends(get_persona_role),
-    roles: list = Depends(get_persona_roles),
     current_user: dict = Depends(get_current_user),
     service: TaskService = Depends(get_task_service),
 ):
-    user_name = current_user.get("name") or persona
-    success = await service.delete_task(task_id, persona=persona, user=user_name, is_dev_editor=has_role(roles, "owner", "dev"))
+    user_id = current_user.get("user_id") or persona
+    success = await service.delete_task(task_id, persona=persona, user=user_id)
     if not success:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -137,11 +134,12 @@ async def add_comment(
             detail="Task not found.",
         )
 
+    user_id = current_user.get("user_id") or persona
     user_name = current_user.get("name") or persona
 
     # Permissions/Visibility check
     project = await service.project_repo.find_by_id(task.project_id)
-    if persona == "dev" and task.assignee != user_name and (not project or user_name not in project.team):
+    if persona == "dev" and task.assignee_id != user_id and (not project or user_id not in (project.team_ids or [])):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot comment on tasks you are not assigned to.",
@@ -151,25 +149,25 @@ async def add_comment(
         task_id=task_id,
         project_id=task.project_id,
         parent_id=data.parent_id,
-        author=user_name,
+        author_id=user_id,
         text=data.text,
     )
 
-    # Generate Notification for Comments
+    # Generate Notification for Comments. assignee_id/team_ids hold employee
+    # IDs directly, so no name-resolution step is needed.
     if service.notification_repo and project:
         # Notify task assignee (if not poster) and project team
-        notified = {user_name}
+        notified = {user_id}
 
-        target_list = [task.assignee] if task.assignee else []
-        target_list.extend(project.team or [])
+        target_list = [task.assignee_id] if task.assignee_id else []
+        target_list.extend(project.team_ids or [])
 
-        for member in target_list:
-            if member in notified:
+        for member_id in target_list:
+            if member_id in notified:
                 continue
-            notified.add(member)
-            target_user = await service._resolve_assignee_notification_target(member)
+            notified.add(member_id)
             await service.notification_repo.create(
-                user_id=target_user,
+                user_id=member_id,
                 notif_type="Comment Added",
                 title=f"New comment on task: {task.title}",
                 message=f"{user_name} said: '{data.text[:50]}...'",

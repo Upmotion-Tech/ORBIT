@@ -48,11 +48,11 @@ async def list_projects(
         search=search,
         client=client,
         status_filter=status,
-        team_member=team_member,
+        team_member_id=team_member,
         date_from=date_from,
         date_to=date_to,
         persona=persona,
-        user_name=current_user.get("name", ""),
+        user_id=current_user.get("user_id", ""),
         is_dev_editor=has_role(roles, "owner", "dev"),
     )
 
@@ -65,7 +65,12 @@ async def get_project(
     current_user: dict = Depends(get_current_user),
     service: ProjectService = Depends(get_project_service),
 ):
-    project = await service.get_project(project_id, persona, current_user.get("name", ""), has_role(roles, "owner", "dev"))
+    project = await service.get_project(
+        project_id,
+        persona=persona,
+        user_id=current_user.get("user_id", ""),
+        is_dev_editor=has_role(roles, "owner", "dev"),
+    )
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -82,14 +87,10 @@ async def create_project(
     current_user: dict = Depends(get_current_user),
     service: ProjectService = Depends(get_project_service),
 ):
-    # Was a hardcoded "Jordan Blake" placeholder for the owner/finance
-    # persona, from before real per-user auth existed — every project
-    # created/updated by any owner/finance employee showed that same fake
-    # name in created_by/updated_by and the Audit Trail, never the real
-    # logged-in person. Matches the pattern delete_project/upload_attachment/
-    # add_comment in this same file already use correctly.
-    user_name = current_user.get("name") or persona
-    return await service.create_project(data.model_dump(), user=user_name, persona=persona, is_dev_editor=has_role(roles, "owner", "dev"))
+    # created_by_id/updated_by_id are real FKs to employees.id, so this must
+    # be the caller's employee ID, not their name.
+    user_id = current_user.get("user_id") or persona
+    return await service.create_project(data.model_dump(), user=user_id, persona=persona, is_dev_editor=has_role(roles, "owner", "dev"))
 
 
 @router.put("/{project_id}", response_model=ProjectResponse)
@@ -101,11 +102,11 @@ async def update_project(
     current_user: dict = Depends(get_current_user),
     service: ProjectService = Depends(get_project_service),
 ):
-    user_name = current_user.get("name") or persona
+    user_id = current_user.get("user_id") or persona
     return await service.update_project(
         project_id,
         data.model_dump(exclude_unset=True),
-        user=user_name,
+        user=user_id,
         persona=persona,
         is_dev_editor=has_role(roles, "owner", "dev"),
     )
@@ -119,8 +120,8 @@ async def delete_project(
     current_user: dict = Depends(get_current_user),
     service: ProjectService = Depends(get_project_service),
 ):
-    user_name = current_user.get("name") or persona
-    success = await service.delete_project(project_id, persona=persona, user=user_name, is_dev_editor=has_role(roles, "owner", "dev"))
+    user_id = current_user.get("user_id") or persona
+    success = await service.delete_project(project_id, persona=persona, user=user_id, is_dev_editor=has_role(roles, "owner", "dev"))
     if not success:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -180,7 +181,8 @@ async def upload_attachment(
     # Save physical file
     filename = await storage_service.save(file, prefix=f"proj_{project_id}_")
     url = storage_service.get_url(filename)
-    
+
+    user_id = current_user.get("user_id") or persona
     user_name = current_user.get("name") or persona
     attachment = await service.project_repo.add_attachment(
         project_id=project_id,
@@ -192,18 +194,13 @@ async def upload_attachment(
 
     # Generate Notification
     if service.notification_repo:
-        # Notify assigned team members — this was still the stale hardcoded
-        # "Kofi Mensah" mock-persona check (fixed everywhere else in this
-        # file already), meaning every real team member fell through to the
-        # "all" broadcast and every attachment upload notified the entire
-        # company. Uses the same real-name-to-employee-id resolver already
-        # used for comments/assignments on this same project.
-        for member in project.team:
-            if member == user_name:
+        # Notify assigned team members — team_ids holds employee IDs
+        # directly, so no name-resolution step is needed.
+        for member_id in (project.team_ids or []):
+            if member_id == user_id:
                 continue
-            target_user = await service._resolve_member_notification_target(member)
             await service.notification_repo.create(
-                user_id=target_user,
+                user_id=member_id,
                 notif_type="Attachment Uploaded",
                 title=f"New attachment on project: {project.name}",
                 message=f"'{file.filename}' has been uploaded by {user_name}.",
@@ -280,10 +277,11 @@ async def add_comment(
             detail="Project not found.",
         )
 
+    user_id = current_user.get("user_id") or persona
     user_name = current_user.get("name") or persona
 
     # Check dev project visibility
-    if persona == "dev" and user_name not in project.team:
+    if persona == "dev" and user_id not in (project.team_ids or []):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot comment on projects you are not assigned to.",
@@ -293,19 +291,18 @@ async def add_comment(
         project_id=project_id,
         task_id=data.task_id,
         parent_id=data.parent_id,
-        author=user_name,
+        author_id=user_id,
         text=data.text,
     )
 
-    # Generate Notification for Comments
+    # Generate Notification for Comments. team_ids holds employee IDs
+    # directly, so no name-resolution step is needed.
     if service.notification_repo:
-        # Notify team members
-        for member in project.team:
-            if member == user_name:
+        for member_id in (project.team_ids or []):
+            if member_id == user_id:
                 continue
-            target_user = await service._resolve_member_notification_target(member)
             await service.notification_repo.create(
-                user_id=target_user,
+                user_id=member_id,
                 notif_type="Comment Added",
                 title=f"New comment on project: {project.name}",
                 message=f"{user_name} said: '{data.text[:50]}...'",

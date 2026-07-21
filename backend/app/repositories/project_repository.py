@@ -122,13 +122,13 @@ class ProjectRepository:
         await self.db.delete(attachment)
         await self.db.flush()
 
-    async def add_comment(self, project_id: str, author: str, text: str, parent_id: Optional[str] = None, task_id: Optional[str] = None) -> ProjectComment:
+    async def add_comment(self, project_id: str, author_id: str, text: str, parent_id: Optional[str] = None, task_id: Optional[str] = None) -> ProjectComment:
         comment = ProjectComment(
             id=str(uuid.uuid4()),
             project_id=project_id,
             task_id=task_id,
             parent_id=parent_id,
-            author=author,
+            author_id=author_id,
             text=text,
         )
         self.db.add(comment)

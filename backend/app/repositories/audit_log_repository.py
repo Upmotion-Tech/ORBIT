@@ -19,9 +19,13 @@ class AuditLogRepository:
         entity_label: str,
         detail: Optional[str] = None,
     ) -> AuditLog:
+        # `actor` is expected to be a real employee ID (actor_id is a NOT
+        # NULL FK to employees.id) — every caller derives it from
+        # current_user.get("user_id"), which get_current_user has already
+        # validated resolves to a real, active employee.
         entry = AuditLog(
             id=str(uuid.uuid4()),
-            actor=actor or "anonymous",
+            actor_id=actor,
             action=action,
             entity_type=entity_type,
             entity_label=entity_label,

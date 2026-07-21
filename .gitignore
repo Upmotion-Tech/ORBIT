@@ -13,6 +13,7 @@
 **/*.sqlite3
 **/*.db.bak-*
 backend/neon_backup_before_wipe_*.json
+backend/neon_backup_before_id_migration_*/
 
 # Storage
 backend/app/storage/*

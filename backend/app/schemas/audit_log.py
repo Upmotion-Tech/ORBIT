@@ -7,7 +7,7 @@ from app.core.time import to_pkt
 
 class AuditLogResponse(BaseModel):
     id: str
-    actor: str
+    actor_id: str
     action: str
     entity_type: str
     entity_label: str
