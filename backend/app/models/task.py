@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import String, Date, DateTime, Text, Index, ForeignKey
+from sqlalchemy import String, Date, DateTime, Text, Index, ForeignKey, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -24,6 +24,9 @@ class Task(Base):
     deadline: Mapped[date] = mapped_column(Date, nullable=True)
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="Not Started")
     description: Mapped[str] = mapped_column(Text, nullable=True)
+    # Free-form labels (e.g. "MVP1", "MVP2") — stored without the "#", which
+    # is purely a display convention added client-side.
+    tags: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
