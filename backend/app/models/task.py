@@ -53,7 +53,7 @@ class Task(Base):
     __table_args__ = (
         Index("ix_tasks_project_id", "project_id"),
         Index("ix_tasks_title", "title"),
-        Index("ix_tasks_assignee", "assignee"),
+        Index("ix_tasks_assignee_id", "assignee_id"),
         Index("ix_tasks_status", "status"),
         Index("ix_tasks_deleted_at", "deleted_at"),
     )
