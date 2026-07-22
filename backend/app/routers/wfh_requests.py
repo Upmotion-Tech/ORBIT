@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_user, get_hr_user, get_persona_roles
+from app.core.dependencies import get_current_user, get_persona_roles
 from app.repositories.wfh_request_repository import WfhRequestRepository
 from app.repositories.employee_repository import EmployeeRepository
 from app.repositories.notification_repository import NotificationRepository
@@ -47,7 +47,7 @@ async def get_my_wfh_requests(
 @router.get("", response_model=list[WfhRequestResponse])
 async def get_all_wfh_requests(
     status_filter: Optional[str] = None,
-    current_user: dict = Depends(get_hr_user),
+    current_user: dict = Depends(get_current_user),
     service: WfhRequestService = Depends(get_wfh_service),
 ):
     return await service.list_all_requests(status_filter)
