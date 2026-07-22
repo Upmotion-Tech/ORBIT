@@ -105,8 +105,13 @@ Access levels are stored as a list on the employee record (`access_levels` JSON/
     - **Tasks (`list_tasks` / `get_task` / `create_task` / `update_task`)**: Dev Members assigned to a project (`user_id in project.team_ids`) can create subtasks/tasks under that project. Dev Members can change the **status** of any assigned task. However, editing task details (title, description, deadline, assignee) is restricted to tasks **created by themselves** (`task.created_by_id == user_id`); attempts to edit details of tasks created by the Owner are blocked with `403 Forbidden`.
     - **Drawer Audit Logs (`GET /api/projects/{id}/audit` & `GET /api/tasks/{id}/audit`)**: Project Details Drawer and Task Details Drawer include an **Audit Log** section showing a live chronological activity log (actor name, timestamp, action, and detailed changes) for that specific project or task.
     - **Task & Project Status Selectors**: Status dropdown selectors are rendered directly inside both Project and Task Kanban cards as well as list tables for assigned team members.
-    - **Work From Home (WFH) Integration**: WFH requests are submitted via **My Leave** (under type `Work From Home`) and removed from Attendance. On the management side, WFH requests are merged into **HR $\rightarrow$ Leave Requests**, enabling Owners and HR Editors to view, approve, and reject WFH requests with optional decision notes.
-    - **Owner-Only Access Level Modification**: Only users in the **Owner** department (or holding the `owner` role) can assign, view, or change `access_levels` for any employee. Attempting to assign or change `access_levels` by non-Owner department users is rejected on both backend (`HTTP 403 Forbidden`) and frontend (disabled checkboxes & toast warning).
+    - **Manager Hub & Direct Reports Approvals**: A dynamic **Manager Hub** sidebar item appears for any employee designated as the `manager` of at least one employee (as well as Owners). Includes a red unread badge counter (`1`, `2`, ...) for pending Leave & WFH requests from direct reports. Managers can approve/reject direct reports' requests with optional decision notes, view current month attendance summaries for direct reports, and inspect detailed day-by-day attendance logs via a **Details** modal.
+    - **Purely Dynamic HR Access (`hr` Token)**: Sidebar section **HR $\rightarrow$ Employees** and employee management APIs are dynamically controlled by the `hr` access level token (or `owner`). Ticking the **Employees** (`hr`) access level checkbox grants employee details viewing, adding new employees, and updating profile info. Unticking it dynamically removes **HR** from the sidebar and revokes access. Modifying `access_levels` remains strictly restricted to users in the **Owner department** (`HTTP 403 Forbidden` / disabled checkboxes).
+
+
+
+
+
 
 
 

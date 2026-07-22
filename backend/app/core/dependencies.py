@@ -106,6 +106,10 @@ async def get_hr_user(
     return current_user
 
 
+
+
+
+
 async def get_finance_user(
     current_user: dict = Depends(get_current_user),
 ) -> dict:

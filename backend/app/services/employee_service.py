@@ -59,6 +59,10 @@ class EmployeeService:
                 detail="Only Owner, HR, or Finance can add employees.",
             )
 
+
+
+
+
         if "access_levels" in data:
             requested = set(data["access_levels"])
             if requested - {"employee"}:
@@ -156,6 +160,10 @@ class EmployeeService:
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only Owner, HR, or Finance can update employees.",
             )
+
+
+
+
 
         if "access_levels" in data:
             is_owner = has_role(persona, "owner")

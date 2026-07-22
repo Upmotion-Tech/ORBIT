@@ -113,11 +113,19 @@ class LeaveService:
                 detail="Leave request not found.",
             )
 
-        if not has_role(persona, "hr", "owner"):
+        is_manager = False
+        if approved_by and self.employee_repo:
+            actor_emp = await self.employee_repo.find_by_id(approved_by)
+            leave_emp = leave.employee or (await self.employee_repo.find_by_id(leave.employee_id) if leave.employee_id else None)
+            if actor_emp and leave_emp and leave_emp.manager and leave_emp.manager.strip().lower() == actor_emp.name.strip().lower():
+                is_manager = True
+
+        if not (has_role(persona, "hr", "owner") or is_manager):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only HR can approve leave requests.",
+                detail="Only HR, Owner, or the employee's manager can approve leave requests.",
             )
+
 
         if leave.status != "Pending":
             raise HTTPException(
@@ -162,11 +170,19 @@ class LeaveService:
                 detail="Leave request not found.",
             )
 
-        if not has_role(persona, "hr", "owner"):
+        is_manager = False
+        if rejected_by and self.employee_repo:
+            actor_emp = await self.employee_repo.find_by_id(rejected_by)
+            leave_emp = leave.employee or (await self.employee_repo.find_by_id(leave.employee_id) if leave.employee_id else None)
+            if actor_emp and leave_emp and leave_emp.manager and leave_emp.manager.strip().lower() == actor_emp.name.strip().lower():
+                is_manager = True
+
+        if not (has_role(persona, "hr", "owner") or is_manager):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only HR can reject leave requests.",
+                detail="Only HR, Owner, or the employee's manager can reject leave requests.",
             )
+
 
         if leave.status != "Pending":
             raise HTTPException(

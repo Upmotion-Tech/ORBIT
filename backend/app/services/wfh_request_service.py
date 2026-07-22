@@ -88,8 +88,16 @@ class WfhRequestService:
         req = await self.wfh_repo.find_by_id(request_id)
         if not req:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Work-from-home request not found.")
-        if not has_role(persona, "hr", "owner"):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only HR can approve work-from-home requests.")
+        
+        is_manager = False
+        if decided_by and self.employee_repo:
+            actor_emp = await self.employee_repo.find_by_id(decided_by)
+            wfh_emp = await self.employee_repo.find_by_id(req.employee_id)
+            if actor_emp and wfh_emp and wfh_emp.manager and wfh_emp.manager.strip().lower() == actor_emp.name.strip().lower():
+                is_manager = True
+
+        if not (has_role(persona, "hr", "owner") or is_manager):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only HR, Owner, or the employee's manager can approve work-from-home requests.")
         if req.status != "Pending":
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only pending requests can be approved.")
 
@@ -113,10 +121,19 @@ class WfhRequestService:
         req = await self.wfh_repo.find_by_id(request_id)
         if not req:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Work-from-home request not found.")
-        if not has_role(persona, "hr", "owner"):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only HR can reject work-from-home requests.")
+        
+        is_manager = False
+        if decided_by and self.employee_repo:
+            actor_emp = await self.employee_repo.find_by_id(decided_by)
+            wfh_emp = await self.employee_repo.find_by_id(req.employee_id)
+            if actor_emp and wfh_emp and wfh_emp.manager and wfh_emp.manager.strip().lower() == actor_emp.name.strip().lower():
+                is_manager = True
+
+        if not (has_role(persona, "hr", "owner") or is_manager):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only HR, Owner, or the employee's manager can reject work-from-home requests.")
         if req.status != "Pending":
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only pending requests can be rejected.")
+
 
         req = await self.wfh_repo.update(req, {
             "status": "Rejected", "decision_note": note, "decided_by": decided_by, "decided_at": now_pkt(),

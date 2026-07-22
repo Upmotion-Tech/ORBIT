@@ -57,7 +57,7 @@ async def get_all_wfh_requests(
 async def approve_wfh_request(
     request_id: str,
     body: WfhDecision,
-    current_user: dict = Depends(get_hr_user),
+    current_user: dict = Depends(get_current_user),
     persona_roles: list = Depends(get_persona_roles),
     service: WfhRequestService = Depends(get_wfh_service),
 ):
@@ -70,10 +70,11 @@ async def approve_wfh_request(
 async def reject_wfh_request(
     request_id: str,
     body: WfhDecision,
-    current_user: dict = Depends(get_hr_user),
+    current_user: dict = Depends(get_current_user),
     persona_roles: list = Depends(get_persona_roles),
     service: WfhRequestService = Depends(get_wfh_service),
 ):
     return await service.reject_request(
         request_id, body.note, current_user.get("user_id"), persona=persona_roles,
     )
+
