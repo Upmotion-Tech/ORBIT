@@ -20,6 +20,8 @@ from app.services.project_service import ProjectService
 from app.services.storage_service import storage_service
 from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectResponse
 from app.schemas.comment import CommentCreate, CommentResponse
+from app.schemas.audit_log import AuditLogResponse
+
 
 router = APIRouter(prefix="/api/projects", tags=["Projects"])
 
@@ -117,7 +119,10 @@ async def update_project(
         user=user_id,
         persona=persona,
         is_dev_editor=is_project_editor(roles, current_user.get("department")),
+        department=current_user.get("department", ""),
+        roles=roles,
     )
+
 
 
 @router.delete("/{project_id}")
@@ -347,3 +352,20 @@ async def get_comments(
 ):
     comments = await service.project_repo.get_comments(project_id)
     return [CommentResponse.model_validate(c) for c in comments]
+
+
+@router.get("/{project_id}/audit", response_model=list[AuditLogResponse])
+async def get_project_audit(
+    project_id: str,
+    roles: list = Depends(get_persona_roles),
+    current_user: dict = Depends(get_current_user),
+    service: ProjectService = Depends(get_project_service),
+):
+    user_id = current_user.get("user_id", "")
+    return await service.get_project_audit(
+        project_id,
+        user_id=user_id,
+        department=current_user.get("department", ""),
+        roles=roles,
+    )
+

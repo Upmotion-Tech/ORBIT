@@ -39,3 +39,14 @@ class AuditLogRepository:
         query = select(AuditLog).order_by(AuditLog.created_at.desc()).limit(limit)
         result = await self.db.execute(query)
         return list(result.scalars().all())
+
+    async def find_by_entity(self, entity_type: str, entity_label: str, limit: int = 50) -> list[AuditLog]:
+        query = (
+            select(AuditLog)
+            .where(AuditLog.entity_type == entity_type, AuditLog.entity_label == entity_label)
+            .order_by(AuditLog.created_at.desc())
+            .limit(limit)
+        )
+        result = await self.db.execute(query)
+        return list(result.scalars().all())
+

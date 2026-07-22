@@ -99,10 +99,15 @@ Access levels are stored as a list on the employee record (`access_levels` JSON/
   - **Finance**: Gated by `get_finance_user` (`owner` or `finance`).
   - **CRM**: Gated by `get_crm_editor_user` (`owner` or `crm`).
   - **Setup / Audit Trail**: Gated by `get_audit_user` (`owner` or `permissions`).
-- **Dev Member Project & Task Scoping**:
-  - Controlled by `is_dev_member(roles, department)` in `app/core/permissions.py` (returns `True` if `department == "Dev Member"` and not `owner`).
-  - **Projects (`list_projects` / `get_project`)**: Dev Member department engineers ONLY see projects where their `user_id` is present in `project.team_ids`. Direct GET requests for unassigned projects raise `403 Forbidden`.
-  - **Tasks (`list_tasks` / `get_task`)**: Dev Member department engineers ONLY see tasks assigned to them directly (`assignee_id == user_id`) OR tasks belonging to projects where they are in `team_ids`.
+  - **Dev Member Project & Task Scoping**:
+    - Controlled by `is_dev_member(roles, department)` in `app/core/permissions.py` (returns `True` if `department == "Dev Member"` and not `owner`).
+    - **Projects (`list_projects` / `get_project` / `update_project`)**: Dev Member department engineers ONLY see projects where their `user_id` is present in `project.team_ids`. Direct GET requests for unassigned projects raise `403 Forbidden`. Dev Members assigned to a project can update its `status` via the project status dropdown, while attempts to update other fields (budget, name, client, team_ids) are blocked with `403 Forbidden`.
+    - **Tasks (`list_tasks` / `get_task` / `create_task` / `update_task`)**: Dev Members assigned to a project (`user_id in project.team_ids`) can create subtasks/tasks under that project. Dev Members can change the **status** of any assigned task. However, editing task details (title, description, deadline, assignee) is restricted to tasks **created by themselves** (`task.created_by_id == user_id`); attempts to edit details of tasks created by the Owner are blocked with `403 Forbidden`.
+    - **Drawer Audit Logs (`GET /api/projects/{id}/audit` & `GET /api/tasks/{id}/audit`)**: Project Details Drawer and Task Details Drawer include an **Audit Log** section showing a live chronological activity log (actor name, timestamp, action, and detailed changes) for that specific project or task.
+    - **Task & Project Status Selectors**: Status dropdown selectors are rendered directly inside both Project and Task Kanban cards as well as list tables for assigned team members.
+    - **HR Employees Manager Column**: HR Employees table includes a dedicated **Manager** column (`Name | Role | Department | Manager | Start date | Type | Status | Action`), and the Manager field is editable in both the Employee Details Drawer and Add Employee Modal for all employees.
+
+
 
 ---
 

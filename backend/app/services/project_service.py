@@ -153,7 +153,17 @@ class ProjectService:
 
         return self._to_response(project, persona, is_dev_editor)
 
-    async def update_project(self, project_id: str, data: dict, user: str = "anonymous", persona: str = "owner", is_dev_editor: bool = False) -> ProjectResponse:
+    async def update_project(
+        self,
+        project_id: str,
+        data: dict,
+        user: str = "anonymous",
+        persona: str = "owner",
+        is_dev_editor: bool = False,
+        department: str = "",
+        roles: Optional[list] = None,
+    ) -> ProjectResponse:
+
         project = await self.project_repo.find_by_id(project_id)
         if not project:
             raise HTTPException(
@@ -161,15 +171,27 @@ class ProjectService:
                 detail="Project not found.",
             )
 
-        # Anyone with view access to Projects can be assigned/allotted to one
-        # and comment on it. Editing project fields is Owner-or-Dev — see
-        # create_project's comment above for why is_dev_editor (full roles
-        # list) is used instead of the single derived persona string.
-        if persona != "owner" and not is_dev_editor:
+        # Dev Member department engineers assigned to a project can update its status.
+        # Editing other project details (budget, name, team_ids, etc.) remains Owner/Dev Editor only.
+        is_dev_scoped = is_dev_member(roles, department)
+        if is_dev_scoped:
+            if user not in (project.team_ids or []):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied to this project.",
+                )
+            non_status_fields = [k for k in data.keys() if k not in ("status", "updated_by_id", "updated_at")]
+            if non_status_fields:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Dev Member engineers can only change project status, not project details.",
+                )
+        elif persona != "owner" and not is_dev_editor:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only owners or Dev can edit project details.",
             )
+
 
         # Check duplicate name on update
         name = data.get("name")
@@ -340,3 +362,31 @@ class ProjectService:
             resp.budget = None
 
         return resp
+
+    async def get_project_audit(
+        self,
+        project_id: str,
+        user_id: str = "",
+        department: str = "",
+        roles: Optional[list] = None,
+    ) -> list:
+        project = await self.project_repo.find_by_id(project_id)
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Project not found.",
+            )
+
+        if is_dev_member(roles, department) and user_id not in (project.team_ids or []):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied to this project.",
+            )
+
+        if not self.audit_repo:
+            return []
+
+        logs = await self.audit_repo.find_by_entity("Project", project.name, limit=50)
+        from app.schemas.audit_log import AuditLogResponse
+        return [AuditLogResponse.model_validate(l) for l in logs]
+

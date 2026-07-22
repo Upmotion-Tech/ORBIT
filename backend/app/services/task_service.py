@@ -83,15 +83,14 @@ class TaskService:
         return TaskResponse.model_validate(task)
 
 
-    async def create_task(self, data: dict, user: str = "anonymous", persona: str = "owner") -> TaskResponse:
-        # Only owners can create tasks. Dev members can view and comment on
-        # tasks assigned to them, but cannot create or edit.
-        if persona != "owner":
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only owners can create tasks.",
-            )
-
+    async def create_task(
+        self,
+        data: dict,
+        user: str = "anonymous",
+        persona: str = "owner",
+        department: str = "",
+        roles: Optional[list] = None,
+    ) -> TaskResponse:
         project = await self.project_repo.find_by_id(data["project_id"])
         if not project:
             raise HTTPException(
@@ -99,8 +98,21 @@ class TaskService:
                 detail="Project not found.",
             )
 
-        # Defaults to today, but the caller can set it earlier (e.g. backfilling
-        # work that already started) — never forced, only filled in if omitted.
+        # Allow Owners OR Dev Member department engineers assigned to the project
+        is_dev_scoped = is_dev_member(roles, department)
+        if is_dev_scoped:
+            if user not in (project.team_ids or []):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Cannot create tasks on projects you are not assigned to.",
+                )
+        elif persona != "owner":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only owners or assigned Dev Members can create tasks.",
+            )
+
+        # Defaults to today, but the caller can set it earlier
         if not data.get("start_date"):
             data["start_date"] = now_pkt().date()
 
@@ -114,7 +126,7 @@ class TaskService:
         # Generate notification for assigned developer
         if self.notification_repo and task.assignee_id:
             await self.notification_repo.create(
-                user_id=task.assignee_id,  # Target the assigned employee by their ID
+                user_id=task.assignee_id,
                 notif_type="Task Assigned",
                 title="Assigned to new task",
                 message=f"You have been assigned to task '{task.title}' under project '{project.name}'.",
@@ -124,7 +136,15 @@ class TaskService:
 
         return TaskResponse.model_validate(task)
 
-    async def update_task(self, task_id: str, data: dict, user: str = "anonymous", persona: str = "owner") -> TaskResponse:
+    async def update_task(
+        self,
+        task_id: str,
+        data: dict,
+        user: str = "anonymous",
+        persona: str = "owner",
+        department: str = "",
+        roles: Optional[list] = None,
+    ) -> TaskResponse:
         task = await self.task_repo.find_by_id(task_id)
         if not task:
             raise HTTPException(
@@ -132,13 +152,32 @@ class TaskService:
                 detail="Task not found.",
             )
 
-        # Only owners can edit tasks. Dev members can view and comment on
-        # tasks assigned to them, but cannot edit.
-        if persona != "owner":
+        project = await self.project_repo.find_by_id(task.project_id)
+        is_dev_scoped = is_dev_member(roles, department)
+
+        if is_dev_scoped:
+            # Must be assigned to task or project
+            if task.assignee_id != user and (not project or user not in (project.team_ids or [])):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied to this task.",
+                )
+
+            # Check if non-status fields are being updated
+            non_status_fields = [k for k in data.keys() if k not in ("status", "updated_by_id", "updated_at")]
+            if non_status_fields:
+                # To edit task details, the user MUST be the creator of the task
+                if task.created_by_id != user:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="You can only edit task details for tasks created by yourself.",
+                    )
+        elif persona != "owner":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only owners can edit tasks.",
+                detail="Only owners or task creators can edit task details.",
             )
+
 
         old_assignee_id = task.assignee_id
         old_status = task.status
@@ -179,3 +218,33 @@ class TaskService:
         await self._audit(user, "Deleted", task.title)
         await self.task_repo.soft_delete(task)
         return True
+
+    async def get_task_audit(
+        self,
+        task_id: str,
+        user_id: str = "",
+        department: str = "",
+        roles: Optional[list] = None,
+    ) -> list:
+        task = await self.task_repo.find_by_id(task_id)
+        if not task:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Task not found.",
+            )
+
+        project = await self.project_repo.find_by_id(task.project_id)
+        if is_dev_member(roles, department):
+            if task.assignee_id != user_id and (not project or user_id not in (project.team_ids or [])):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied to this task.",
+                )
+
+        if not self.audit_repo:
+            return []
+
+        logs = await self.audit_repo.find_by_entity("Task", task.title, limit=50)
+        from app.schemas.audit_log import AuditLogResponse
+        return [AuditLogResponse.model_validate(l) for l in logs]
+

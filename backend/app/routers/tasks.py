@@ -17,6 +17,8 @@ from app.repositories.audit_log_repository import AuditLogRepository
 from app.services.task_service import TaskService
 from app.schemas.task import TaskCreate, TaskUpdate, TaskResponse
 from app.schemas.comment import CommentCreate, CommentResponse
+from app.schemas.audit_log import AuditLogResponse
+
 
 router = APIRouter(prefix="/api/tasks", tags=["Tasks"])
 
@@ -86,15 +88,18 @@ async def get_task(
 async def create_task(
     data: TaskCreate,
     persona: str = Depends(get_persona_role),
+    roles: list = Depends(get_persona_roles),
     current_user: dict = Depends(get_current_user),
     service: TaskService = Depends(get_task_service),
 ):
-    # created_by_id/updated_by_id are real FKs to employees.id, so this must
-    # be the caller's employee ID, not their name. TaskService enforces
-    # owner-only creation itself (Tasks were deliberately never given the
-    # Dev-editor parity Projects/Finance/CRM have — see task_service.py).
     user_id = current_user.get("user_id") or persona
-    return await service.create_task(data.model_dump(), user=user_id, persona=persona)
+    return await service.create_task(
+        data.model_dump(),
+        user=user_id,
+        persona=persona,
+        department=current_user.get("department", ""),
+        roles=roles,
+    )
 
 
 @router.put("/{task_id}", response_model=TaskResponse)
@@ -102,6 +107,7 @@ async def update_task(
     task_id: str,
     data: TaskUpdate,
     persona: str = Depends(get_persona_role),
+    roles: list = Depends(get_persona_roles),
     current_user: dict = Depends(get_current_user),
     service: TaskService = Depends(get_task_service),
 ):
@@ -111,7 +117,10 @@ async def update_task(
         data.model_dump(exclude_unset=True),
         user=user_id,
         persona=persona,
+        department=current_user.get("department", ""),
+        roles=roles,
     )
+
 
 
 @router.delete("/{task_id}")
@@ -209,3 +218,20 @@ async def get_comments(
 ):
     comments = await service.task_repo.get_comments(task_id)
     return [CommentResponse.model_validate(c) for c in comments]
+
+
+@router.get("/{task_id}/audit", response_model=list[AuditLogResponse])
+async def get_task_audit(
+    task_id: str,
+    roles: list = Depends(get_persona_roles),
+    current_user: dict = Depends(get_current_user),
+    service: TaskService = Depends(get_task_service),
+):
+    user_id = current_user.get("user_id", "")
+    return await service.get_task_audit(
+        task_id,
+        user_id=user_id,
+        department=current_user.get("department", ""),
+        roles=roles,
+    )
+
