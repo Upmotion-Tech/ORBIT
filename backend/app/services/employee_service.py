@@ -59,6 +59,21 @@ class EmployeeService:
                 detail="Only Owner, HR, or Finance can add employees.",
             )
 
+        if "access_levels" in data:
+            requested = set(data["access_levels"])
+            if requested - {"employee"}:
+                is_owner = has_role(persona, "owner")
+                if not is_owner and user:
+                    actor = await self.employee_repo.find_by_id(user)
+                    if actor and actor.department == "Owner":
+                        is_owner = True
+                if not is_owner:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Only Owner department users can assign access levels.",
+                    )
+
+
         email = data.get("email", "").strip().lower()
         existing = await self.employee_repo.find_by_email(email)
         if existing:
@@ -141,6 +156,19 @@ class EmployeeService:
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only Owner, HR, or Finance can update employees.",
             )
+
+        if "access_levels" in data:
+            is_owner = has_role(persona, "owner")
+            if not is_owner and actor_id:
+                actor = await self.employee_repo.find_by_id(actor_id)
+                if actor and actor.department == "Owner":
+                    is_owner = True
+            if not is_owner:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Only Owner department users can change access levels.",
+                )
+
 
         if "email" in data:
             email = data["email"].strip().lower()

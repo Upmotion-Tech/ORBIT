@@ -105,7 +105,10 @@ Access levels are stored as a list on the employee record (`access_levels` JSON/
     - **Tasks (`list_tasks` / `get_task` / `create_task` / `update_task`)**: Dev Members assigned to a project (`user_id in project.team_ids`) can create subtasks/tasks under that project. Dev Members can change the **status** of any assigned task. However, editing task details (title, description, deadline, assignee) is restricted to tasks **created by themselves** (`task.created_by_id == user_id`); attempts to edit details of tasks created by the Owner are blocked with `403 Forbidden`.
     - **Drawer Audit Logs (`GET /api/projects/{id}/audit` & `GET /api/tasks/{id}/audit`)**: Project Details Drawer and Task Details Drawer include an **Audit Log** section showing a live chronological activity log (actor name, timestamp, action, and detailed changes) for that specific project or task.
     - **Task & Project Status Selectors**: Status dropdown selectors are rendered directly inside both Project and Task Kanban cards as well as list tables for assigned team members.
-    - **HR Employees Manager Column**: HR Employees table includes a dedicated **Manager** column (`Name | Role | Department | Manager | Start date | Type | Status | Action`), and the Manager field is editable in both the Employee Details Drawer and Add Employee Modal for all employees.
+    - **Work From Home (WFH) Integration**: WFH requests are submitted via **My Leave** (under type `Work From Home`) and removed from Attendance. On the management side, WFH requests are merged into **HR $\rightarrow$ Leave Requests**, enabling Owners and HR Editors to view, approve, and reject WFH requests with optional decision notes.
+    - **Owner-Only Access Level Modification**: Only users in the **Owner** department (or holding the `owner` role) can assign, view, or change `access_levels` for any employee. Attempting to assign or change `access_levels` by non-Owner department users is rejected on both backend (`HTTP 403 Forbidden`) and frontend (disabled checkboxes & toast warning).
+
+
 
 
 
