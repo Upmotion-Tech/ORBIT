@@ -113,6 +113,9 @@ Access levels are stored as a list on the employee record (`access_levels` JSON/
 - **Schema & Pydantic Schema Alignment**:
   - `AuditLogResponse.actor_id` is `Optional[str] = None` to support legacy or system-level audit records where `actor_id` is null.
   - Legacy NOT NULL constraints on live Postgres columns (`audit_logs.actor`, `project_comments.author`, `projects.team`) have been dropped (`DROP NOT NULL`) in favor of their FK counterparts (`actor_id`, `author_id`, `team_ids`).
+- **CRM Lead Activity Fixes**:
+  - Fixed Pydantic `ValidationError` on `GET /api/audit`: updated `AuditLogResponse.actor_id` in `app/schemas/audit_log.py` to `Optional[str] = None` to support legacy/system audit records where `actor_id` is null.
+  - Fixed CRM Lead Activity and Comments user display: updated `activityToDisplay(a)` in `unpacked/script.js` to resolve employee UUID (`a.created_by`) into the employee's real name via `getEmployeeName(a.created_by)` instead of displaying raw UUIDs.
 - **Account Hard Deletion Cascade**:
   - `EmployeeRepository.hard_delete_with_related_data()` safely handles permanent account deletion by:
     1. Setting nullable FK references to `NULL` (`Task.assignee_id`, `Task.created_by_id`, `Project.created_by_id`, `Customer.created_by_id`, `LeaveRequest.approved_by_id`).
