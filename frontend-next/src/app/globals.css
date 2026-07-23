@@ -428,30 +428,11 @@ img { max-width: 100%; display: block; }
 [data-brand="orbit"] [style*="width:var(--sidebar-width)"] a[style*="background:var(--status-info-bg)"] span {
   background-color: #fff !important;
 }
-/* ─── Sidebar collapse/expand animation ───
-   The sidebar is an sc-if — toggling it fully mounts/unmounts the DOM node
-   with no transition at all, previously. `.orbit-sidebar-panel` (always
-   present on the node) fires the slide-in keyframe automatically on every
-   mount — free "expand" animation, no JS timing needed, same principle as
-   `screen-enter` elsewhere in this file. The "collapse" direction can't be
-   animated purely in CSS since sc-if removes the node the instant the flag
-   flips — toggleSidebar() (script.js) handles that half by adding
-   `.orbit-sidebar-panel-closing` first, waiting for this exit keyframe to
-   finish, and only then actually unmounting. */
-@keyframes orbit-sidebar-slide-in {
-  from { transform: translateX(-16px); opacity: 0; }
-  to   { transform: none; opacity: 1; }
-}
-@keyframes orbit-sidebar-slide-out {
-  from { transform: translateX(0); opacity: 1; }
-  to   { transform: translateX(-16px); opacity: 0; }
-}
-.orbit-sidebar-panel {
-  animation: orbit-sidebar-slide-in 0.2s cubic-bezier(0.16,1,0.3,1) both;
-}
-.orbit-sidebar-panel-closing {
-  animation: orbit-sidebar-slide-out 0.2s cubic-bezier(0.16,1,0.3,1) both !important;
-}
+/* Sidebar expand/collapse animation moved to Framer Motion (Shell.tsx —
+   AnimatePresence + motion.div around the .orbit-sidebar panel and its
+   backdrop), which keeps the exiting node mounted through its own exit
+   animation and only then unmounts it — no CSS keyframe pair needed here
+   anymore. */
 
 /* ─── Responsive layout ───
    The whole app was fixed-width/desktop-only until now (zero media queries
@@ -490,6 +471,35 @@ html, body {
     max-width: 96px;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  /* Every page (dashboard, reports, finance, hr, crm, dev, me-*, setup) lays
+     out stat rows / side-by-side form fields / detail panes with an inline
+     `gridTemplateColumns: "1fr 1fr"` (or 3-4 columns) sized for desktop —
+     collapsing every one of them to a single column here fixes ~50 call
+     sites across every page at once instead of editing each page.tsx. */
+  [style*="grid-template-columns"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* .orbit-screen-content's padding is a fixed 24px (Shell.tsx) regardless
+     of viewport — on a ~375px phone that's over 12% of the width lost to
+     padding on each side before any content even starts. */
+  .orbit-screen-content {
+    padding: 14px !important;
+  }
+
+  /* Topbar Universal Search results and the Notifications panel (Shell.tsx)
+     are absolutely-positioned flyouts with a fixed 380px width — wider than
+     the viewport itself on any phone, so part of the panel was pushed off
+     the right edge and clipped by html/body's overflow-x:hidden above
+     (unreachable, not just visually clipped). Anchoring both from the same
+     16px inset with a viewport-relative width keeps the whole panel
+     reachable regardless of which side it originally hung from. */
+  [style*="width:380px"][style*="position:absolute"] {
+    width: calc(100vw - 32px) !important;
+    left: 16px !important;
+    right: 16px !important;
   }
 }
 .orbit-sidebar-backdrop {
@@ -1801,6 +1811,20 @@ input, select, textarea {
    lift eases in instead of snapping. */
 [style*="var(--shadow-card)"] {
   transition: box-shadow 0.18s ease, transform 0.18s ease, border-color 0.18s ease;
+}
+
+/* Every plain-CSS @keyframes animation in this file (drawer/modal
+   enter-exit, card-enter stagger, toasts, login blobs, Kanban drag) —
+   Framer Motion's own animations are handled separately via
+   <MotionConfig reducedMotion="user"> in layout.tsx, but that has no
+   effect on these, so they need the standard manual opt-out. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* Sidebar nav items already recolor on hover/active via the attribute

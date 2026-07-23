@@ -9,6 +9,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import { AnimatePresence, motion } from "framer-motion";
 import { useAuth } from "@/lib/auth-context";
 import { useAppData } from "@/lib/app-data-context";
 import { useToast } from "@/lib/toast-context";
@@ -29,7 +30,6 @@ import {
   todayISO,
 } from "@/lib/orbit-client";
 import { SidebarSection, Icon, Avatar } from "@/design-system/healer-bundle";
-import { useClosingTransition } from "@/lib/use-closing-transition";
 
 const MOBILE_BREAKPOINT = "(max-width: 768px)";
 
@@ -94,7 +94,6 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     );
   };
   const [sidebarExpanded, setSidebarExpanded] = useState(true);
-  const sidebarClosing = useClosingTransition();
 
   // Starts expanded (matches desktop, and avoids an SSR/hydration mismatch —
   // window isn't available on the server) and immediately collapses once
@@ -104,7 +103,11 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     if (window.matchMedia(MOBILE_BREAKPOINT).matches) setSidebarExpanded(false);
   }, []);
 
-  const closeSidebarAnimated = () => sidebarClosing.closeWithTransition(() => setSidebarExpanded(false));
+  // AnimatePresence (below, where the panel/backdrop render) keeps each one
+  // mounted through its own exit animation and only then actually unmounts
+  // it, so this can just flip the boolean directly — no more manual
+  // "wait for the CSS animation, then unmount" delay to hand-roll.
+  const closeSidebarAnimated = () => setSidebarExpanded(false);
 
   const activeScreen = pathToScreenId(pathname || "/");
   const setScreen = (id: string) => {
@@ -377,9 +380,15 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+        <AnimatePresence>
         {sidebarExpanded && (
-          <div
-            className={"orbit-sidebar orbit-sidebar-panel" + (sidebarClosing.isClosing ? " orbit-sidebar-panel-closing" : "")}
+          <motion.div
+            key="sidebar-panel"
+            className="orbit-sidebar"
+            initial={{ x: -16, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: -16, opacity: 0 }}
+            transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
             style={{
               width: "var(--sidebar-width)",
               flexShrink: 0,
@@ -425,9 +434,22 @@ export default function Shell({ children }: { children: React.ReactNode }) {
                 Sign Out
               </button>
             </div>
-          </div>
+          </motion.div>
         )}
-        {sidebarExpanded && <div className="orbit-sidebar-backdrop" onClick={closeSidebarAnimated} />}
+        </AnimatePresence>
+        <AnimatePresence>
+        {sidebarExpanded && (
+          <motion.div
+            key="sidebar-backdrop"
+            className="orbit-sidebar-backdrop"
+            onClick={closeSidebarAnimated}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.16 }}
+          />
+        )}
+        </AnimatePresence>
 
         <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
           <div

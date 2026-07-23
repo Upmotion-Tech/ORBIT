@@ -15,6 +15,7 @@
 // loadTasks's exact behavior in the original.
 
 import { useEffect, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { useAuth } from "@/lib/auth-context";
 import { useAppData } from "@/lib/app-data-context";
 import { useToast } from "@/lib/toast-context";
@@ -647,8 +648,9 @@ export default function DevPage() {
         </div>
       </div>
 
+      <AnimatePresence mode="wait">
       {tab === "projects" && (
-        <>
+        <motion.div key="tab-projects" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }} style={{ display: "flex", flexDirection: "column", gap: 20 }}>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", background: "var(--bg-page)", borderRadius: 12, padding: "12px 16px" }}>
             <input type="text" placeholder="Search project or client…" value={projSearch} onChange={(e) => setProjSearch(e.target.value)} style={{ flex: 1, minWidth: 180, fontFamily: "var(--font-sans)", fontSize: 13.5, padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border-subtle)", outline: "none", background: "var(--bg-surface)", color: "var(--text-primary)" }} />
             <select value={projClient} onChange={(e) => setProjClient(e.target.value)} style={selectStyle}>{projClientOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
@@ -667,8 +669,9 @@ export default function DevPage() {
             )}
           </div>
 
+          <AnimatePresence mode="wait">
           {projSubView === "kanban" && (
-            <div style={{ display: "flex", gap: 16, overflowX: "auto", paddingBottom: 8, alignItems: "flex-start" }}>
+            <motion.div key="proj-kanban" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }} style={{ display: "flex", gap: 16, overflowX: "auto", paddingBottom: 8, alignItems: "flex-start" }}>
               {projectKanbanCols.map((col) => (
                 <div
                   key={col.status}
@@ -723,11 +726,11 @@ export default function DevPage() {
                   </div>
                 </div>
               ))}
-            </div>
+            </motion.div>
           )}
 
           {projSubView === "list" && (
-            <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
+            <motion.div key="proj-list" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }} style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead><tr style={{ borderBottom: "1px solid var(--border-subtle)" }}>
@@ -756,11 +759,12 @@ export default function DevPage() {
                   </tbody>
                 </table>
               </div>
-            </div>
+            </motion.div>
           )}
 
           {projSubView === "past" && isOwnerDept && (
-            pastProjects.length === 0 ? (
+            <motion.div key="proj-past" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}>
+            {pastProjects.length === 0 ? (
               <div style={{ background: "var(--bg-page)", borderRadius: 12, padding: "48px 24px", textAlign: "center", color: "var(--text-muted)", fontSize: 13.5 }}>No projects have aged out of the board yet — Completed projects move here {PROJECT_STALE_DAYS} days after completion.</div>
             ) : (
               <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
@@ -788,13 +792,15 @@ export default function DevPage() {
                   </table>
                 </div>
               </div>
-            )
+            )}
+            </motion.div>
           )}
-        </>
+          </AnimatePresence>
+        </motion.div>
       )}
 
       {tab === "tasks" && (
-        <>
+        <motion.div key="tab-tasks" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }} style={{ display: "flex", flexDirection: "column", gap: 20 }}>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", background: "var(--bg-page)", borderRadius: 12, padding: "12px 16px" }}>
             <input type="text" placeholder="Search task or assignee…" value={taskSearch} onChange={(e) => setTaskSearch(e.target.value)} style={{ flex: 1, minWidth: 180, fontFamily: "var(--font-sans)", fontSize: 13.5, padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border-subtle)", outline: "none", background: "var(--bg-surface)", color: "var(--text-primary)" }} />
             <select value={taskProject} onChange={(e) => setTaskProject(e.target.value)} style={selectStyle}>{taskProjectOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
@@ -805,8 +811,9 @@ export default function DevPage() {
             )}
           </div>
 
+          <AnimatePresence mode="wait">
           {taskSubView === "kanban" && (
-            <div style={{ display: "flex", gap: 16, overflowX: "auto", paddingBottom: 8, alignItems: "flex-start" }}>
+            <motion.div key="task-kanban" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }} style={{ display: "flex", gap: 16, overflowX: "auto", paddingBottom: 8, alignItems: "flex-start" }}>
               {taskKanbanCols.map((col) => (
                 <div
                   key={col.status}
@@ -859,11 +866,11 @@ export default function DevPage() {
                   </div>
                 </div>
               ))}
-            </div>
+            </motion.div>
           )}
 
           {taskSubView === "list" && (
-            <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
+            <motion.div key="task-list" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }} style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead><tr style={{ borderBottom: "1px solid var(--border-subtle)" }}>
@@ -891,10 +898,12 @@ export default function DevPage() {
                   </tbody>
                 </table>
               </div>
-            </div>
+            </motion.div>
           )}
-        </>
+          </AnimatePresence>
+        </motion.div>
       )}
+      </AnimatePresence>
 
       {/* ---- Project drawer ---- */}
       {selProject && (

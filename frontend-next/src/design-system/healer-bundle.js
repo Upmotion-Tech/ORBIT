@@ -3,6 +3,7 @@
 // (originally embedded as a manifest asset in ORBIT.html). Components are
 // preserved byte-for-byte from the compiled output for pixel-fidelity.
 import React from "react";
+import { AnimatePresence, motion } from "framer-motion";
 
 
 
@@ -400,12 +401,19 @@ function Button({
   const variantStyle = VARIANT_STYLES[variant] || VARIANT_STYLES.secondary;
   const hoverStyle = HOVER_STYLES[variant] || {};
   const iconColor = variant === 'primary' ? '#FFFFFF' : 'currentColor';
-  return /*#__PURE__*/React.createElement("button", {
+  // whileHover/whileTap give every button in the app the same real
+  // spring-physics press feedback instead of the instant, un-eased snap a
+  // plain CSS `:active { transform: scale(...) }` produces — one shared
+  // component change, felt everywhere it's used.
+  return /*#__PURE__*/React.createElement(motion.button, {
     type: type,
     disabled: disabled,
     onClick: onClick,
     onMouseEnter: () => setHover(true),
     onMouseLeave: () => setHover(false),
+    whileHover: disabled ? undefined : { scale: 1.02 },
+    whileTap: disabled ? undefined : { scale: 0.96 },
+    transition: { type: 'spring', stiffness: 500, damping: 30 },
     style: {
       display: 'inline-flex',
       alignItems: 'center',
@@ -1493,31 +1501,19 @@ function Modal({
   footer,
   width = 520
 }) {
-  // Self-animating: mirrors the .crm-overlay-fade/.crm-pop enter animations
-  // (and their .orbit-closing exit variants) every other drawer/modal in the
-  // app already uses via useClosingTransition — plain `if (!open) return
-  // null` used to unmount this instantly with zero transition either way.
-  // Callers just keep passing the same `open`/`onClose` they always did.
-  const [rendered, setRendered] = React.useState(open);
-  const [closing, setClosing] = React.useState(false);
-  React.useEffect(() => {
-    if (open) {
-      setRendered(true);
-      setClosing(false);
-    } else if (rendered) {
-      setClosing(true);
-      const t = setTimeout(() => {
-        setRendered(false);
-        setClosing(false);
-      }, 220);
-      return () => clearTimeout(t);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
-  if (!rendered) return null;
-  return /*#__PURE__*/React.createElement("div", {
+  // AnimatePresence keeps the exiting node mounted (playing its `exit`
+  // animation) until it actually finishes, then unmounts it for real — this
+  // replaces the rendered/closing/setTimeout dance the plain-CSS version
+  // needed to fake the same "animate out, then unmount" behavior, and gets
+  // real spring physics on the panel instead of a fixed-duration ease.
+  // Callers still just pass the same open/onClose they always did.
+  return /*#__PURE__*/React.createElement(AnimatePresence, null, open && /*#__PURE__*/React.createElement(motion.div, {
+    key: "modal-overlay",
     onClick: onClose,
-    className: "crm-overlay-fade" + (closing ? " orbit-closing" : ""),
+    initial: { opacity: 0 },
+    animate: { opacity: 1 },
+    exit: { opacity: 0 },
+    transition: { duration: 0.18 },
     style: {
       position: 'fixed',
       inset: 0,
@@ -1528,9 +1524,12 @@ function Modal({
       zIndex: 1000,
       padding: 24
     }
-  }, /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement(motion.div, {
     onClick: e => e.stopPropagation(),
-    className: "crm-pop" + (closing ? " orbit-closing" : ""),
+    initial: { opacity: 0, scale: 0.96, y: 10 },
+    animate: { opacity: 1, scale: 1, y: 0 },
+    exit: { opacity: 0, scale: 0.96, y: 10 },
+    transition: { type: 'spring', stiffness: 420, damping: 34 },
     style: {
       width,
       maxWidth: '100%',
@@ -1579,7 +1578,7 @@ function Modal({
       justifyContent: 'flex-end',
       gap: 12
     }
-  }, footer)));
+  }, footer))));
 }
 Object.assign(__ds_scope, { Modal });
 })(); } catch (e) { __ds_ns.__errors.push({ path: "components/overlay/Modal.jsx", error: String((e && e.message) || e) }); }
