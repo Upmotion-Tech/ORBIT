@@ -1,7 +1,7 @@
 import os
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -63,6 +63,7 @@ async def get_employee(
 @router.post("", response_model=EmployeeResponse, status_code=status.HTTP_201_CREATED)
 async def create_employee(
     body: EmployeeCreate,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_current_user),
     persona: list = Depends(get_persona_roles),
     service: EmployeeService = Depends(get_employee_service),
@@ -71,6 +72,7 @@ async def create_employee(
         body.model_dump(),
         user=current_user.get("user_id", "anonymous"),
         persona=persona,
+        background_tasks=background_tasks,
     )
 
 

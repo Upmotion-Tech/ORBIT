@@ -32,6 +32,7 @@ class LeadService:
         notification_repo = None,
         audit_repo = None,
         customer_repo = None,
+        employee_repo = None,
     ):
         self.lead_repo = lead_repo
         self.activity_repo = activity_repo
@@ -39,6 +40,27 @@ class LeadService:
         self.notification_repo = notification_repo
         self.audit_repo = audit_repo
         self.customer_repo = customer_repo
+        self.employee_repo = employee_repo
+
+    async def _notify_assigned_rep(self, lead: Lead) -> None:
+        # assigned_rep is a free-text name (not an FK — see the Lead model),
+        # so it only becomes a real notification if it matches a real
+        # employee exactly; a typo'd or not-yet-onboarded name just silently
+        # doesn't notify anyone, same as the manager-name resolution pattern
+        # used for leave/WFH notifications.
+        if not (self.notification_repo and self.employee_repo and lead.assigned_rep):
+            return
+        rep = await self.employee_repo.find_by_exact_name(lead.assigned_rep)
+        if not rep:
+            return
+        await self.notification_repo.create(
+            user_id=rep.id,
+            notif_type="Lead Assigned",
+            title="Assigned to lead",
+            message=f"You have been assigned to lead '{lead.company_name}'.",
+            related_type="lead",
+            related_id=lead.id,
+        )
 
     async def _audit(self, actor: str, action: str, label: str, detail: Optional[str] = None) -> None:
         if self.audit_repo:
@@ -105,6 +127,7 @@ class LeadService:
             "created_by": user,
         })
         await self._audit(user, "Created", lead.company_name, f"Stage '{lead.stage}'")
+        await self._notify_assigned_rep(lead)
 
         return self._to_response(lead, persona_roles), warning
 
@@ -156,7 +179,11 @@ class LeadService:
             pass
 
         old_stage = lead.stage
+        old_rep = lead.assigned_rep
         lead = await self.lead_repo.update(lead, data)
+
+        if "assigned_rep" in data and lead.assigned_rep and lead.assigned_rep != old_rep:
+            await self._notify_assigned_rep(lead)
 
         if "stage" in data and data["stage"] != old_stage:
             await self.activity_repo.create({

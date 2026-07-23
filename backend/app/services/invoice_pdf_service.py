@@ -1,41 +1,36 @@
 """
-Fills the Upmotion Tech invoice Word template (app/templates/invoice_template.docx)
-with a real invoice's data and converts the result to PDF.
-
-The template is a fixed-layout Word document (letterhead, "ISSUED TO"/"INVOICE
-NO"/"DATE" fields, and a line-item table are all inside floating textboxes/
-tables rather than plain paragraphs) with no merge fields — so instead of a
-templating library, this walks every <w:t> text run in the document
-(python-docx's element tree reaches into textboxes fine via `.//`) and
-replaces known label text in place.
-
-PDF conversion uses docx2pdf, which drives Microsoft Word via COM automation
-on Windows (confirmed available in this dev environment). That only works on
-a Windows machine with Word installed — it will NOT work on the Linux/Render
-production target. Before deploying this, swap `_convert_to_pdf` for a
-LibreOffice-headless call (`soffice --headless --convert-to pdf`) or a cloud
-conversion API; the docx-filling logic above it is platform-independent and
-does not need to change.
+Generates the invoice PDF directly with reportlab — no Word/LibreOffice/any
+external binary involved, so it runs identically on the Render (Linux)
+production server as it does locally. This replaces the previous approach
+(filling app/templates/invoice_template.docx with python-docx, then
+converting to PDF via docx2pdf/Word COM automation), which only ever worked
+on a Windows machine with Microsoft Word installed and produced a crashed/
+corrupt download in production. Visual style follows the same brand
+palette already used by dashboard_export_service.py's PDF export (brand
+purple #4F46E5, light fills, thin gray rules) for consistency across the
+app's exports — it is not a pixel copy of the old Word template.
 """
-import copy
+import io
 import os
-import tempfile
-import uuid
-from typing import Optional
 
-try:
-    import docx
-    from docx.oxml.ns import qn
-    _HAS_DOCX = True
-except ImportError:
-    _HAS_DOCX = False
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.lib.enums import TA_RIGHT
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
 
 from app.models.invoice import Invoice
 
-TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "..", "templates", "invoice_template.docx")
+LOGO_PATH = os.path.join(os.path.dirname(__file__), "..", "assets", "upmotion_logo.png")
 
 CURRENCY_SYMBOL = {"USD": "$", "PKR": "₨"}
 CURRENCY_WORDS = {"USD": "US Dollars", "PKR": "Pakistani Rupees"}
+
+BRAND = colors.HexColor("#4F46E5")
+BRAND_LIGHT = colors.HexColor("#EEF2FF")
+RULE = colors.HexColor("#E5E7EB")
+MUTED = colors.HexColor("#666666")
 
 _ONES = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
          "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen",
@@ -84,170 +79,120 @@ def _fmt_money(n: float) -> str:
     return f"{n:,.2f}" if n % 1 else f"{n:,.0f}"
 
 
-def _set_run_group_text(t_nodes: list, new_text: str, bold: Optional[bool] = None) -> None:
-    if not t_nodes:
-        return
-    t_nodes[0].text = new_text
-    for t in t_nodes[1:]:
-        t.text = ""
-    if bold is not None:
-        # t_nodes are <w:t> elements; the run's <w:rPr><w:b/> lives on the
-        # parent <w:r>. Force bold on just the first run (the one that now
-        # carries all the text) rather than every run in the group.
-        run_el = t_nodes[0].getparent()
-        rpr = run_el.find(qn("w:rPr"))
-        if rpr is None:
-            rpr = run_el.makeelement(qn("w:rPr"), {})
-            run_el.insert(0, rpr)
-        b_el = rpr.find(qn("w:b"))
-        if bold:
-            if b_el is None:
-                rpr.insert(0, rpr.makeelement(qn("w:b"), {}))
-        elif b_el is not None:
-            rpr.remove(b_el)
+def generate_invoice_pdf_bytes(invoice: Invoice) -> bytes:
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=letter,
+        topMargin=0.6 * inch, bottomMargin=0.6 * inch,
+        leftMargin=0.6 * inch, rightMargin=0.6 * inch,
+    )
+    styles = getSampleStyleSheet()
+    company_style = ParagraphStyle("ORBITCompany", parent=styles["Title"], fontSize=18, spaceAfter=0)
+    tagline_style = ParagraphStyle("ORBITTagline", parent=styles["Normal"], textColor=MUTED, fontSize=9, spaceAfter=0)
+    label_style = ParagraphStyle("ORBITLabel", parent=styles["Normal"], fontSize=10, textColor=MUTED, spaceAfter=2)
+    value_style = ParagraphStyle("ORBITValue", parent=styles["Normal"], fontSize=11, spaceAfter=8)
+    value_right_style = ParagraphStyle("ORBITValueRight", parent=value_style, alignment=TA_RIGHT)
+    label_right_style = ParagraphStyle("ORBITLabelRight", parent=label_style, alignment=TA_RIGHT)
+    section_style = ParagraphStyle("ORBITSection", parent=styles["Heading2"], fontSize=11, spaceBefore=14, spaceAfter=6, textColor=BRAND)
+    body_style = ParagraphStyle("ORBITBody", parent=styles["Normal"], fontSize=10)
 
+    story = []
 
-def _set_cell_text(cell, text: str, bold: Optional[bool] = None) -> None:
-    """Fill a table cell's text WITHOUT going through `Cell.text = ...` —
-    that setter replaces all paragraphs with a brand-new default-styled one,
-    silently dropping the template's alignment/font/size (confirmed: a
-    template cell's CENTER alignment and 10pt run size both come back as
-    None after `cell.text = x`). Reusing the first existing run instead
-    keeps whatever formatting the template author set up, the same
-    preserve-don't-replace approach `_set_run_group_text` already uses for
-    the textbox fields above."""
-    paragraphs = cell.paragraphs
-    target_p = next((p for p in paragraphs if p.runs), paragraphs[0])
-    if target_p.runs:
-        target_p.runs[0].text = text
-        for r in target_p.runs[1:]:
-            r.text = ""
-        if bold is not None:
-            target_p.runs[0].font.bold = bold
+    # ---- Letterhead ----
+    if os.path.exists(LOGO_PATH):
+        logo = Image(LOGO_PATH, width=0.5 * inch, height=0.5 * inch)
+        header = Table(
+            [[logo, Paragraph("Upmotion Tech", company_style)]],
+            colWidths=[0.6 * inch, 5.8 * inch],
+        )
+        header.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("LEFTPADDING", (0, 0), (0, 0), 0)]))
+        story.append(header)
     else:
-        run = target_p.add_run(text)
-        if bold is not None:
-            run.font.bold = bold
-    for p in paragraphs:
-        if p is not target_p:
-            for r in p.runs:
-                r.text = ""
+        story.append(Paragraph("Upmotion Tech", company_style))
+    story.append(Paragraph("Operational Revenue &amp; Business Intelligence", tagline_style))
+    story.append(Spacer(1, 18))
 
+    # ---- Issued To / Invoice No / Date ----
+    date_str = invoice.issue_date.strftime("%d / %m / %Y")
+    if invoice.status == "Paid" and invoice.paid_date:
+        date_str += f"    (Paid {invoice.paid_date.strftime('%d / %m / %Y')})"
+    left_col = [Paragraph("ISSUED TO", label_style), Paragraph(invoice.client, value_style)]
+    right_col = [
+        Paragraph("INVOICE NO", label_right_style), Paragraph(invoice.invoice_number, value_right_style),
+        Paragraph("DATE", label_right_style), Paragraph(date_str, value_right_style),
+    ]
+    info_table = Table([[left_col, right_col]], colWidths=[3.2 * inch, 3.2 * inch])
+    info_table.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LINEBELOW", (0, 0), (-1, -1), 1, RULE),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+    ]))
+    story.append(info_table)
+    story.append(Spacer(1, 16))
 
-def _fill_text_fields(body, invoice: Invoice) -> None:
-    for t in body.findall(".//" + qn("w:t")):
-        stripped = (t.text or "").strip()
-        if stripped == "ISSUED TO:":
-            t.text = f"ISSUED TO: {invoice.client}"
-
-    for p in body.findall(".//" + qn("w:p")):
-        # Direct-child runs only: this template's textboxes have some `<w:p>`
-        # elements that structurally contain *other* whole paragraphs as
-        # descendants (Word's own compatibility markup) — a deep `.//w:t`
-        # search would pick up those nested paragraphs' runs too and corrupt
-        # them when a sibling field (e.g. DATE) shares the same paragraph
-        # further down. Scoping to `./w:r/w:t` keeps each match to only the
-        # runs that actually belong to this exact paragraph.
-        t_nodes = p.findall("./" + qn("w:r") + "/" + qn("w:t"))
-        if not t_nodes:
-            continue
-        full_text = "".join(t.text or "" for t in t_nodes).strip()
-        if full_text.startswith("INVOICE NO:"):
-            _set_run_group_text(t_nodes, f"INVOICE NO: {invoice.invoice_number}")
-        elif full_text.startswith("DATE:"):
-            date_str = invoice.issue_date.strftime("%d / %m / %Y")
-            # No dedicated template slot for a paid date, so it rides on the
-            # same line as the issue date — only shown once the invoice is
-            # actually marked Paid and a paid date has been recorded.
-            if invoice.status == "Paid" and invoice.paid_date:
-                date_str += f"     PAID: {invoice.paid_date.strftime('%d / %m / %Y')}"
-            _set_run_group_text(t_nodes, f"DATE:  {date_str}")
-        elif full_text.startswith("In Words:"):
-            total = sum((item.get("qty", 1) or 1) * (item.get("unit_price", 0) or 0) for item in (invoice.line_items or []))
-            _set_run_group_text(t_nodes, f"In Words: {amount_in_words(total, invoice.currency)}")
-        elif full_text.startswith("NOTES:") and invoice.notes:
-            _set_run_group_text(t_nodes, f"NOTES: {invoice.notes}")
-        elif full_text.startswith("Account Name:") and invoice.bank_account_name:
-            _set_run_group_text(t_nodes, f"Account Name: {invoice.bank_account_name}", bold=True)
-        elif full_text.startswith("Account Number:") and invoice.bank_account_number:
-            _set_run_group_text(t_nodes, f"Account Number: {invoice.bank_account_number}", bold=True)
-        elif full_text.startswith("IBAN Number:") and invoice.bank_iban:
-            _set_run_group_text(t_nodes, f"IBAN Number: {invoice.bank_iban}", bold=True)
-        elif full_text.startswith("Bank Name:") and invoice.bank_name:
-            _set_run_group_text(t_nodes, f"Bank Name: {invoice.bank_name}", bold=True)
-
-
-def _fill_line_items_table(doc, invoice: Invoice) -> float:
-    table = doc.tables[0]
+    # ---- Line items ----
     sym = CURRENCY_SYMBOL.get(invoice.currency, invoice.currency + " ")
     items = invoice.line_items or []
     if not items:
         items = [{"description": invoice.invoice_type or "Services rendered", "qty": 1, "unit_price": invoice.amount}]
 
-    data_rows = table.rows[1:-1]
-    total_row_tr = table.rows[-1]._tr
-    sample_row_tr = table.rows[1]._tr
-
+    rows = [["Description", "Qty", "Unit Price", "Total"]]
     grand_total = 0.0
-    for i, item in enumerate(items):
+    for item in items:
         qty = item.get("qty", 1) or 1
         unit_price = item.get("unit_price", 0) or 0
         line_total = qty * unit_price
         grand_total += line_total
+        rows.append([item.get("description", ""), _fmt_money(qty), f"{sym}{_fmt_money(unit_price)}", f"{sym}{_fmt_money(line_total)}"])
+    rows.append(["", "", "TOTAL", f"{sym} {_fmt_money(grand_total)}"])
 
-        if i < len(data_rows):
-            row = data_rows[i]
-        else:
-            new_tr = copy.deepcopy(sample_row_tr)
-            total_row_tr.addprevious(new_tr)
-            row = table.rows[len(table.rows) - 2]
+    items_table = Table(rows, colWidths=[3.2 * inch, 0.8 * inch, 1.2 * inch, 1.2 * inch])
+    items_table.setStyle(TableStyle([
+        ("FONTSIZE", (0, 0), (-1, -1), 9.5),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("BACKGROUND", (0, 0), (-1, 0), BRAND_LIGHT),
+        ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+        ("ALIGN", (0, 0), (0, -1), "LEFT"),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+        ("TOPPADDING", (0, 0), (-1, -1), 7),
+        ("LINEBELOW", (0, 0), (-1, -2), 0.5, RULE),
+        ("LINEABOVE", (0, -1), (-1, -1), 1, BRAND),
+        ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+    ]))
+    story.append(items_table)
+    story.append(Spacer(1, 10))
+    story.append(Paragraph(f"<b>In Words:</b> {amount_in_words(grand_total, invoice.currency)}", body_style))
 
-        _set_cell_text(row.cells[0], item.get("description", ""))
-        _set_cell_text(row.cells[1], _fmt_money(qty))
-        _set_cell_text(row.cells[2], f"{sym}{_fmt_money(unit_price)}")
-        _set_cell_text(row.cells[3], f"{sym}{_fmt_money(line_total)}")
+    # ---- Notes ----
+    if invoice.notes:
+        story.append(Paragraph("Notes", section_style))
+        story.append(Paragraph(invoice.notes, body_style))
 
-    for i in range(len(items), len(data_rows)):
-        for c in data_rows[i].cells:
-            _set_cell_text(c, "")
+    # ---- Bank details ----
+    if any([invoice.bank_account_name, invoice.bank_account_number, invoice.bank_iban, invoice.bank_name]):
+        story.append(Paragraph("Bank Details", section_style))
+        bank_rows = []
+        if invoice.bank_account_name:
+            bank_rows.append(["Account Name:", invoice.bank_account_name])
+        if invoice.bank_account_number:
+            bank_rows.append(["Account Number:", invoice.bank_account_number])
+        if invoice.bank_iban:
+            bank_rows.append(["IBAN Number:", invoice.bank_iban])
+        if invoice.bank_name:
+            bank_rows.append(["Bank Name:", invoice.bank_name])
+        bank_table = Table(bank_rows, colWidths=[1.6 * inch, 4 * inch])
+        bank_table.setStyle(TableStyle([
+            ("FONTSIZE", (0, 0), (-1, -1), 10),
+            ("FONTNAME", (0, 0), (0, -1), "Helvetica"),
+            ("FONTNAME", (1, 0), (1, -1), "Helvetica-Bold"),
+            ("TEXTCOLOR", (0, 0), (0, -1), MUTED),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ]))
+        story.append(bank_table)
 
-    _set_cell_text(table.rows[-1].cells[3], f"{sym} {_fmt_money(grand_total)}")
-    return grand_total
-
-
-def generate_invoice_docx(invoice: Invoice) -> str:
-    """Fills the template and saves it to a temp .docx file, returning its path."""
-    doc = docx.Document(TEMPLATE_PATH)
-    _fill_line_items_table(doc, invoice)
-    _fill_text_fields(doc.element.body, invoice)
-
-    tmp_dir = tempfile.gettempdir()
-    docx_path = os.path.join(tmp_dir, f"orbit_invoice_{uuid.uuid4().hex}.docx")
-    doc.save(docx_path)
-    return docx_path
-
-
-def convert_docx_to_pdf(docx_path: str) -> str:
-    """Windows/Word-COM conversion (see module docstring for the production caveat)."""
-    from docx2pdf import convert
-    pdf_path = docx_path.rsplit(".", 1)[0] + ".pdf"
-    convert(docx_path, pdf_path)
-    return pdf_path
-
-
-def generate_invoice_pdf_bytes(invoice: Invoice) -> bytes:
-    if not _HAS_DOCX:
-        raise RuntimeError("PDF generation requires python-docx (install with: pip install python-docx)")
-    docx_path = generate_invoice_docx(invoice)
-    pdf_path: Optional[str] = None
-    try:
-        pdf_path = convert_docx_to_pdf(docx_path)
-        with open(pdf_path, "rb") as f:
-            return f.read()
-    finally:
-        for path in (docx_path, pdf_path):
-            if path and os.path.exists(path):
-                os.remove(path)
+    doc.build(story)
+    return buf.getvalue()
 
 
 def safe_invoice_filename(invoice_number: str) -> str:

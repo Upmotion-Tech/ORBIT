@@ -8,14 +8,15 @@
 
 | Module | Features & Scope |
 |---|---|
-| **CRM** | Sales leads, pipeline stages (New → Contacted → Proposal → Negotiation → Won/Lost), scope documents & signed contract attachments, duplicate lead detection, activity logging, and lead comments. |
-| **Software Dev** | Projects (automatically created when CRM lead is marked `Won`) and Tasks/Subtasks, Kanban & list views, team member assignment, time logging, multi-file attachments, and threaded comments. |
-| **Finance** | Invoices (with automated Word-template-driven PDF generation), Expenses (with category & department budget tracking), Payroll / salary slips, Payment milestones, and financial stats overview. |
-| **HR** | Employee directory, leave requests & balances, daily attendance marking, Work From Home (WFH) requests, hiring pipeline (job openings + candidates), company holidays, and leave policy settings. |
+| **CRM** | Sales leads, pipeline stages (New → Contacted → Proposal → Negotiation → Won/Lost) with drag-and-drop between stages, scope documents & signed contract attachments, duplicate lead detection, activity logging, lead comments, and Won/Lost leads archived to a separate Past Leads view. |
+| **Software Dev** | Projects (automatically created when CRM lead is marked `Won`) and Tasks/Subtasks, Kanban (drag-and-drop) & list views, team member assignment, time logging, multi-file attachments, threaded comments, and Completed projects archived to a Past Projects view 20 days after completion. |
+| **Finance** | Invoices (with real, dependency-free PDF generation), Expenses (with category & department budget tracking), Payroll / salary slips, Payment milestones, and financial stats overview. |
+| **HR** | Employee directory, leave requests & balances (approval now happens via the employee's manager, not HR), daily attendance marking (day-by-day history with Back/Next navigation), Work From Home (WFH) requests, hiring pipeline (job openings + candidates), and leave policy settings. |
 | **Dashboard & Reports** | Company-wide revenue/cash-position overview, delayed-project tracking, project profitability, resource utilization, expense category budgets, exportable to Excel/PDF. |
 | **Setup** | Exchange rates (USD/PKR), pipeline stages & lead sources, leave policy settings, audit trail, employee management & role configuration. |
-| **Auth & Permissions** | Real JWT authentication, bcrypt password hashing, per-employee multi-select access levels (`owner`, `dashboard`, `crm`, `dev`, `finance`, `hr`, `permissions`, `customers`, `employee`), mandatory password change on initial login / admin reset, instant account deactivation, and dynamic role updates. |
-| **Notifications & Audit Trail** | Scoped notification tray for assignment/approval events, and comprehensive real-time audit logging for sensitive actions across all modules. |
+| **Universal Search** | Topbar search across leads, projects, tasks (including tags), customers, and people — click a result to jump straight to it. |
+| **Auth & Permissions** | Real JWT authentication, bcrypt password hashing, per-employee multi-select access levels (`owner`, `dashboard`, `crm`, `dev`, `finance`, `hr`, `permissions`, `customers`, `employee`), mandatory password change on initial login / admin reset (no forced re-login afterward), instant account deactivation, and dynamic role updates. |
+| **Notifications & Audit Trail** | Targeted notifications (e.g. a leave/WFH request notifies the employee's actual manager, not every Owner/HR person), and comprehensive real-time audit logging for sensitive actions across all modules. |
 
 ---
 
@@ -28,12 +29,12 @@
 | **Data Validation** | Pydantic v2 |
 | **Production Database** | Neon PostgreSQL (`postgresql+asyncpg://`) |
 | **Development Database** | SQLite (`sqlite+aiosqlite:///./orbit.db`, zero-config local fallback) |
-| **Auth / Security** | JWT (`python-jose`) + `bcrypt` password hashing |
-| **Document Generation** | `python-docx` + ReportLab (Invoice PDF generation) |
+| **Auth / Security** | JWT (`python-jose`) + `bcrypt` password hashing (off the event loop via `asyncio.to_thread`) |
+| **Document Generation** | ReportLab — invoice PDFs and dashboard exports are both generated directly in Python, no external binary (Word, LibreOffice, etc.) required |
 | **Timezone Standard** | Pakistan Standard Time (PKT, `Asia/Karachi`, fixed UTC+05:00, no DST) |
 | **Backend Hosting** | **Render** |
-| **Frontend Hosting** | **Vercel** (static bundle with `/api/*` rewrite proxy to Render) |
-| **Frontend Architecture** | Single-file SPA bundle (`ORBIT.html`) compiled from `unpacked/template.html` & `unpacked/script.js` |
+| **Frontend Hosting** | **Vercel** |
+| **Frontend Architecture** | Next.js (App Router) + TypeScript — real routing, one route per screen |
 
 ---
 
@@ -41,14 +42,8 @@
 
 ```
 Orbit/
-├── ORBIT.html              # Primary production SPA bundle copy
 ├── CLAUDE.md                # Authoritative developer & AI agent build reference
 ├── README.md                 # Project documentation
-├── pack.py                 # Repackages unpacked/ source files into bundle copies
-├── unpacked/               # EDITABLE FRONTEND SOURCE CODE
-│   ├── template.html       # Single-file HTML layout & design system
-│   ├── script.js           # Single-file JS logic & state management
-│   └── sync_script.py      # Injects script.js into template.html
 ├── backend/
 │   ├── app/
 │   │   ├── main.py         # FastAPI entry point, middleware, router mounts, DB lifespan
@@ -58,53 +53,37 @@ Orbit/
 │   │   ├── repositories/   # DB query abstraction layer
 │   │   ├── services/       # Core business logic & permission checks
 │   │   ├── routers/        # Thin FastAPI HTTP route handlers
-│   │   ├── templates/      # Invoice DOCX templates for PDF generation
 │   │   └── storage/        # Local physical upload directory
-│   ├── static/index.html   # Bundle copy served by FastAPI at "/"
 │   └── scripts/            # Database seed scripts
-└── frontend/
-    ├── index.html          # Bundle copy deployed to Vercel
-    └── vercel.json         # Vercel proxy configuration
+└── frontend-next/          # The frontend — Next.js (App Router) + TypeScript
 ```
+
+See [`frontend-next/README.md`](frontend-next/README.md) to run the frontend locally, or [`frontend-next/CLAUDE.md`](frontend-next/CLAUDE.md) for the full technical breakdown (what's where, known intentional deviations, etc.).
 
 ---
 
 ## 💻 Local Development Setup
 
-### 1. Backend Setup & Run
+### 1. Backend
 
 ```bash
-# Navigate to backend directory
 cd backend
-
-# Install Python dependencies
 pip install -r requirements.txt
-
-# Start local dev server (defaults to SQLite database)
 uvicorn app.main:app --reload
 ```
 
-- **Application URL**: `http://localhost:8000`
+- **API URL**: `http://localhost:8000`
 - **Interactive API Documentation (Swagger)**: `http://localhost:8000/docs`
 
-### 2. Frontend Editing Workflow
+### 2. Frontend
 
-When modifying the frontend user interface or logic:
+```bash
+cd frontend-next
+npm install
+npm run dev
+```
 
-1. Make edits to `unpacked/script.js` or `unpacked/template.html`.
-2. Test JavaScript syntax:
-   ```bash
-   node --check unpacked/script.js
-   ```
-3. Sync script into template:
-   ```bash
-   python unpacked/sync_script.py
-   ```
-4. Build bundle copies:
-   ```bash
-   python pack.py
-   ```
-   *(This safely syncs `ORBIT.html`, `backend/static/index.html`, and `frontend/index.html` together).*
+- **App URL**: `http://localhost:3000` — proxies `/api/*` to the backend (see `frontend-next/next.config.ts`; set `ORBIT_BACKEND_ORIGIN` if the backend isn't on `localhost:8000`).
 
 ---
 

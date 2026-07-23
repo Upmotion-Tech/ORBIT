@@ -16,6 +16,8 @@ class NotificationResponse(BaseModel):
     title: str
     message: str
     is_read: bool
+    related_type: Optional[str] = None
+    related_id: Optional[str] = None
     created_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}

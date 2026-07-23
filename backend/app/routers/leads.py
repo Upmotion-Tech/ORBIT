@@ -17,6 +17,7 @@ from app.repositories.project_repository import ProjectRepository
 from app.repositories.notification_repository import NotificationRepository
 from app.repositories.audit_log_repository import AuditLogRepository
 from app.repositories.customer_repository import CustomerRepository
+from app.repositories.employee_repository import EmployeeRepository
 
 router = APIRouter(prefix="/api/leads", tags=["Leads"])
 
@@ -29,6 +30,7 @@ def get_lead_service(db: AsyncSession = Depends(get_db)) -> LeadService:
         NotificationRepository(db),
         AuditLogRepository(db),
         CustomerRepository(db),
+        EmployeeRepository(db),
     )
 
 

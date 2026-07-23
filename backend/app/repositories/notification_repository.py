@@ -1,9 +1,11 @@
 import uuid
+from datetime import timedelta
 from typing import Optional
 
-from sqlalchemy import select, update
+from sqlalchemy import select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.time import now_pkt
 from app.models.notification import Notification
 
 
@@ -47,7 +49,10 @@ class NotificationRepository:
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
-    async def create(self, user_id: str, notif_type: str, title: str, message: str) -> Notification:
+    async def create(
+        self, user_id: str, notif_type: str, title: str, message: str,
+        related_type: Optional[str] = None, related_id: Optional[str] = None,
+    ) -> Notification:
         notification = Notification(
             id=str(uuid.uuid4()),
             user_id=user_id,
@@ -55,6 +60,8 @@ class NotificationRepository:
             title=title,
             message=message,
             is_read=False,
+            related_type=related_type,
+            related_id=related_id,
         )
         self.db.add(notification)
         await self.db.flush()
@@ -64,6 +71,13 @@ class NotificationRepository:
         notification.is_read = is_read
         await self.db.flush()
         return notification
+
+    async def delete_older_than(self, hours: int = 24) -> int:
+        cutoff = now_pkt() - timedelta(hours=hours)
+        stmt = delete(Notification).where(Notification.created_at < cutoff)
+        result = await self.db.execute(stmt)
+        await self.db.flush()
+        return result.rowcount or 0
 
     async def mark_all_read(self, user_id: str, roles: Optional[list] = None) -> None:
         # Same "all" restriction as find_all_for_user above — only owner/admin

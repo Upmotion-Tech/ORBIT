@@ -51,12 +51,13 @@ class ProjectResponse(BaseModel):
     team_ids: list[str]
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
     created_by_id: Optional[str] = None
     updated_by_id: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
-    @field_validator("created_at", "updated_at", mode="before")
+    @field_validator("created_at", "updated_at", "completed_at", mode="before")
     @classmethod
     def _normalize_to_pkt(cls, v):
         return to_pkt(v) if isinstance(v, datetime) else v

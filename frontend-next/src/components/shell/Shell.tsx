@@ -1,0 +1,609 @@
+"use client";
+
+// Port of the app shell (sidebar + topbar) from unpacked/template.html
+// lines 2061-2186. Screen ids now map to real Next.js routes instead of
+// internal `screen` state (setScreen(id) -> router.push('/' + id)), per the
+// agreed real-routing plan. Search-results/notification click-through
+// navigation is stubbed for now (routes to build in the next increment);
+// the dropdowns themselves are fully wired to real data.
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, usePathname } from "next/navigation";
+import { useAuth } from "@/lib/auth-context";
+import { useAppData } from "@/lib/app-data-context";
+import { useToast } from "@/lib/toast-context";
+import {
+  mergeAccess,
+  derivePersonaFlavor,
+  deriveLandingFromAccess,
+  notificationsApi,
+  leadsApi,
+  projectsApi,
+  tasksApi,
+  customersApi,
+  employeesApi,
+  attendanceApi,
+  deepLinkHref,
+  isModifiedClick,
+  formatActivityTimestamp,
+  todayISO,
+} from "@/lib/orbit-client";
+import { SidebarSection, Icon, Avatar } from "@/design-system/healer-bundle";
+import { useClosingTransition } from "@/lib/use-closing-transition";
+
+const MOBILE_BREAKPOINT = "(max-width: 768px)";
+
+type NavItem = { id: string; label: string; icon?: string };
+type SearchResult = { kind: string; title: string; subtitle: string; href: string };
+
+function screenIdToPath(id: string) {
+  return id === "dashboard" ? "/" : "/" + id;
+}
+function pathToScreenId(pathname: string) {
+  if (pathname === "/") return "dashboard";
+  return pathname.replace(/^\//, "").split("/")[0];
+}
+
+export default function Shell({ children }: { children: React.ReactNode }) {
+  const { currentUser, handleLogout } = useAuth();
+  const { employees, leaves, allWfhRequests, notifications, reloadNotifications } = useAppData();
+  const { pushToast } = useToast();
+  const router = useRouter();
+  const pathname = usePathname();
+  const [notifOpen, setNotifOpen] = useState(false);
+
+  // ---- Topbar "Mark Attendance" quick action ----
+  // Shell stays mounted across client-side navigation (only `children`
+  // swaps), so this loads once per session rather than once per page.
+  // POST /api/attendance/mark is idempotent (see AttendanceService.
+  // mark_attendance) — already used by the My Attendance page's own button;
+  // this is the same call, just reachable from anywhere instead of only
+  // after navigating there.
+  const [attendanceMarkedToday, setAttendanceMarkedToday] = useState(false);
+  const [marking, setMarking] = useState(false);
+  const isWorkingDayToday = (() => {
+    const day = new Date(todayISO() + "T00:00:00").getDay();
+    return day >= 1 && day <= 5;
+  })();
+
+  useEffect(() => {
+    if (!currentUser?.id || !isWorkingDayToday) return;
+    const today = new Date();
+    attendanceApi.me(today.getFullYear(), today.getMonth() + 1).then(
+      (records: { date: string }[]) => {
+        setAttendanceMarkedToday((records || []).some((r) => r.date === todayISO()));
+      },
+      () => {}
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.id]);
+
+  const markAttendance = () => {
+    if (marking || attendanceMarkedToday) return;
+    setMarking(true);
+    attendanceApi.mark().then(
+      () => {
+        setMarking(false);
+        setAttendanceMarkedToday(true);
+        pushToast("Attendance marked for today.");
+      },
+      (err: Error) => {
+        setMarking(false);
+        pushToast(err.message || "Could not mark attendance.", "error");
+      }
+    );
+  };
+  const [sidebarExpanded, setSidebarExpanded] = useState(true);
+  const sidebarClosing = useClosingTransition();
+
+  // Starts expanded (matches desktop, and avoids an SSR/hydration mismatch —
+  // window isn't available on the server) and immediately collapses once
+  // mounted if the viewport is actually phone-sized, so a phone visitor
+  // isn't greeted with the sidebar covering the whole screen.
+  useEffect(() => {
+    if (window.matchMedia(MOBILE_BREAKPOINT).matches) setSidebarExpanded(false);
+  }, []);
+
+  const closeSidebarAnimated = () => sidebarClosing.closeWithTransition(() => setSidebarExpanded(false));
+
+  const activeScreen = pathToScreenId(pathname || "/");
+  const setScreen = (id: string) => {
+    router.push(screenIdToPath(id));
+    // On a phone the sidebar is a full overlay (see the mobile media query
+    // in globals.css) — leaving it open over the newly-navigated-to page
+    // would just hide the page behind it.
+    if (window.matchMedia(MOBILE_BREAKPOINT).matches) closeSidebarAnimated();
+  };
+
+  const accessLevels = currentUser?.access_levels || ["employee"];
+  const access = mergeAccess(accessLevels);
+  const persona = currentUser?.access_level || derivePersonaFlavor(accessLevels);
+  const userName = currentUser?.name || "User";
+  const userRole = (currentUser?.role as string) || "Member";
+
+  // ---- Universal Search (topbar) ----
+  // Searches across every module the user actually has access to —
+  // including task tags, not just titles — and deep-links straight to the
+  // matching lead/project/task/customer/employee via the same #/type/id
+  // mechanism used for "open in new tab" elsewhere. Fetched fresh per query
+  // (debounced) rather than kept preloaded, since leads/projects/tasks/
+  // employees are otherwise only ever loaded by their own page.
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchBoxRef = useRef<HTMLDivElement | null>(null);
+  const searchRequestId = useRef(0);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(searchQuery.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    const q = debouncedQuery;
+    if (q.length < 2) {
+      setSearchResults([]);
+      setSearchLoading(false);
+      return;
+    }
+    const requestId = ++searchRequestId.current;
+    setSearchLoading(true);
+    const tasks: Promise<SearchResult[]>[] = [];
+    if (access.crm) {
+      tasks.push(
+        leadsApi.search(q, 5).then((rows: { id: string; name: string; poc: string; stage: string }[]) =>
+          rows.map((l) => ({ kind: "Lead", title: l.name, subtitle: l.poc + " · " + l.stage, href: "/crm" + deepLinkHref("lead", l.id) }))
+        ).catch(() => [])
+      );
+    }
+    if (access.dev) {
+      tasks.push(
+        projectsApi.list({ search: q }).then((rows: { id: string; name: string; client: string; status: string }[]) =>
+          rows.slice(0, 5).map((p) => ({ kind: "Project", title: p.name, subtitle: p.client + " · " + p.status, href: "/dev" + deepLinkHref("project", p.id) }))
+        ).catch(() => [])
+      );
+      tasks.push(
+        tasksApi.list({ search: q }).then((rows: { id: string; title: string; status: string; tags?: string[] }[]) =>
+          rows.slice(0, 5).map((t) => ({
+            kind: "Task", title: t.title,
+            subtitle: t.status + (t.tags && t.tags.length ? " · #" + t.tags.join(" #") : ""),
+            href: "/dev" + deepLinkHref("task", t.id),
+          }))
+        ).catch(() => [])
+      );
+    }
+    if (access.customers) {
+      tasks.push(
+        customersApi.list(q).then((rows: { id: string; company_name: string; primary_contact_name?: string | null }[]) =>
+          rows.slice(0, 5).map((c) => ({ kind: "Customer", title: c.company_name, subtitle: c.primary_contact_name || "", href: "/customers" + deepLinkHref("customer", c.id) }))
+        ).catch(() => [])
+      );
+    }
+    if (access.hr) {
+      tasks.push(
+        employeesApi.list({ search: q }).then((rows: { id: string; name: string; role: string; department: string }[]) =>
+          rows.slice(0, 5).map((e) => ({ kind: "Person", title: e.name, subtitle: e.role + " · " + e.department, href: "/hr" + deepLinkHref("employee", e.id) }))
+        ).catch(() => [])
+      );
+    }
+    Promise.all(tasks).then((groups) => {
+      if (searchRequestId.current !== requestId) return; // a newer query already superseded this one
+      setSearchResults(groups.flat().slice(0, 8));
+      setSearchLoading(false);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedQuery]);
+
+  useEffect(() => {
+    const onDocMouseDown = (e: MouseEvent) => {
+      if (searchBoxRef.current && !searchBoxRef.current.contains(e.target as Node)) setSearchOpen(false);
+    };
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, []);
+
+  const goToSearchResult = (e: React.MouseEvent, href: string) => {
+    if (isModifiedClick(e)) return;
+    e.preventDefault();
+    router.push(href);
+    setSearchQuery("");
+    setSearchOpen(false);
+  };
+
+  const dashboardItems: NavItem[] = persona === "owner"
+    ? [{ id: "dashboard", label: "Home", icon: "house" }, { id: "reports", label: "Reports", icon: "bar-chart-2" }]
+    : [{ id: "dashboard", label: "Home", icon: "house" }];
+  const crmItems: NavItem[] = [{ id: "crm", label: "Leads", icon: "users" }];
+  const customersItems: NavItem[] = [{ id: "customers", label: "Customers", icon: "user" }];
+  const devItems: NavItem[] = [{ id: "dev", label: persona === "devmember" ? "My Projects" : "Projects", icon: "flask-conical" }];
+  const financeItems: NavItem[] = [{ id: "finance", label: "Invoices & Expenses", icon: "credit-card" }];
+  const hrItems: NavItem[] = [{ id: "hr", label: "Human Resources", icon: "clipboard-list" }];
+  const meItems: NavItem[] = [
+    { id: "me-leave", label: "My Leave", icon: "calendar" },
+    { id: "me-attendance", label: "My Attendance", icon: "circle-check" },
+    { id: "me-policies", label: "Policies", icon: "file-text" },
+    { id: "me-record", label: "My Record", icon: "user" },
+  ];
+  const adminItems: NavItem[] = [{ id: "setup", label: "Setup", icon: "settings" }];
+
+  // ---- Manager Hub detection & badge count (script.js:4117-4143) ----
+  const myNameNorm = (userName || "").trim().toLowerCase();
+  const directReportEmps = employees.filter(
+    (e) => e.manager && String(e.manager).trim().toLowerCase() === myNameNorm && e.name.trim().toLowerCase() !== myNameNorm
+  );
+  const showManagerSection = directReportEmps.length > 0;
+  const directReportEmpIds = new Set(directReportEmps.map((e) => e.id));
+  const pendingDirectLeaves = leaves.filter((lr) => lr.status === "Pending" && directReportEmpIds.has(lr.employee_id));
+  const pendingDirectWfh = allWfhRequests.filter((w) => w.status === "Pending" && directReportEmpIds.has(w.employee_id));
+  const managerPendingCount = pendingDirectLeaves.length + pendingDirectWfh.length;
+  const managerItems: NavItem[] = [
+    {
+      id: "manager-leave",
+      label: managerPendingCount > 0 ? `Leave Requests (${managerPendingCount})` : "Leave Requests",
+      icon: "clipboard-check",
+    },
+  ];
+
+  // ---- Access guard ----
+  // Sidebar links are already filtered by `access`, but nothing previously
+  // stopped someone from *landing* on (or directly navigating to) a screen
+  // their access_levels don't cover — e.g. a Dev Member logging in at the
+  // bare root URL got the full company Dashboard ("/") since that route
+  // never checked access at all, only the sidebar hid its own link to it.
+  // This bounces any such visit to the correct screen for their real access,
+  // the same redirect `landingScreen`/`deriveLandingFromAccess` was already
+  // computing but nothing ever actually navigated to.
+  const isScreenAllowed = (screenId: string): boolean => {
+    switch (screenId) {
+      case "dashboard": return access.dashboard;
+      case "reports": return access.dashboard && persona === "owner";
+      case "crm": return access.crm;
+      case "customers": return access.customers;
+      case "dev": return access.dev;
+      case "finance": return access.finance;
+      case "hr": return access.hr;
+      case "setup": return access.permissions;
+      case "manager-leave": return showManagerSection;
+      default: return true; // "me-*" screens (always available) + unknown routes
+    }
+  };
+  useEffect(() => {
+    if (!isScreenAllowed(activeScreen)) {
+      router.replace(screenIdToPath(deriveLandingFromAccess(access)));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeScreen, access.dashboard, access.crm, access.customers, access.dev, access.finance, access.hr, access.permissions, persona, showManagerSection]);
+
+  const unread = notifications.filter((n) => !n.is_read);
+  const hasNotifications = unread.length > 0;
+  const hasAnyNotifications = notifications.length > 0;
+  const hasUnreadNotifications = unread.length > 0;
+
+  const notifIconFor = (n: { type?: string }) => {
+    const typeLc = (n.type || "").toLowerCase();
+    if (typeLc.includes("leave")) return "calendar";
+    if (typeLc.includes("project")) return "folder";
+    if (typeLc.includes("task")) return "check-square";
+    if (typeLc.includes("comment")) return "message-square";
+    if (typeLc.includes("attachment")) return "paperclip";
+    if (typeLc.includes("lead")) return "dollar-sign";
+    return "bell";
+  };
+
+  // Precise deep-link when the notification carries a related_type/id (set
+  // server-side for task/project assignments — see backend/app/services/
+  // task_service.py & project_service.py); otherwise a best-effort plain
+  // page route from the notification's type string, same substring approach
+  // notifIconFor already uses. Returns null when there's nowhere sensible to
+  // send the click (e.g. "Removed from Project" — no longer accessible).
+  const notificationHref = (n: { type?: string; related_type?: string; related_id?: string }): string | null => {
+    const typeLc = (n.type || "").toLowerCase();
+    // A request still awaiting a manager's decision ("Leave Submitted",
+    // "WFH Requested") goes to Manager Hub (which flashes/scrolls to the
+    // exact row — no separate details drawer exists there); an
+    // already-decided one ("Leave/WFH Approved/Rejected") opens that exact
+    // request's drawer on the employee's own history page.
+    const isPendingDecision = typeLc.includes("submitted") || typeLc.includes("requested");
+    if (n.related_type && n.related_id) {
+      if (n.related_type === "task") return "/dev" + deepLinkHref("task", n.related_id);
+      if (n.related_type === "project") return "/dev" + deepLinkHref("project", n.related_id);
+      if (n.related_type === "lead") return "/crm" + deepLinkHref("lead", n.related_id);
+      if (n.related_type === "customer") return "/customers" + deepLinkHref("customer", n.related_id);
+      if (n.related_type === "employee") return "/hr" + deepLinkHref("employee", n.related_id);
+      if (n.related_type === "leave" || n.related_type === "wfh") {
+        return isPendingDecision
+          ? (showManagerSection ? "/manager-leave" + deepLinkHref(n.related_type, n.related_id) : null)
+          : "/me-leave" + deepLinkHref(n.related_type, n.related_id);
+      }
+    }
+    // Fallback for notifications that predate related_type/id, or for which
+    // resolving a specific record failed server-side (e.g. no exact
+    // employee-name match) — same best-effort plain page route notifIconFor
+    // already uses for its icon.
+    if (isPendingDecision) return showManagerSection ? "/manager-leave" : null;
+    if (typeLc.includes("leave") || typeLc.includes("wfh")) return "/me-leave";
+    if (typeLc.includes("salary")) return "/me-record";
+    if (typeLc.includes("expense") || typeLc.includes("invoice") || typeLc.includes("milestone")) return access.finance ? "/finance" : null;
+    if (typeLc.includes("job") || typeLc.includes("opening") || typeLc.includes("candidate")) return access.hr ? "/hr" : null;
+    if (typeLc.includes("project") || typeLc.includes("task")) return access.dev ? "/dev" : null;
+    return null;
+  };
+
+  const goToNotification = (n: { id: string; is_read: boolean; type?: string; related_type?: string; related_id?: string }) => {
+    const href = notificationHref(n);
+    if (!n.is_read) {
+      notificationsApi.markRead(n.id, true).then(reloadNotifications);
+    }
+    if (href) {
+      setNotifOpen(false);
+      router.push(href);
+    }
+  };
+
+  const goHome = () => setScreen(persona === "owner" ? "dashboard" : "dashboard");
+
+  const sections = useMemo(
+    () => [
+      { show: access.dashboard, label: "Dashboard", items: dashboardItems },
+      { show: access.crm, label: "CRM", items: crmItems },
+      { show: access.customers, label: "Customers", items: customersItems },
+      { show: access.dev, label: "Software Dev", items: devItems },
+      { show: access.finance, label: "Finance", items: financeItems },
+      { show: access.hr, label: "", items: hrItems },
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [access.dashboard, access.crm, access.customers, access.dev, access.finance, access.hr, persona]
+  );
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
+      <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+        {sidebarExpanded && (
+          <div
+            className={"orbit-sidebar orbit-sidebar-panel" + (sidebarClosing.isClosing ? " orbit-sidebar-panel-closing" : "")}
+            style={{
+              width: "var(--sidebar-width)",
+              flexShrink: 0,
+              background: "var(--bg-sidebar)",
+              borderRight: "1px solid var(--border-subtle)",
+              padding: "24px 12px",
+              overflowY: "auto",
+            }}
+          >
+            <div
+              onClick={goHome}
+              style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 12px", marginBottom: 32, cursor: "pointer" }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/orbit-logo.png" alt="" style={{ width: 32, height: 32, flexShrink: 0, display: "block" }} />
+              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                <span style={{ fontWeight: 700, fontSize: 18, letterSpacing: "0.04em", color: "var(--text-primary)", lineHeight: 1.1 }}>ORBIT</span>
+                <span style={{ fontSize: 10, fontWeight: 500, letterSpacing: "0.01em", color: "var(--text-muted)", lineHeight: 1.1 }}>Powered by Upmotion Tech</span>
+              </div>
+            </div>
+
+            {sections.map((s) =>
+              s.show ? (
+                <SidebarSection key={s.label} label={s.label} items={s.items} activeId={activeScreen} onSelect={setScreen} />
+              ) : null
+            )}
+
+            {showManagerSection && (
+              <SidebarSection label="Manager Hub" items={managerItems} activeId={activeScreen} onSelect={setScreen} />
+            )}
+            <SidebarSection label="Me" items={meItems} activeId={activeScreen} onSelect={setScreen} />
+            {access.permissions && (
+              <SidebarSection label="Setup" items={adminItems} activeId={activeScreen} onSelect={setScreen} />
+            )}
+
+            <div className="orbit-logout-wrap">
+              <button className="sidebar-logout-btn" onClick={handleLogout}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                  <polyline points="16 17 21 12 16 7" />
+                  <line x1="21" y1="12" x2="9" y2="12" />
+                </svg>
+                Sign Out
+              </button>
+            </div>
+          </div>
+        )}
+        {sidebarExpanded && <div className="orbit-sidebar-backdrop" onClick={closeSidebarAnimated} />}
+
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+          <div
+            className="orbit-topbar"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 20,
+              height: "var(--topbar-height)",
+              padding: "0 24px",
+              background: "var(--bg-surface)",
+              borderBottom: "1px solid var(--border-subtle)",
+              flexShrink: 0,
+              position: "relative",
+            }}
+          >
+            <button
+              onClick={() => (sidebarExpanded ? closeSidebarAnimated() : setSidebarExpanded(true))}
+              aria-label="Toggle menu"
+              style={{ background: "none", border: "none", cursor: "pointer", padding: 6, lineHeight: 0, flexShrink: 0 }}
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" strokeWidth="2" strokeLinecap="round">
+                <line x1="3" y1="6" x2="21" y2="6" />
+                <line x1="3" y1="12" x2="21" y2="12" />
+                <line x1="3" y1="18" x2="21" y2="18" />
+              </svg>
+            </button>
+
+            <div ref={searchBoxRef} className="orbit-topbar-search" style={{ position: "relative", flex: 1, minWidth: 0, maxWidth: 360 }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  background: "#fff",
+                  border: "1px solid var(--border-subtle)",
+                  borderRadius: 10,
+                  padding: "9px 16px",
+                }}
+              >
+                <Icon name="search" size={18} color="var(--text-muted)" />
+                <input
+                  type="text"
+                  placeholder="Search leads, projects, tasks, customers, people…"
+                  value={searchQuery}
+                  onChange={(e) => { setSearchQuery(e.target.value); setSearchOpen(true); }}
+                  onFocus={() => setSearchOpen(true)}
+                  style={{ border: "none", outline: "none", background: "transparent", width: "100%", fontFamily: "var(--font-sans)", fontSize: 14, color: "var(--text-primary)" }}
+                />
+              </div>
+              {searchOpen && debouncedQuery.length >= 2 && (
+                <div
+                  className="crm-pop"
+                  style={{ position: "absolute", top: 44, left: 0, width: 380, maxHeight: 440, overflow: "auto", background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-popover)", zIndex: 2000 }}
+                >
+                  {searchLoading && (
+                    <div style={{ padding: "16px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>Searching…</div>
+                  )}
+                  {!searchLoading && searchResults.length === 0 && (
+                    <div style={{ padding: "16px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>No results for &ldquo;{debouncedQuery}&rdquo;.</div>
+                  )}
+                  {!searchLoading && searchResults.map((r, i) => (
+                    <a
+                      key={i}
+                      href={r.href}
+                      onClick={(e) => goToSearchResult(e, r.href)}
+                      style={{ display: "flex", flexDirection: "column", gap: 2, padding: "10px 16px", borderBottom: "1px solid var(--border-subtle)", textDecoration: "none", color: "inherit" }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: "var(--brand-primary)", background: "var(--brand-primary-light)", borderRadius: 9999, padding: "2px 8px", textTransform: "uppercase", letterSpacing: "0.03em" }}>{r.kind}</span>
+                        <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text-primary)" }}>{r.title}</span>
+                      </div>
+                      {r.subtitle && <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{r.subtitle}</div>}
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div style={{ flex: 1 }} />
+
+            {isWorkingDayToday && (
+              <button
+                onClick={markAttendance}
+                disabled={marking || attendanceMarkedToday}
+                style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  border: "none", borderRadius: 9999, padding: "9px 16px",
+                  fontFamily: "var(--font-sans)", fontSize: 13, fontWeight: 700,
+                  color: "#fff", flexShrink: 0,
+                  background: attendanceMarkedToday ? "#16A34A" : "#EF4444",
+                  cursor: attendanceMarkedToday ? "default" : "pointer",
+                  transition: "background 0.2s ease",
+                }}
+              >
+                <Icon name={attendanceMarkedToday ? "circle-check" : "clock"} size={15} color="#fff" />
+                {attendanceMarkedToday ? "Attendance marked" : marking ? "Marking…" : "Mark Attendance"}
+              </button>
+            )}
+
+            <div className="orbit-notif-wrap" style={{ position: "relative" }}>
+              <button
+                onClick={() => {
+                  const next = !notifOpen;
+                  setNotifOpen(next);
+                  if (next) reloadNotifications();
+                }}
+                aria-label="Notifications"
+                style={{ position: "relative", background: "#fff", border: "1px solid var(--border-subtle)", borderRadius: 9999, cursor: "pointer", padding: 8, lineHeight: 0 }}
+              >
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                  <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                </svg>
+                {hasNotifications && (
+                  <span
+                    style={{
+                      position: "absolute", top: 2, right: 2, minWidth: 16, height: 16, padding: "0 4px",
+                      borderRadius: 9999, background: "var(--notification-dot)", color: "#fff", fontSize: 10, fontWeight: 700,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}
+                  >
+                    {unread.length}
+                  </span>
+                )}
+              </button>
+              {notifOpen && (
+                <div
+                  className="crm-pop"
+                  style={{ position: "absolute", top: 44, right: 0, width: 380, maxHeight: 440, overflow: "auto", background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-popover)", zIndex: 2000 }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", borderBottom: "1px solid var(--border-subtle)" }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>Notifications</span>
+                    {hasUnreadNotifications && (
+                      <a
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          notificationsApi.markAllRead().then(reloadNotifications);
+                        }}
+                        style={{ fontSize: 12, fontWeight: 600, color: "var(--text-link)", textDecoration: "none" }}
+                      >
+                        Mark all as read
+                      </a>
+                    )}
+                  </div>
+                  {!hasAnyNotifications && (
+                    <div style={{ padding: "24px 16px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>No notifications yet.</div>
+                  )}
+                  {notifications.map((n) => {
+                    const href = notificationHref(n);
+                    return (
+                      <div
+                        key={n.id}
+                        onClick={() => goToNotification(n)}
+                        style={{
+                          display: "flex", gap: 10, padding: "14px 16px",
+                          borderBottom: "1px solid var(--border-subtle)",
+                          cursor: href || !n.is_read ? "pointer" : "default",
+                          background: n.is_read ? "transparent" : "var(--brand-primary-light, rgba(37,99,235,0.06))",
+                        }}
+                      >
+                        {!n.is_read && (
+                          <span style={{ width: 7, height: 7, borderRadius: 9999, background: "var(--brand-primary)", flexShrink: 0, marginTop: 6 }} />
+                        )}
+                        <Icon name={notifIconFor(n)} size={16} color="var(--text-muted)" />
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 13, color: "var(--text-primary)", fontWeight: n.is_read ? 400 : 600, lineHeight: 1.4 }}>{n.message || n.title}</div>
+                          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3 }}>{formatActivityTimestamp(n.created_at)}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="orbit-profile-chip">
+              <div className="orbit-avatar-ring">
+                <Avatar name={userName} size={34} />
+              </div>
+              <div>
+                <div className="orbit-profile-name">{userName}</div>
+                <div className="orbit-profile-role">{userRole}</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="orbit-screen-content" style={{ flex: 1, padding: 24, overflow: "auto" }}>
+            {isScreenAllowed(activeScreen) ? children : null}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

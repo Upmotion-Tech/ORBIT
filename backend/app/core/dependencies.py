@@ -158,6 +158,21 @@ async def get_dev_editor_user(
     return current_user
 
 
+async def get_owner_department_user(
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    # Company Policies management (add/edit/delete/upload) is gated on the
+    # Owner *department* specifically, not the "owner" access-level token —
+    # matches the same convention already used for HR employee access-level
+    # auto-tick, CRM Past Leads, Dev Past Projects, and Setup's Employees tab.
+    if current_user.get("department") != "Owner":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only Owner department can manage company policies.",
+        )
+    return current_user
+
+
 async def get_audit_user(
     current_user: dict = Depends(get_current_user),
 ) -> dict:

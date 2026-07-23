@@ -104,7 +104,7 @@ async def seed():
             print("HR data already seeded. Skipping.")
             return
 
-        default_password_hash = get_password_hash("password123")
+        default_password_hash = await get_password_hash("password123")
 
         # Create employees
         for emp_data in EMPLOYEES:
@@ -139,7 +139,7 @@ async def seed():
             employment_type="Full-time",
             start_date=date(2024, 1, 1),
             salary=80000.0,
-            password_hash=get_password_hash("1234"),
+            password_hash=await get_password_hash("1234"),
             access_levels=["hr"],
             status="Active",
             probation_end=None,

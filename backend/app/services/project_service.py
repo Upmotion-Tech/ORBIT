@@ -147,6 +147,8 @@ class ProjectService:
                     notif_type="Project Assigned",
                     title="Assigned to new project",
                     message=f"You have been assigned to project '{project.name}'.",
+                    related_type="project",
+                    related_id=project.id,
                 )
 
         await self._audit(user, "Created", project.name)
@@ -225,6 +227,11 @@ class ProjectService:
 
         old_team = set(project.team_ids or [])
         old_status = project.status
+        if "status" in data and data["status"] != old_status:
+            if data["status"] == "Completed":
+                data["completed_at"] = now_pkt()
+            elif old_status == "Completed":
+                data["completed_at"] = None
         data["updated_by_id"] = user
         updated_project = await self.project_repo.update(project, data)
 
@@ -241,6 +248,8 @@ class ProjectService:
                     notif_type="Project Assigned",
                     title="Assigned to project",
                     message=f"You have been assigned to project '{project.name}'.",
+                    related_type="project",
+                    related_id=project.id,
                 )
 
             for member_id in removed:

@@ -125,6 +125,11 @@ class TaskRepository:
                 or_(
                     func.lower(Task.title).contains(q),
                     func.lower(Task.description).contains(q),
+                    # Tags are a JSON array (e.g. ["MVP1", "backend"]) — cast to
+                    # its string representation the same way Project.team_ids
+                    # is matched above, so searching "MVP1" finds tasks tagged
+                    # with it even when the title/description never mention it.
+                    func.lower(cast(Task.tags, String)).contains(q),
                 )
             )
         if project_id:

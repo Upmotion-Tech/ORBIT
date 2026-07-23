@@ -29,7 +29,20 @@ class Settings(BaseSettings):
     smtp_from_name: str = "Upmotion Tech"
     orbit_login_url: str = "https://orbit-up-motion.vercel.app"
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    # LLM backing the Policies RAG assistant (Groq's OpenAI-compatible chat
+    # completions API). Blank until set in .env; the service treats a blank
+    # key as "not configured" and returns a friendly error rather than
+    # crashing, same pattern as smtp_* above.
+    groq_api: Optional[str] = None
+    groq_model: str = "llama-3.3-70b-versatile"
+
+    # extra="ignore": .env sometimes picks up unrelated keys (e.g. an API key
+    # for some other tool/experiment on the same machine) that aren't part of
+    # this app's own settings schema at all — pydantic-settings' default is
+    # to reject any env var that isn't a declared field, which crashes the
+    # whole app at import time over something that was never meant to
+    # configure ORBIT in the first place.
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
     @property
     def db_url(self) -> str:

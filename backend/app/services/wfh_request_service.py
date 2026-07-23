@@ -53,13 +53,19 @@ class WfhRequestService:
         })
 
         if self.notification_repo:
-            for target in ("hr", "owner"):
-                await self.notification_repo.create(
-                    user_id=target,
-                    notif_type="WFH Requested",
-                    title="Work-from-home request submitted",
-                    message=f"{employee.name} requested to work from home on {day.strftime('%d %b %Y')}.",
-                )
+            # Same targeting fix as Leave Submitted — only the employee's
+            # actual manager needs to know, not every "hr"/"owner"
+            # access-level holder. Falls back to "owner" if no manager is on
+            # file so the request never goes completely unnoticed.
+            manager = await self.employee_repo.find_by_exact_name(employee.manager) if employee.manager else None
+            await self.notification_repo.create(
+                user_id=manager.id if manager else "owner",
+                notif_type="WFH Requested",
+                title="Work-from-home request submitted",
+                message=f"{employee.name} requested to work from home on {day.strftime('%d %b %Y')}.",
+                related_type="wfh",
+                related_id=req.id,
+            )
 
         return self._to_response(req, employee)
 
@@ -90,6 +96,7 @@ class WfhRequestService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Work-from-home request not found.")
         
         is_manager = False
+        actor_emp = None
         if decided_by and self.employee_repo:
             actor_emp = await self.employee_repo.find_by_id(decided_by)
             wfh_emp = await self.employee_repo.find_by_id(req.employee_id)
@@ -108,12 +115,15 @@ class WfhRequestService:
 
         employee = await self.employee_repo.find_by_id(req.employee_id)
         if self.notification_repo:
+            by_suffix = f" by {actor_emp.name}" if actor_emp else ""
             note_suffix = f" Note: {note}" if note else ""
             await self.notification_repo.create(
                 user_id=req.employee_id,
                 notif_type="WFH Approved",
                 title="Work-from-home request approved",
-                message=f"Your work-from-home request for {req.date.strftime('%d %b %Y')} was approved.{note_suffix}",
+                message=f"Your work-from-home request for {req.date.strftime('%d %b %Y')} was approved{by_suffix}.{note_suffix}",
+                related_type="wfh",
+                related_id=req.id,
             )
         return self._to_response(req, employee)
 
@@ -123,6 +133,7 @@ class WfhRequestService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Work-from-home request not found.")
         
         is_manager = False
+        actor_emp = None
         if decided_by and self.employee_repo:
             actor_emp = await self.employee_repo.find_by_id(decided_by)
             wfh_emp = await self.employee_repo.find_by_id(req.employee_id)
@@ -141,11 +152,14 @@ class WfhRequestService:
 
         employee = await self.employee_repo.find_by_id(req.employee_id)
         if self.notification_repo:
+            by_suffix = f" by {actor_emp.name}" if actor_emp else ""
             note_suffix = f" Reason: {note}" if note else ""
             await self.notification_repo.create(
                 user_id=req.employee_id,
                 notif_type="WFH Rejected",
                 title="Work-from-home request rejected",
-                message=f"Your work-from-home request for {req.date.strftime('%d %b %Y')} was rejected.{note_suffix}",
+                message=f"Your work-from-home request for {req.date.strftime('%d %b %Y')} was rejected{by_suffix}.{note_suffix}",
+                related_type="wfh",
+                related_id=req.id,
             )
         return self._to_response(req, employee)

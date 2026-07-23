@@ -11,7 +11,7 @@ async def test():
         print(f'Found: {e is not None}')
         if e:
             print(f'Access level: {e.access_level}')
-            print(f'Password OK: {verify_password("1234", e.password_hash)}')
+            print(f'Password OK: {await verify_password("1234", e.password_hash)}')
             tk = create_access_token({'sub': e.email, 'user_id': e.id, 'name': e.name, 'role': e.access_level})
             print(f'Token: {tk[:50]}...')
             print(f'Decoded: {decode_access_token(tk)}')

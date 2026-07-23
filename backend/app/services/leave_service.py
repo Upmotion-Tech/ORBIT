@@ -90,13 +90,22 @@ class LeaveService:
         leave = await self.leave_repo.create(data)
 
         if self.notification_repo and employee:
-            for target in ("hr", "owner"):
-                await self.notification_repo.create(
-                    user_id=target,
-                    notif_type="Leave Submitted",
-                    title="Leave request submitted",
-                    message=f"{employee.name} submitted a {leave.leave_type} leave request.",
-                )
+            # Only the employee's actual manager needs to know a request is
+            # waiting on them — this used to broadcast to every "hr"/"owner"
+            # access-level holder, which meant the whole Owner department got
+            # pinged for every single leave request regardless of who it was
+            # even relevant to. Falls back to "owner" (broadcast) only if
+            # this employee has no manager on file, so a request never goes
+            # completely unnoticed.
+            manager = await self.employee_repo.find_by_exact_name(employee.manager) if employee.manager else None
+            await self.notification_repo.create(
+                user_id=manager.id if manager else "owner",
+                notif_type="Leave Submitted",
+                title="Leave request submitted",
+                message=f"{employee.name} submitted a {leave.leave_type} leave request.",
+                related_type="leave",
+                related_id=leave.id,
+            )
 
         await self._audit(user, "Submitted", f"{employee.name if employee else employee_id} — {leave.leave_type}", f"{days} day(s)")
 
@@ -114,6 +123,7 @@ class LeaveService:
             )
 
         is_manager = False
+        actor_emp = None
         if approved_by and self.employee_repo:
             actor_emp = await self.employee_repo.find_by_id(approved_by)
             leave_emp = leave.employee or (await self.employee_repo.find_by_id(leave.employee_id) if leave.employee_id else None)
@@ -142,6 +152,7 @@ class LeaveService:
 
         if self.notification_repo:
             emp = leave.employee
+            by_suffix = f" by {actor_emp.name}" if actor_emp else ""
             # Falls back to "owner" (never "all") on the practically-unreachable
             # case where the leave request's own employee relationship somehow
             # doesn't resolve — a broadcast-to-everyone here would mean a random
@@ -150,8 +161,10 @@ class LeaveService:
                 user_id=emp.id if emp else "owner",
                 notif_type="Leave Approved",
                 title="Leave request approved",
-                message=f"Your {leave.leave_type} leave has been approved."
+                message=f"Your {leave.leave_type} leave has been approved{by_suffix}."
                          + (f" Note: {note}" if note else ""),
+                related_type="leave",
+                related_id=leave.id,
             )
 
         emp = leave.employee
@@ -171,6 +184,7 @@ class LeaveService:
             )
 
         is_manager = False
+        actor_emp = None
         if rejected_by and self.employee_repo:
             actor_emp = await self.employee_repo.find_by_id(rejected_by)
             leave_emp = leave.employee or (await self.employee_repo.find_by_id(leave.employee_id) if leave.employee_id else None)
@@ -201,12 +215,15 @@ class LeaveService:
 
         if self.notification_repo:
             emp = leave.employee
+            by_suffix = f" by {actor_emp.name}" if actor_emp else ""
             await self.notification_repo.create(
                 user_id=emp.id if emp else "owner",
                 notif_type="Leave Rejected",
                 title="Leave request rejected",
-                message=f"Your {leave.leave_type} leave has been rejected."
+                message=f"Your {leave.leave_type} leave has been rejected{by_suffix}."
                          + (f" Reason: {rejection_reason}" if rejection_reason else ""),
+                related_type="leave",
+                related_id=leave.id,
             )
 
         emp = leave.employee

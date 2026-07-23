@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Optional
 
 from sqlalchemy import String, DateTime, Boolean, Index
 from sqlalchemy.orm import Mapped, mapped_column
@@ -22,6 +23,13 @@ class Notification(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     message: Mapped[str] = mapped_column(String(1000), nullable=False)
     is_read: Mapped[bool] = mapped_column(Boolean, default=False)
+    # What this notification is about, so the frontend can deep-link straight
+    # to it (matches the existing #/type/id deep-link mechanism used by
+    # search results). Nullable — plenty of notifications (broadcasts,
+    # WFH/leave decisions) don't map to a specific drawer-openable record and
+    # just fall back to a plain page route client-side by `type` instead.
+    related_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    related_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

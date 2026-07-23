@@ -1,0 +1,1822 @@
+:root {
+  /* ---- Base neutrals ---- */
+  --color-neutral-0: #FFFFFF;
+  --color-neutral-50: #F6F7F9;
+  --color-neutral-100: #E8EAED;
+  --color-neutral-200: #DDE1E6;
+  --color-neutral-400: #9CA3AF;
+  --color-neutral-500: #6B7280;
+  --color-neutral-900: #1B1E2B;
+
+  /* ---- Brand ---- */
+  --color-brand-teal: #2FBF9F;
+  --color-brand-teal-bg: #E6F7F3;
+  --color-brand-blue: #3B82F6;
+  --color-brand-blue-600: #2563EB;
+
+  /* ---- Accent / status ---- */
+  --color-accent-blue-bg: #EAF2FF;
+  --color-accent-blue-text: #2563EB;
+  --color-accent-amber-bg: #FDF0DA;
+  --color-accent-amber-text: #B7791F;
+  --color-accent-red: #EF4444;
+  --color-accent-red-bg: #FDECEC;
+  --color-accent-green-bg: #E6F7F3;
+  --color-accent-green-text: #1D8F73;
+
+  /* ---- Semantic aliases: surface ---- */
+  --bg-page: var(--color-neutral-50);
+  --bg-surface: var(--color-neutral-0);
+  --bg-sidebar: var(--color-neutral-0);
+  --border-subtle: var(--color-neutral-100);
+  --border-strong: var(--color-neutral-200);
+
+  /* ---- Semantic aliases: text ---- */
+  --text-primary: var(--color-neutral-900);
+  --text-secondary: var(--color-neutral-500);
+  --text-muted: var(--color-neutral-400);
+  --text-on-brand: var(--color-neutral-0);
+  --text-link: var(--color-brand-blue);
+
+  /* ---- Semantic aliases: brand ---- */
+  --brand-primary: var(--color-brand-blue);
+  --brand-secondary: var(--color-brand-teal);
+  --logo-gradient: linear-gradient(135deg, var(--color-brand-teal) 0%, var(--color-brand-blue) 100%); /* @kind color */
+
+  /* ---- Semantic aliases: feedback/status ---- */
+  --status-info-bg: var(--color-accent-blue-bg);
+  --status-info-text: var(--color-accent-blue-text);
+  --status-warning-bg: var(--color-accent-amber-bg);
+  --status-warning-text: var(--color-accent-amber-text);
+  --status-danger-bg: var(--color-accent-red-bg);
+  --status-danger-text: var(--color-accent-red);
+  --status-success-bg: var(--color-accent-green-bg);
+  --status-success-text: var(--color-accent-green-text);
+  --notification-dot: var(--color-accent-red);
+}
+
+  :root {
+  --font-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+
+  /* Display / large data value */
+  --text-display-size: 30px;
+  --text-display-weight: 700;
+  --text-display-lh: 1.2;
+
+  /* H2 / card title */
+  --text-h2-size: 19px;
+  --text-h2-weight: 700;
+  --text-h2-lh: 1.3;
+
+  /* H3 / item title */
+  --text-h3-size: 15px;
+  --text-h3-weight: 600;
+  --text-h3-lh: 1.4;
+
+  /* Body */
+  --text-body-size: 14px;
+  --text-body-weight: 400;
+  --text-body-lh: 1.6;
+
+  /* Small / meta */
+  --text-small-size: 12.5px;
+  --text-small-weight: 400;
+  --text-small-lh: 1.4;
+
+  /* Eyebrow / section label */
+  --text-eyebrow-size: 11px;
+  --text-eyebrow-weight: 600;
+  --text-eyebrow-ls: 0.05em;
+
+  /* Link */
+  --text-link-size: 14px;
+  --text-link-weight: 500;
+}
+
+  :root {
+  --space-unit: 8px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  --card-padding: 24px;
+  --card-gap: 24px;
+  --sidebar-width: 264px;
+  --sidebar-item-gap: 6px;
+  --sidebar-section-gap: 28px;
+  --topbar-height: 72px;
+}
+
+  :root {
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-full: 9999px;
+}
+
+  :root {
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-popover: 0 8px 24px rgba(20, 24, 38, 0.10);
+  --shadow-focus: 0 0 0 3px rgba(59, 130, 246, 0.25);
+}
+
+  /* Upmotion ORBIT — brand accent override.
+   Same Healer type/spacing/radius/shadow foundation; only the brand accent
+   swaps (teal→blue becomes indigo) so ORBIT reads as its own product while
+   staying on shared components. Apply via data-brand="orbit" on any
+   ancestor element (e.g. the app shell root). */
+[data-brand="orbit"] {
+  --brand-primary: #4F46E5;
+  --brand-blue-600: #4338CA;
+  --text-link: #4F46E5;
+  --logo-gradient: linear-gradient(135deg, #818CF8 0%, #4F46E5 100%); /* @kind color */
+  --status-info-bg: #EEF2FF;
+  --status-info-text: #4338CA;
+  --shadow-focus: 0 0 0 3px rgba(79, 70, 229, 0.25);
+}
+
+  *,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--bg-page);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font-family: inherit;
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
+
+  
+/* CRM Leads — motion. Kept as a handful of short, purposeful transitions rather
+   than decorative flourish: entrances for things that appear, a lift for
+   drag/hover affordance, nothing that fights the drag-and-drop reordering. */
+@keyframes crm-toast-in {
+  from { opacity: 0; transform: translateY(8px) scale(.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes crm-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes crm-panel-in {
+  from { opacity: 0; transform: translateX(24px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes crm-pop-in {
+  from { opacity: 0; transform: scale(.94); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.crm-toast { animation: crm-toast-in .28s cubic-bezier(.16,1,.3,1); transition: opacity .2s ease; }
+.crm-overlay-fade { animation: crm-fade-in .16s ease-out; }
+.crm-panel-slide { animation: crm-panel-in .22s cubic-bezier(.16,1,.3,1); }
+.crm-pop { animation: crm-pop-in .18s cubic-bezier(.16,1,.3,1); }
+.crm-card { transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease; }
+.crm-card:active { cursor: grabbing; }
+.crm-card[dragging="true"] { opacity: .5; }
+.login-screen {
+  position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+  background: #0f0f13; z-index: 9999;
+}
+.login-card {
+  background: #1a1a24; border-radius: 12px; padding: 40px; width: 360px; max-width: 90%;
+  display: flex; flex-direction: column; gap: 16px;
+}
+.login-logo {
+  font-size: 28px; font-weight: 700; text-align: center; color: #7c5cfc;
+}
+.login-subtitle {
+  text-align: center; color: #888; font-size: 14px; margin-bottom: 8px;
+}
+.login-error {
+  background: rgba(255, 50, 50, 0.1); color: #ff4444; padding: 10px 14px; border-radius: 8px; font-size: 13px; text-align: center;
+}
+.login-input {
+  background: #252536; border: 1px solid #333; color: #fff; padding: 12px 16px;
+  border-radius: 8px; font-size: 14px; outline: none; width: 100%; box-sizing: border-box;
+}
+.login-input:focus { border-color: #7c5cfc; }
+.login-btn {
+  background: #7c5cfc; color: #fff; border: none; padding: 12px; border-radius: 8px;
+  font-size: 15px; font-weight: 600; cursor: pointer; width: 100%;
+}
+.login-btn:hover { background: #6a4de0; }
+.login-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+/* Auth-check splash (shown while validating a stored token on page load) is
+   deliberately its OWN class, not a reuse of .login-screen's dark theme —
+   sharing that class made an already-logged-in user's refresh flash from the
+   bundle-unpack splash's light background to this dark box and then back to
+   the light app a moment later. This one matches the outer bundle-unpack
+   splash (#F4F5F7) and the app's own --bg-page (#F0F2F7) so the handoff
+   between all three phases is visually seamless for the common case. */
+.auth-splash-screen {
+  position: fixed; inset: 0; display: flex; flex-direction: column; gap: 14px;
+  align-items: center; justify-content: center; background: #F4F5F7; z-index: 9999;
+}
+.auth-splash-logo {
+  font-size: 28px; font-weight: 700; letter-spacing: 0.04em; color: #1B2233;
+}
+
+
+  
+/* ═══════════════════════════════════════════════════════════════════════
+   ORBIT PREMIUM UI — Design Token Enhancements & Polished Styles
+   Pure CSS layer — zero JS, zero layout changes, zero API changes.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ─── Enhanced design tokens ───
+   (Google Fonts @import removed — it made a live network request for
+   fonts.googleapis.com on every load, which fails in restricted/offline
+   environments and fires a "[bundle] resource failed to load: STYLE" error
+   on the whole  block. --font-sans already falls back to the system
+   font stack below, so nothing visually depends on Inter loading.) */
+:root, [data-brand="orbit"] {
+  --font-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+  /* Richer neutral palette */
+  --color-neutral-0:   #FFFFFF;
+  --color-neutral-50:  #F8F9FC;
+  --color-neutral-75:  #F2F4F8;
+  --color-neutral-100: #E9ECF2;
+  --color-neutral-150: #DFE3EC;
+  --color-neutral-200: #D0D5E0;
+  --color-neutral-300: #B0B8CB;
+  --color-neutral-400: #8892A4;
+  --color-neutral-500: #5E6880;
+  --color-neutral-700: #374060;
+  --color-neutral-900: #141928;
+
+  /* ORBIT indigo brand */
+  --brand-primary:   #4F46E5;
+  --brand-primary-hover: #4338CA;
+  --brand-primary-light: #EEF2FF;
+  --brand-secondary: #06B6D4;
+
+  /* Surface hierarchy */
+  --bg-page:    #F0F2F7;
+  --bg-surface: #FFFFFF;
+  --bg-surface-raised: #FFFFFF;
+  --bg-sidebar: #F1F3F6;
+  --bg-hover:   rgba(79,70,229,0.05);
+  --bg-active:  rgba(79,70,229,0.09);
+
+  /* Borders */
+  --border-subtle: #E4E8F0;
+  --border-strong: #C8CFDC;
+  --border-focus:  rgba(79,70,229,0.45);
+
+  /* Text */
+  --text-primary:   #141928;
+  --text-secondary: #5E6880;
+  --text-muted:     #8892A4;
+  --text-on-brand:  #FFFFFF;
+  --text-link:      #4F46E5;
+
+  /* Shadows — layered depth */
+  --shadow-xs:      0 1px 2px rgba(14,18,32,0.06);
+  --shadow-sm:      0 1px 3px rgba(14,18,32,0.08), 0 1px 2px rgba(14,18,32,0.04);
+  --shadow-card:    0 2px 8px rgba(14,18,32,0.07), 0 0 1px rgba(14,18,32,0.04);
+  --shadow-card-hover: 0 6px 20px rgba(14,18,32,0.10), 0 0 1px rgba(14,18,32,0.05);
+  --shadow-popover: 0 12px 32px rgba(14,18,32,0.14), 0 2px 8px rgba(14,18,32,0.06), 0 0 1px rgba(14,18,32,0.06);
+  --shadow-focus:   0 0 0 3px rgba(79,70,229,0.22);
+  --shadow-modal:   0 20px 60px rgba(14,18,32,0.22), 0 4px 12px rgba(14,18,32,0.08);
+
+  /* Radius */
+  --radius-xs:  4px;
+  --radius-sm:  8px;
+  --radius-md:  12px;
+  --radius-lg:  16px;
+  --radius-xl:  20px;
+  --radius-full: 9999px;
+
+  /* Status colours */
+  --status-success-bg:   #ECFDF5;
+  --status-success-text: #059669;
+  --status-success-border: #A7F3D0;
+  --status-warning-bg:   #FFFBEB;
+  --status-warning-text: #D97706;
+  --status-warning-border: #FDE68A;
+  --status-danger-bg:    #FEF2F2;
+  --status-danger-text:  #DC2626;
+  --status-danger-border: #FECACA;
+  --status-info-bg:      #EEF2FF;
+  --status-info-text:    #4338CA;
+  --status-info-border:  #C7D2FE;
+
+  /* Spacing tokens */
+  --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
+  --space-5: 20px; --space-6: 24px; --space-7: 28px; --space-8: 32px;
+  --space-10: 40px; --space-12: 48px;
+
+  /* Transitions */
+  --transition-fast:   all 0.12s ease;
+  --transition-base:   all 0.18s ease;
+  --transition-smooth: all 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Layout */
+  --sidebar-width: 256px;
+  --topbar-height: 64px;
+  --card-padding: 24px;
+}
+
+/* ─── Base resets & typography ─── */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.6;
+  background: var(--bg-page);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  letter-spacing: -0.008em;
+}
+a { color: inherit; text-decoration: none; }
+button { font-family: inherit; }
+img { max-width: 100%; display: block; }
+
+/* ─── Keyframe additions ─── */
+@keyframes orbit-fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes orbit-scale-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes orbit-shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+@keyframes orbit-slide-right {
+  from { opacity: 0; transform: translateX(28px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes orbit-toast-in {
+  from { opacity: 0; transform: translateX(16px) scale(0.97); }
+  to   { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+/* ─── Shimmer skeleton ─── */
+.orbit-skeleton {
+  background: linear-gradient(90deg, var(--color-neutral-100) 25%, var(--color-neutral-75) 50%, var(--color-neutral-100) 75%);
+  background-size: 800px 100%;
+  animation: orbit-shimmer 1.4s ease-in-out infinite;
+  border-radius: var(--radius-sm);
+}
+
+/* ─── Page shell ─── */
+[data-brand="orbit"] {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-sans);
+  background: var(--bg-page);
+}
+
+/* ─── Sidebar ─── */
+[data-brand="orbit"] > div > div[style*="sidebar-width"],
+[data-brand="orbit"] [style*="bg-sidebar"] {
+  background: var(--bg-sidebar) !important;
+  border-right: 1px solid var(--border-subtle) !important;
+  box-shadow: 1px 0 0 0 var(--border-subtle);
+}
+/* ─── Sidebar active nav item — solid dark rounded pill ───
+   SidebarSection (compiled, unmodifiable design-system component) renders
+   the active item's anchor with inline background:var(--status-info-bg) +
+   color:var(--brand-primary), and its Icon as a <span> recolored via a
+   background-color CSS-mask trick — restyled here to a solid dark pill
+   with white text/icon by overriding those exact inline-style substrings.
+   Scoped to inside the sidebar container specifically (not a bare
+   [style*="background:var(--status-info-bg)"]) so this doesn't collide
+   with the separate Badge-colour-richness rule elsewhere in this file that
+   also matches that same substring for an unrelated purpose (info Badges). */
+[data-brand="orbit"] [style*="width:var(--sidebar-width)"] a[style*="background:var(--status-info-bg)"] {
+  background: #16181D !important;
+  color: #fff !important;
+  border-radius: 10px !important;
+}
+[data-brand="orbit"] [style*="width:var(--sidebar-width)"] a[style*="background:var(--status-info-bg)"] span {
+  background-color: #fff !important;
+}
+/* ─── Sidebar collapse/expand animation ───
+   The sidebar is an sc-if — toggling it fully mounts/unmounts the DOM node
+   with no transition at all, previously. `.orbit-sidebar-panel` (always
+   present on the node) fires the slide-in keyframe automatically on every
+   mount — free "expand" animation, no JS timing needed, same principle as
+   `screen-enter` elsewhere in this file. The "collapse" direction can't be
+   animated purely in CSS since sc-if removes the node the instant the flag
+   flips — toggleSidebar() (script.js) handles that half by adding
+   `.orbit-sidebar-panel-closing` first, waiting for this exit keyframe to
+   finish, and only then actually unmounting. */
+@keyframes orbit-sidebar-slide-in {
+  from { transform: translateX(-16px); opacity: 0; }
+  to   { transform: none; opacity: 1; }
+}
+@keyframes orbit-sidebar-slide-out {
+  from { transform: translateX(0); opacity: 1; }
+  to   { transform: translateX(-16px); opacity: 0; }
+}
+.orbit-sidebar-panel {
+  animation: orbit-sidebar-slide-in 0.2s cubic-bezier(0.16,1,0.3,1) both;
+}
+.orbit-sidebar-panel-closing {
+  animation: orbit-sidebar-slide-out 0.2s cubic-bezier(0.16,1,0.3,1) both !important;
+}
+
+/* ─── Responsive layout ───
+   The whole app was fixed-width/desktop-only until now (zero media queries
+   anywhere). This is the "core layout" pass: nothing below reflows any
+   individual page's own content (tables/grids keep their desktop layout and
+   scroll horizontally inside .orbit-screen-content's existing overflow:auto
+   if they're too wide) — it only makes the shell itself (sidebar/topbar)
+   usable on a phone instead of eating most of a ~375px-wide screen. */
+html, body {
+  overflow-x: hidden;
+  max-width: 100%;
+}
+@media (max-width: 768px) {
+  .orbit-sidebar {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 2100;
+    box-shadow: var(--shadow-modal, 0 10px 40px rgba(0,0,0,0.3));
+  }
+  .orbit-sidebar-backdrop {
+    display: block !important;
+  }
+  .orbit-topbar {
+    padding: 0 12px !important;
+    gap: 10px !important;
+  }
+  .orbit-topbar-search {
+    max-width: none !important;
+  }
+  .orbit-profile-chip .orbit-profile-role {
+    display: none;
+  }
+  .orbit-profile-chip .orbit-profile-name {
+    max-width: 96px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+.orbit-sidebar-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(17,20,30,0.45);
+  z-index: 2050;
+  animation: crm-fade-in 0.16s ease-out;
+}
+
+/* ─── Salary Slip modal — open/close transition ───
+   HealerDesignSystem_11773a.Modal (compiled, unmodifiable) does
+   `if (!open) return null` internally — no transition of any kind, and no
+   className/hook it forwards for us to animate through. Its backdrop's
+   inline background is rgba(17, 20, 30, 0.45) *with* spaces after the
+   commas (React sets the literal JS string as-is) — confirmed via grep to
+   be a unique substring nowhere else in this app (this app's own
+   hand-authored overlays all use rgba(17,20,30,0.45), no spaces), so it's
+   safe to target directly and precisely with an attribute selector.
+   Opening animates for free the instant the node mounts. Closing can't be
+   animated in pure CSS since the component unmounts itself the instant
+   `open` flips false — closeSalarySlip() (script.js) handles that half by
+   wrapping the whole thing in a plain div (the Modal component accepts no
+   className of its own to hook), adding `.orbit-modal-closing` to that
+   wrapper first, waiting for the reverse-played animation to finish, and
+   only then actually setting open to false. */
+@keyframes orbit-modal-backdrop-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes orbit-modal-panel-in {
+  from { opacity: 0; transform: scale(0.96) translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+[style*="background:rgba(17, 20, 30, 0.45)"] {
+  animation: orbit-modal-backdrop-in 0.15s ease both;
+}
+[style*="background:rgba(17, 20, 30, 0.45)"] > div {
+  animation: orbit-modal-panel-in 0.2s cubic-bezier(0.16,1,0.3,1) both;
+}
+.orbit-modal-closing [style*="background:rgba(17, 20, 30, 0.45)"] {
+  animation: orbit-modal-backdrop-in 0.18s ease reverse both !important;
+}
+.orbit-modal-closing [style*="background:rgba(17, 20, 30, 0.45)"] > div {
+  animation: orbit-modal-panel-in 0.18s cubic-bezier(0.16,1,0.3,1) reverse both !important;
+}
+
+/* ─── Top navigation bar ─── */
+[data-brand="orbit"] [style*="topbar"],
+[data-brand="orbit"] [style*="border-bottom"][style*="bg-surface"][style*="flex"] {
+  background: rgba(241,243,246,0.96) !important;
+  backdrop-filter: blur(12px) saturate(1.4);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
+  border-bottom: 1px solid var(--border-subtle) !important;
+  box-shadow: var(--shadow-xs);
+}
+
+/* ─── Cards ─── */
+[data-brand="orbit"] [style*="bg-surface"][style*="border"][style*="border-radius"],
+[data-brand="orbit"] [style*="bg-surface"][style*="box-shadow"] {
+  border-color: var(--border-subtle) !important;
+  box-shadow: var(--shadow-card) !important;
+  transition: box-shadow 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+[data-brand="orbit"] [style*="bg-surface"][style*="border"][style*="cursor:pointer"]:hover {
+  box-shadow: var(--shadow-card-hover) !important;
+  border-color: var(--border-strong) !important;
+  transform: translateY(-1px);
+}
+
+/* ─── Table rows ─── */
+sc-raw-tr[style*="cursor:pointer"] {
+  transition: background 0.12s ease;
+}
+sc-raw-tr[style*="cursor:pointer"]:hover {
+  background: var(--bg-hover) !important;
+}
+sc-raw-tr[style*="cursor:pointer"]:hover sc-raw-td {
+  color: var(--text-primary) !important;
+}
+sc-raw-th {
+  font-size: 11.5px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.04em !important;
+  text-transform: uppercase !important;
+  color: var(--text-muted) !important;
+  padding: 11px 16px !important;
+  white-space: nowrap;
+}
+sc-raw-td {
+  font-size: 13.5px !important;
+  line-height: 1.5 !important;
+  padding: 13px 16px !important;
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background 0.12s ease;
+}
+sc-raw-tbody sc-raw-tr:last-child sc-raw-td {
+  border-bottom: none;
+}
+
+/* ─── Badges ─── */
+[data-brand="orbit"] [style*="border-radius"][style*="font-size:11"] {
+  font-weight: 600 !important;
+  letter-spacing: 0.02em !important;
+}
+
+/* ─── Buttons via login/global ─── */
+button[class*="login-btn"], .login-btn {
+  background: linear-gradient(135deg, #5B52F0 0%, #4F46E5 100%) !important;
+  border-radius: 10px !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.01em;
+  padding: 13px 20px !important;
+  box-shadow: 0 2px 8px rgba(79,70,229,0.35), 0 1px 2px rgba(79,70,229,0.2) !important;
+  transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease !important;
+}
+.login-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #4F46E5 0%, #4338CA 100%) !important;
+  box-shadow: 0 4px 14px rgba(79,70,229,0.45), 0 1px 3px rgba(79,70,229,0.25) !important;
+  transform: translateY(-1px);
+}
+.login-btn:active:not(:disabled) { transform: translateY(0); }
+
+/* ─── Design-system Button — hover lift, app-wide ─── the component only
+   ever changes its own background-color on hover (see Button.jsx); no
+   elevation/shadow feedback at all, on any button, anywhere in the app.
+   Matched via the exact inline style values it renders (a real DOM
+   attribute-selector match, not a guess) rather than touching the
+   compiled component. */
+button[style*="border-radius:var(--radius-sm)"] {
+  transition: transform 0.15s cubic-bezier(0.16,1,0.3,1), box-shadow 0.15s ease, background-color 0.15s ease, border-color 0.15s ease !important;
+}
+button[style*="background:var(--brand-primary)"]:hover:not(:disabled) {
+  box-shadow: 0 4px 14px rgba(79,70,229,0.35), 0 2px 4px rgba(79,70,229,0.18) !important;
+  transform: translateY(-1px);
+}
+button[style*="background:var(--brand-primary)"]:active:not(:disabled) {
+  transform: translateY(0) scale(0.98);
+}
+button[style*="background:var(--bg-surface)"][style*="border-color:var(--border-strong)"]:hover:not(:disabled) {
+  box-shadow: 0 2px 8px rgba(14,18,32,0.08) !important;
+  transform: translateY(-1px);
+}
+
+/* ─── Login screen polish ─── */
+.login-screen {
+  background: radial-gradient(ellipse at 50% 30%, #1a1430 0%, #0d0d14 60%, #080810 100%) !important;
+}
+.login-card {
+  background: rgba(255,255,255,0.04) !important;
+  border: 1px solid rgba(255,255,255,0.08) !important;
+  border-radius: 18px !important;
+  padding: 44px !important;
+  box-shadow: 0 30px 80px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+}
+.login-logo {
+  font-size: 26px !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.02em;
+  background: linear-gradient(135deg, #818CF8 0%, #4F46E5 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.login-subtitle {
+  color: rgba(255,255,255,0.45) !important;
+  font-size: 13.5px !important;
+  letter-spacing: -0.01em;
+}
+.login-input {
+  background: rgba(255,255,255,0.06) !important;
+  border: 1px solid rgba(255,255,255,0.1) !important;
+  color: #fff !important;
+  padding: 13px 16px !important;
+  border-radius: 10px !important;
+  font-size: 14px !important;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease !important;
+}
+.login-input:focus {
+  border-color: rgba(129,140,248,0.6) !important;
+  background: rgba(255,255,255,0.09) !important;
+  box-shadow: 0 0 0 3px rgba(79,70,229,0.18) !important;
+  outline: none;
+}
+.login-input::placeholder { color: rgba(255,255,255,0.3) !important; }
+.login-error {
+  background: rgba(220,38,38,0.12) !important;
+  border: 1px solid rgba(220,38,38,0.25) !important;
+  color: #FCA5A5 !important;
+  border-radius: 10px !important;
+}
+
+/* ─── Toast notifications — the real, consolidated definition lives
+   further down (search "Toast — modern, prominent"); this used to be one
+   of three separate, partially-overriding .crm-toast rule blocks. ─── */
+
+/* ─── Drawer / modal overlays ─── */
+.crm-overlay-fade {
+  animation: crm-fade-in 0.18s ease-out !important;
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+.crm-panel-slide {
+  animation: orbit-slide-right 0.24s cubic-bezier(0.16,1,0.3,1) !important;
+  box-shadow: var(--shadow-modal) !important;
+}
+.crm-pop {
+  animation: orbit-scale-in 0.2s cubic-bezier(0.16,1,0.3,1) !important;
+  box-shadow: var(--shadow-modal) !important;
+}
+
+/* ─── Kanban cards ─── */
+.crm-card {
+  transition: transform 0.15s cubic-bezier(0.16,1,0.3,1), box-shadow 0.15s ease, border-color 0.15s ease !important;
+  border-radius: var(--radius-md) !important;
+}
+.crm-card:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: var(--shadow-card-hover) !important;
+}
+
+/* ─── Inputs (native) ─── */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="date"],
+input[type="search"],
+select,
+textarea {
+  font-family: var(--font-sans) !important;
+  font-size: 13.5px !important;
+  border-radius: var(--radius-sm) !important;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
+}
+/* Many date/number inputs across the app hardcode background:var(--bg-page)
+   inline (a light blue-gray, #F0F2F7 — meant for page backgrounds, not form
+   fields), which reads as a stray blue tint next to every other field's
+   white background:var(--bg-surface). Force white here instead of editing
+   every inline style individually. Deliberately excludes plain
+   input[type="text"] — the top-bar search field relies on an inline
+   background:transparent to blend into its pill container, which a blanket
+   !important override here would break. */
+input[type="date"],
+input[type="number"] {
+  background: var(--bg-surface) !important;
+}
+input[type="text"]:focus,
+input[type="email"]:focus,
+input[type="number"]:focus,
+input[type="date"]:focus,
+input[type="search"]:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  box-shadow: var(--shadow-focus) !important;
+}
+
+/* ─── Modern dropdowns ─── every <select> in this app is a plain native
+   element with the browser's own default arrow/appearance — replaced with
+   a custom chevron and a bit more breathing room, hover state, and a
+   crisper focus ring, so every dropdown in the app (filters, forms,
+   settings) picks this up automatically with no per-instance markup
+   changes needed. */
+select {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  background-color: var(--bg-surface) !important;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238892A4' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 12px center !important;
+  background-size: 16px 16px !important;
+  padding-right: 34px !important;
+  border: 1.5px solid var(--border-subtle) !important;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease !important;
+}
+/* The design-system Select component (HealerDesignSystem_11773a.Select)
+   renders its own chevron too — a real Icon("chevron-down") absolutely
+   positioned as a sibling element (style: position absolute, right 12,
+   pointer-events none) right after its select — so every dropdown built
+   from that component was showing BOTH that icon AND our own
+   background-image chevron on top of each other. This used to be handled
+   with a `select:has(+ div[...])` selector that suppressed our chevron
+   wherever that sibling existed — but :has() is a fairly recent CSS feature
+   (Chrome 105+/2022, Firefox 121+/Dec 2023, Safari 15.4+/2022) that quietly
+   no-ops wherever it isn't supported rather than erroring, so in any older
+   browser or embedded webview this suppression never actually took effect,
+   and the two overlapping chevrons is very plausibly what read as "a
+   floating arrow in its own little box" on every dropdown app-wide.
+   Fixed the other way around instead, with no :has() involved: hide the
+   component's own icon div directly via a plain attribute-selector match on
+   its distinctive inline style (verified unique in the compiled bundle —
+   nothing else combines position:absolute + pointer-events:none +
+   translateY(-50%)), so our single background-image chevron from the base
+   `select {}` rule above is unconditionally the only one that ever renders,
+   on every dropdown, in every browser. */
+div[style*="position:absolute"][style*="pointer-events:none"][style*="translateY(-50%)"] {
+  display: none !important;
+}
+select:hover {
+  border-color: var(--border-strong) !important;
+  background-color: #fff !important;
+}
+select:focus {
+  border-color: rgba(79,70,229,0.5) !important;
+}
+select:disabled {
+  opacity: 0.6 !important;
+  cursor: not-allowed !important;
+}
+/* Firefox draws its own inner focus dotted-line on <select> — remove it so
+   the custom box-shadow ring above is the only focus indicator shown. */
+select:-moz-focusring {
+  color: transparent;
+  text-shadow: 0 0 0 var(--text-primary);
+}
+/* Legacy Trident/EdgeHTML (and some embedded webviews on Windows) render a
+   separate native dropdown-arrow button via ::-ms-expand even when
+   appearance:none is set — its own little box with the OS's default
+   chrome, sitting next to our custom chevron. Zero-risk to hide
+   unconditionally since modern Chromium/Firefox/Safari never render it. */
+select::-ms-expand {
+  display: none;
+}
+
+/* ─── Section page titles ─── */
+[data-brand="orbit"] h1[style*="font-size:19"],
+[data-brand="orbit"] h1[style*="font-size:18"] {
+  font-size: 20px !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.02em !important;
+  color: var(--text-primary) !important;
+}
+
+/* ─── Stat/KPI cards — hover lift ─── */
+[data-brand="orbit"] [style*="StatCard"],
+[data-brand="orbit"] [style*="96px"][style*="bg-surface"] {
+  transition: transform 0.18s ease, box-shadow 0.18s ease !important;
+}
+[data-brand="orbit"] [style*="StatCard"]:hover,
+[data-brand="orbit"] [style*="96px"][style*="bg-surface"]:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: var(--shadow-card-hover) !important;
+}
+
+/* ─── "Leave request" / "Click for details" row ─── */
+sc-raw-tr[style*="cursor:pointer"] span[style*="text-muted"] {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+sc-raw-tr[style*="cursor:pointer"]:hover span[style*="text-muted"] {
+  opacity: 1;
+}
+
+/* ─── Tab bar strips ─── */
+[data-brand="orbit"] [style*="border-bottom"][style*="border-primary"] {
+  border-bottom-color: var(--brand-primary) !important;
+  color: var(--brand-primary) !important;
+}
+
+/* ─── Empty state styling ─── */
+[data-brand="orbit"] [style*="text-align:center"][style*="text-muted"] {
+  padding: 32px !important;
+}
+
+/* ─── Scrollbar styling ─── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-neutral-300); }
+
+/* ─── Selection ─── */
+::selection { background: rgba(79,70,229,0.18); color: var(--text-primary); }
+
+/* ─── Focus visible globally ─── */
+:focus-visible { outline: 2px solid var(--brand-primary); outline-offset: 2px; border-radius: var(--radius-xs); }
+
+/* ─── Page-level fade-in ─── */
+[data-brand="orbit"] > div { animation: orbit-fade-up 0.22s ease-out; }
+
+/* ─── Table header sticky (where table has overflow:auto parent) ─── */
+sc-raw-thead { position: sticky; top: 0; z-index: 1; background: var(--bg-surface); }
+sc-raw-thead sc-raw-tr { background: var(--color-neutral-50); }
+
+/* ─── Sidebar active state enhancement ─── */
+[data-brand="orbit"] [style*="sidebar"] a[style*="primary"],
+[data-brand="orbit"] [style*="sidebar"] [style*="primary"] {
+  background: var(--bg-active) !important;
+  border-radius: var(--radius-sm) !important;
+}
+
+/* ─── Micro: active press on clickable rows ─── */
+sc-raw-tr[style*="cursor:pointer"]:active {
+  background: var(--bg-active) !important;
+}
+
+/* ─── Badge overrides — crisp pill style ─── */
+[data-brand="orbit"] [style*="border-radius:9999"] {
+  font-size: 11.5px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.01em !important;
+  padding: 3px 9px !important;
+}
+
+/* ─── Drawer headers ─── */
+[data-brand="orbit"] [style*="border-bottom"][style*="flex-shrink:0"] h2 {
+  font-size: 17px !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.02em !important;
+}
+
+/* ─── Section labels / eyebrows ─── */
+[data-brand="orbit"] [style*="text-transform:uppercase"][style*="letter-spacing"],
+[data-brand="orbit"] [style*="font-size:11px"] {
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.06em !important;
+  color: var(--text-muted) !important;
+}
+
+/* ─── Transitions for sidebar collapse button ─── */
+[data-brand="orbit"] [style*="sidebar-collapsed"],
+[data-brand="orbit"] [style*="sidebarCollapsed"] {
+  transition: width 0.22s cubic-bezier(0.16,1,0.3,1) !important;
+}
+
+
+  
+/* ═══════════════════════════════════════════════════════════════════════
+   ORBIT REFINEMENTS — Typography, Screen Transitions, Buttons, Animations
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ─── Screen content transition ───
+   (the actual rule lives further down, targeting .orbit-screen-content —
+   the sc-if directive is compile-time only and never appears as a real
+   element in the rendered DOM, so a selector built from that tag name can
+   never match anything; kept the keyframe here since the later rule reuses it) */
+@keyframes screen-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ─── Bolder typography globally ─── */
+body { font-weight: 450; letter-spacing: -0.008em; }
+
+[data-brand="orbit"] h1 {
+  font-weight: 800 !important;
+  letter-spacing: -0.025em !important;
+}
+[data-brand="orbit"] h2 {
+  font-weight: 700 !important;
+  letter-spacing: -0.02em !important;
+}
+
+/* Big stat numbers */
+[data-brand="orbit"] [style*="font-size:28"],
+[data-brand="orbit"] [style*="font-size:26"],
+[data-brand="orbit"] [style*="font-size:24"],
+[data-brand="orbit"] [style*="font-size:22"] {
+  font-weight: 800 !important;
+  letter-spacing: -0.03em !important;
+}
+
+/* Section eyebrow labels */
+[data-brand="orbit"] [style*="text-transform:uppercase"] {
+  font-weight: 700 !important;
+  letter-spacing: 0.07em !important;
+}
+
+/* Table row data — heavier weight */
+sc-raw-td[style*="text-primary"] { font-weight: 500 !important; }
+sc-raw-td[style*="font-weight:500"] { font-weight: 600 !important; }
+
+/* Page sub-labels */
+[data-brand="orbit"] [style*="font-size:14"][style*="text-primary"] { font-weight: 500 !important; }
+[data-brand="orbit"] [style*="font-size:15"][style*="text-primary"] { font-weight: 600 !important; }
+[data-brand="orbit"] [style*="font-size:16"][style*="text-primary"] { font-weight: 700 !important; }
+
+/* Delta badges */
+[data-brand="orbit"] [style*="success-text"][style*="font-size:12"],
+[data-brand="orbit"] [style*="success-text"][style*="font-size:13"],
+[data-brand="orbit"] [style*="danger-text"][style*="font-size:12"],
+[data-brand="orbit"] [style*="danger-text"][style*="font-size:13"] {
+  font-weight: 700 !important;
+}
+
+/* ─── Premium pill segment control (USD/PKR, Kanban/List) ─── */
+[data-brand="orbit"] [style*="border-radius:9999px"][style*="padding:3px"] {
+  background: var(--color-neutral-100) !important;
+  border: 1px solid var(--border-subtle) !important;
+  box-shadow: inset 0 1px 2px rgba(14,18,32,0.06) !important;
+}
+[data-brand="orbit"] button[style*="border-radius:9999px"] {
+  font-weight: 600 !important;
+  font-size: 12.5px !important;
+  letter-spacing: 0.01em !important;
+  border: none !important;
+  outline: none !important;
+  cursor: pointer !important;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease !important;
+}
+[data-brand="orbit"] button[style*="border-radius:9999px"]:hover { opacity: 0.88; }
+[data-brand="orbit"] button[style*="border-radius:9999px"]:active { transform: scale(0.97); }
+
+/* ─── Tab bar buttons ─── */
+[data-brand="orbit"] button[style*="border-bottom"][style*="background:none"] {
+  font-size: 13.5px !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.01em !important;
+  padding: 10px 14px !important;
+  transition: color 0.15s ease, border-color 0.15s ease !important;
+  cursor: pointer !important;
+  border-left: none !important;
+  border-right: none !important;
+  border-top: none !important;
+  outline: none !important;
+}
+[data-brand="orbit"] button[style*="border-bottom"][style*="background:none"]:hover {
+  color: var(--brand-primary) !important;
+}
+
+/* ─── Drawer / panel — smoother slide ─── */
+@keyframes drawer-slide-in {
+  from { opacity: 0; transform: translateX(36px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.crm-panel-slide {
+  animation: drawer-slide-in 0.28s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  border-left: 1px solid var(--border-subtle) !important;
+}
+
+/* ─── Modal pop ─── */
+@keyframes modal-pop {
+  from { opacity: 0; transform: scale(0.93) translateY(10px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+.crm-pop {
+  animation: modal-pop 0.24s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+/* ─── Overlay ─── */
+.crm-overlay-fade {
+  animation: crm-fade-in 0.2s ease-out !important;
+  backdrop-filter: blur(3px) !important;
+  -webkit-backdrop-filter: blur(3px) !important;
+}
+
+/* ─── Toast — modern, prominent version. Consolidates what used to be
+   three separate, partially-overriding .crm-toast rule blocks (a plain
+   fade-in one, a shadow/border one, and this slide-in one) into one real
+   definition with both an entrance AND a graceful exit animation — toasts
+   previously just vanished instantly when their timer fired, since a
+   React array-splice gives the DOM node no chance to animate its own
+   removal. Now paired with dismissCrmToast()'s "mark closing, wait, then
+   remove" sequence in script.js (same pattern as _closeWithAnimation). ─── */
+@keyframes toast-slide-in {
+  from { opacity: 0; transform: translateX(28px) scale(0.94); }
+  to   { opacity: 1; transform: translateX(0) scale(1); }
+}
+@keyframes toast-slide-out {
+  from { opacity: 1; transform: translateX(0) scale(1); }
+  to   { opacity: 0; transform: translateX(20px) scale(0.96); }
+}
+.crm-toast {
+  animation: toast-slide-in 0.32s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  font-weight: 600 !important;
+  font-size: 14px !important;
+  border-radius: 12px !important;
+  box-shadow: var(--shadow-modal) !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.crm-toast.orbit-closing {
+  animation: toast-slide-out 0.2s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+  pointer-events: none;
+}
+
+/* ─── Cards — staggered entrance on screen appear ─── */
+@keyframes card-enter {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+[data-brand="orbit"] [style*="display:grid"] > *:nth-child(1) { animation: card-enter 0.24s 0.02s cubic-bezier(0.16,1,0.3,1) both; }
+[data-brand="orbit"] [style*="display:grid"] > *:nth-child(2) { animation: card-enter 0.24s 0.06s cubic-bezier(0.16,1,0.3,1) both; }
+[data-brand="orbit"] [style*="display:grid"] > *:nth-child(3) { animation: card-enter 0.24s 0.10s cubic-bezier(0.16,1,0.3,1) both; }
+[data-brand="orbit"] [style*="display:grid"] > *:nth-child(4) { animation: card-enter 0.24s 0.14s cubic-bezier(0.16,1,0.3,1) both; }
+[data-brand="orbit"] [style*="display:grid"] > *:nth-child(5) { animation: card-enter 0.24s 0.18s cubic-bezier(0.16,1,0.3,1) both; }
+
+/* ─── Progress bars ─── */
+[data-brand="orbit"] [style*="border-radius:9999px"][style*="height:6px"],
+[data-brand="orbit"] [style*="border-radius:9999px"][style*="height:8px"] {
+  overflow: hidden !important;
+  background: var(--color-neutral-100) !important;
+}
+[data-brand="orbit"] [style*="border-radius:9999px"][style*="height:6px"] > div,
+[data-brand="orbit"] [style*="border-radius:9999px"][style*="height:8px"] > div {
+  border-radius: 9999px !important;
+  transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+/* ─── Sidebar hover ─── */
+[data-brand="orbit"] [style*="padding:0 12px"] [style*="cursor:pointer"]:hover,
+[data-brand="orbit"] [style*="sidebar"] [style*="cursor:pointer"]:hover {
+  background: var(--bg-hover) !important;
+  border-radius: 8px !important;
+}
+
+/* ─── General clickable micro-interactions ─── */
+[data-brand="orbit"] [style*="cursor:pointer"] {
+  transition: opacity 0.12s ease, transform 0.1s ease !important;
+}
+[data-brand="orbit"] [style*="cursor:pointer"]:active {
+  opacity: 0.8 !important;
+  transform: scale(0.99) !important;
+}
+/* Don't apply scale to rows — looks jarring */
+sc-raw-tr[style*="cursor:pointer"]:active {
+  transform: none !important;
+}
+
+/* ─── User avatar ring ─── */
+[data-brand="orbit"] [style*="border-radius:9999px"][style*="font-weight:700"][style*="background:#"],
+[data-brand="orbit"] [style*="border-radius:9999px"][style*="color:#fff"][style*="font-weight:700"] {
+  box-shadow: 0 0 0 2px var(--bg-surface), 0 0 0 3.5px var(--border-subtle) !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.01em !important;
+}
+
+/* ─── View link buttons ─── */
+[data-brand="orbit"] a[style*="text-link"] {
+  font-weight: 600 !important;
+  transition: opacity 0.15s ease !important;
+}
+[data-brand="orbit"] a[style*="text-link"]:hover { opacity: 0.65 !important; }
+
+/* ─── Dashboard: card sub-values bolder ─── */
+[data-brand="orbit"] [style*="font-size:12.5px"][style*="text-muted"],
+[data-brand="orbit"] [style*="font-size:12px"][style*="text-muted"] {
+  font-weight: 500 !important;
+}
+
+/* ─── "View Software Dev" link badge style ─── */
+[data-brand="orbit"] [style*="background:var(--brand-primary)"][style*="border-radius"] {
+  box-shadow: 0 2px 8px rgba(79,70,229,0.3), 0 1px 2px rgba(79,70,229,0.15) !important;
+  transition: box-shadow 0.15s ease, transform 0.1s ease, opacity 0.15s ease !important;
+}
+[data-brand="orbit"] [style*="background:var(--brand-primary)"][style*="border-radius"]:hover {
+  box-shadow: 0 4px 14px rgba(79,70,229,0.4), 0 2px 4px rgba(79,70,229,0.2) !important;
+  transform: translateY(-1px) !important;
+}
+
+
+  
+/* ORBIT FIXES — Drawer/modal close animation, logout button, screen transition */
+
+@keyframes drawer-slide-out {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(36px); }
+}
+.crm-panel-slide.orbit-closing {
+  animation: drawer-slide-out 0.22s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+  pointer-events: none !important;
+}
+@keyframes pop-fade-out {
+  from { opacity: 1; transform: scale(1); }
+  to   { opacity: 0; transform: scale(0.96); }
+}
+.crm-pop.orbit-closing {
+  animation: pop-fade-out 0.18s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+  pointer-events: none !important;
+}
+@keyframes overlay-fade-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+.crm-overlay-fade.orbit-closing {
+  animation: overlay-fade-out 0.22s ease forwards !important;
+}
+
+/* Setup > Stages & Sources / Expense Categories rows — fade+slide in on
+   every render (add or delete both re-render the row list), matching the
+   same "animate on (re)mount" convention as screen-enter above. */
+@keyframes settings-row-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: none; }
+}
+.orbit-settings-row {
+  animation: settings-row-in 0.22s ease both;
+}
+
+/* Logout button — the one real definition lives further down, next to
+   .orbit-logout-wrap (search "Sign Out"). A second, older, conflicting
+   definition used to live here too (a bordered/transparent variant) —
+   consolidated into a single source of truth so there's no ambiguity about
+   which one actually applies. */
+
+/* ORBIT logo in sidebar */
+[data-brand="orbit"] [style*="margin-bottom:32px"] span {
+  font-weight: 800 !important;
+  letter-spacing: 0.07em !important;
+}
+
+/* Screen transition for main content — targets the actual per-screen
+   content wrapper (.orbit-screen-content), whose direct child is whichever
+   screen is currently mounted, so this fires on every navigation. */
+.orbit-screen-content > div {
+  animation: screen-enter 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+/* Same idea, one level down, for screens with their own internal sub-tabs
+   (Finance: Invoices/Expenses/Payroll/Milestones) — the sub-tab content is
+   the second child (after the persistent header/tab-bar row), and swaps
+   independently of the outer screen transition above. */
+.orbit-subtab-content > div:nth-child(2) {
+  animation: screen-enter 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+/* Same idea again, for kanban/list toggles (CRM Leads, Software Dev
+   Projects) — unlike the Finance sub-tabs above, these wrappers contain
+   ONLY the mutually-exclusive alternates (kanban / loading / error / empty
+   / list), nothing else, so a plain `> div` (no nth-child needed) always
+   targets whichever single one is currently mounted. */
+.orbit-subview-content > div {
+  animation: screen-enter 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+
+  
+/* ═══════════════════════════════════════════════════════════════════
+   ORBIT BEAUTIFICATION v2 — Light glassmorphism login, round logout,
+   pill Setup tabs, font lift, colour polish, micro-animations.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ─── Global font lift ─── */
+:root {
+  --text-body-size: 14.5px;
+  --text-h2-size: 20px;
+  --text-h3-size: 15.5px;
+  --text-small-size: 13px;
+}
+body { font-size: 14.5px; }
+
+/* ─── Keyframes ─── */
+@keyframes orbit-card-in {
+  from { opacity: 0; transform: translateY(28px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes orbit-ring-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+@keyframes orbit-shimmer-btn {
+  from { background-position: -200% center; }
+  to   { background-position: 200% center; }
+}
+@keyframes orbit-pulse-glow {
+  0%,100% { opacity: 1; filter: drop-shadow(0 0 8px rgba(99,102,241,0.5)); }
+  50%     { opacity: 0.72; filter: drop-shadow(0 0 20px rgba(99,102,241,0.75)); }
+}
+@keyframes orbit-blob1 {
+  0%,100% { transform: translate(0,0) scale(1); }
+  33%     { transform: translate(50px,-35px) scale(1.09); }
+  66%     { transform: translate(-25px,22px) scale(0.94); }
+}
+@keyframes orbit-blob2 {
+  0%,100% { transform: translate(0,0) scale(1); }
+  40%     { transform: translate(-55px,32px) scale(1.07); }
+  70%     { transform: translate(35px,-22px) scale(0.96); }
+}
+
+/* ─── LOGIN SCREEN — Light Glassmorphism ─── */
+.login-screen {
+  position: fixed !important;
+  inset: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  z-index: 9999 !important;
+  background: linear-gradient(135deg, #EEF2FF 0%, #E8ECFF 25%, #EDF4FD 55%, #F0EEFF 80%, #EEF2FF 100%) !important;
+  overflow: hidden !important;
+}
+.login-screen::before {
+  content: '';
+  position: absolute;
+  top: -18%; left: -12%;
+  width: 60%; height: 60%;
+  background: radial-gradient(ellipse, rgba(99,102,241,0.22) 0%, transparent 68%);
+  border-radius: 50%;
+  pointer-events: none;
+  animation: orbit-blob1 12s ease-in-out infinite;
+}
+.login-screen::after {
+  content: '';
+  position: absolute;
+  bottom: -15%; right: -8%;
+  width: 52%; height: 52%;
+  background: radial-gradient(ellipse, rgba(79,70,229,0.16) 0%, transparent 68%);
+  border-radius: 50%;
+  pointer-events: none;
+  animation: orbit-blob2 16s ease-in-out infinite;
+}
+
+.login-card {
+  background: rgba(255,255,255,0.80) !important;
+  border: 1px solid rgba(255,255,255,0.95) !important;
+  border-radius: 24px !important;
+  padding: 48px 44px !important;
+  box-shadow:
+    0 8px 48px rgba(79,70,229,0.14),
+    0 2px 10px rgba(79,70,229,0.06),
+    inset 0 1px 0 rgba(255,255,255,1) !important;
+  backdrop-filter: blur(32px) !important;
+  -webkit-backdrop-filter: blur(32px) !important;
+  animation: orbit-card-in 0.52s cubic-bezier(0.16,1,0.3,1) !important;
+  width: 420px !important;
+  max-width: 92vw !important;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.login-logo {
+  font-size: 30px !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.06em !important;
+  background: linear-gradient(135deg, #4338CA 0%, #4F46E5 45%, #6366F1 100%) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  background-clip: text !important;
+  text-align: center !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 10px !important;
+  margin-bottom: 0 !important;
+}
+
+.login-tagline {
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #8892A4;
+  margin: -2px 0 0;
+}
+
+.login-powered-by {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: #A0AABB;
+  margin: 2px 0 0;
+}
+
+.login-subtitle {
+  text-align: center !important;
+  font-size: 14.5px !important;
+  color: #5E6880 !important;
+  font-weight: 500 !important;
+  letter-spacing: -0.01em !important;
+  margin: 2px 0 6px !important;
+}
+
+.login-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.login-input-icon {
+  position: absolute;
+  left: 14px;
+  color: #8892A4;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  z-index: 1;
+}
+
+.login-input {
+  background: rgba(255,255,255,0.88) !important;
+  border: 1.5px solid rgba(200,207,224,0.85) !important;
+  color: #141928 !important;
+  padding: 14px 16px 14px 44px !important;
+  border-radius: 12px !important;
+  font-size: 14.5px !important;
+  font-family: var(--font-sans) !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease !important;
+}
+.login-input:focus {
+  border-color: #4F46E5 !important;
+  background: rgba(255,255,255,0.98) !important;
+  box-shadow: 0 0 0 3.5px rgba(79,70,229,0.14), 0 1px 3px rgba(79,70,229,0.06) !important;
+  outline: none !important;
+}
+.login-input::placeholder { color: #A0AABB !important; }
+
+.login-btn {
+  background: linear-gradient(135deg, #4338CA 0%, #4F46E5 50%, #6366F1 100%) !important;
+  color: #fff !important;
+  border: none !important;
+  padding: 15px !important;
+  border-radius: 12px !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  cursor: pointer !important;
+  width: 100% !important;
+  letter-spacing: -0.01em !important;
+  margin-top: 4px !important;
+  box-shadow: 0 4px 18px rgba(79,70,229,0.38), 0 1px 4px rgba(79,70,229,0.18) !important;
+  transition: box-shadow 0.18s ease, transform 0.12s ease !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+.login-btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 35%, rgba(255,255,255,0.18) 50%, transparent 65%);
+  background-size: 200% auto;
+  animation: orbit-shimmer-btn 2.6s linear infinite;
+  pointer-events: none;
+}
+.login-btn:hover:not(:disabled) {
+  box-shadow: 0 6px 26px rgba(79,70,229,0.48), 0 2px 8px rgba(79,70,229,0.22) !important;
+  transform: translateY(-1px) !important;
+}
+.login-btn:active:not(:disabled) {
+  transform: translateY(0) scale(0.99) !important;
+  box-shadow: 0 2px 8px rgba(79,70,229,0.3) !important;
+}
+.login-btn:disabled { opacity: 0.65 !important; cursor: not-allowed !important; }
+
+@keyframes login-error-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.login-error {
+  background: rgba(254,242,242,0.92) !important;
+  border: 1.5px solid rgba(239,68,68,0.3) !important;
+  color: #DC2626 !important;
+  padding: 12px 16px !important;
+  border-radius: 10px !important;
+  font-size: 13.5px !important;
+  text-align: center !important;
+  font-weight: 500 !important;
+  animation: login-error-in 0.24s cubic-bezier(0.16,1,0.3,1) !important;
+}
+
+/* ─── SIGN OUT BUTTON — modern full-width gradient pill, pinned to the
+   bottom of the sidebar. This is the single, authoritative definition —
+   see the comment near the top of this file for the older duplicate this
+   replaced. ─── */
+.orbit-logout-wrap {
+  display: flex;
+  justify-content: center;
+  padding: 14px 4px 4px;
+  margin-top: auto !important;
+  border-top: 1px solid var(--border-subtle);
+}
+/* Make sidebar a flex column so margin-top:auto pushes logout to the bottom.
+   Also tunes sidebar text/spacing — SidebarSection's nav-item labels,
+   section headings, and inter-section gap all read var(--text-body-size)/
+   var(--text-eyebrow-size)/var(--sidebar-section-gap) from a compiled,
+   unmodifiable design-system component, so a locally-scoped custom-property
+   override here (CSS vars inherit down the DOM) reaches them without
+   touching anything outside the sidebar. Deliberately more compact than the
+   28px/15px this used to bump *up* to — with 7+ possible sections
+   (Dashboard, CRM, Customers, Dev, Finance, HR, Manager Hub, Me, Setup)
+   each carrying their own 28px bottom margin, that added up to enough
+   scrolling to see the whole nav that it was worth shrinking back down. */
+[data-brand="orbit"] [style*="width:var(--sidebar-width)"] {
+  display: flex !important;
+  flex-direction: column !important;
+  min-height: 100% !important;
+  background: #F1F3F6 !important;
+  --text-body-size: 13.5px;
+  --text-eyebrow-size: 10.5px;
+  --sidebar-section-gap: 14px;
+  --sidebar-item-gap: 3px;
+}
+/* The nav-item <a>'s own vertical padding (9px top/bottom) is hardcoded in
+   the compiled component, not a CSS var, so it needs a direct override —
+   same "match the literal inline style string" technique used throughout
+   this file. Shaves another ~6px off every single nav item. */
+[data-brand="orbit"] [style*="width:var(--sidebar-width)"] a[style*="padding:9px 12px"] {
+  padding: 6px 12px !important;
+}
+.sidebar-logout-btn {
+  position: relative;
+  overflow: hidden;
+  background: rgba(239,68,68,0.08) !important;
+  border: 1px solid rgba(239,68,68,0.22) !important;
+  color: #DC2626 !important;
+  padding: 7px 16px !important;
+  border-radius: 9999px !important;
+  cursor: pointer !important;
+  font-family: var(--font-sans) !important;
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.01em !important;
+  width: auto !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  box-shadow: none !important;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.12s ease !important;
+}
+.sidebar-logout-btn:hover {
+  background: rgba(239,68,68,0.14) !important;
+  border-color: rgba(239,68,68,0.4) !important;
+  transform: translateY(-1px) !important;
+}
+.sidebar-logout-btn:active {
+  transform: translateY(0) scale(0.98) !important;
+  background: rgba(239,68,68,0.18) !important;
+}
+.sidebar-logout-btn:focus-visible {
+  outline: 2px solid #FCA5A5 !important;
+  outline-offset: 2px;
+}
+
+/* ─── TOP BAR — Profile chip ─── */
+.orbit-profile-chip {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 6px 18px 6px 6px;
+  border-radius: 9999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  box-shadow: 0 1px 3px rgba(17,20,30,0.05);
+  transition: background 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+.orbit-profile-chip:hover {
+  border-color: rgba(79,70,229,0.3);
+  box-shadow: 0 4px 16px rgba(79,70,229,0.12);
+  transform: translateY(-1px);
+}
+.orbit-avatar-ring {
+  display: flex;
+  padding: 2.5px;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, #6366F1 0%, #4338CA 100%);
+  box-shadow: 0 2px 8px rgba(79,70,229,0.30);
+  flex-shrink: 0;
+}
+/* Avatar (compiled, unmodifiable design-system component) renders a flat
+   pale-blue circle with dark initials by default — inline
+   background:var(--accent-blue-bg, var(--status-info-bg)), confirmed a
+   unique inline-style substring in the compiled bundle (nothing else in
+   the app uses --accent-blue-bg), safe to target directly. Restyled to a
+   solid indigo gradient with white initials — a proper "branded avatar"
+   look instead of a flat, washed-out swatch. */
+[style*="var(--accent-blue-bg"] {
+  background: linear-gradient(135deg, #4F46E5 0%, #6366F1 100%) !important;
+  color: #fff !important;
+  font-weight: 700 !important;
+}
+.orbit-profile-name {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.3;
+  white-space: nowrap;
+}
+.orbit-profile-role {
+  display: inline-block;
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--brand-primary);
+  background: var(--brand-primary-light);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-top: 3px;
+  padding: 1px 9px;
+  border-radius: 9999px;
+  white-space: nowrap;
+}
+
+/* ─── SETUP TABS — Pill Segmented Control ─── */
+.orbit-setup-tabs {
+  display: flex;
+  background: var(--color-neutral-100);
+  border-radius: 12px;
+  padding: 4px;
+  gap: 2px;
+  flex-wrap: wrap;
+  border: 1px solid var(--border-subtle);
+  box-shadow: inset 0 1px 3px rgba(14,18,32,0.07);
+}
+.orbit-setup-tab {
+  background: none;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 9px;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  transition: background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease, transform 0.1s ease;
+  white-space: nowrap;
+  letter-spacing: -0.01em;
+}
+.orbit-setup-tab:hover {
+  color: var(--text-primary);
+  background: rgba(255,255,255,0.72);
+}
+/* Active — keyed off the template's font-weight:600 that this app's tab
+   render-vals already set for the active tab (see setupTabXWeight etc.). */
+.orbit-setup-tab[style*="font-weight:600"] {
+  background: #fff;
+  color: var(--brand-primary);
+  font-weight: 600 !important;
+  box-shadow: 0 1px 5px rgba(14,18,32,0.12), 0 0 0 1px rgba(79,70,229,0.10);
+}
+.orbit-setup-tab:active { transform: scale(0.97); }
+
+/* Setup tab content — fade+slide on switch. (Targets the direct child div,
+   not `sc-if > div` — sc-if is a compile-time-only template directive and
+   never exists as a real DOM element, so a selector built from that tag
+   name could never match anything; same class of dead-CSS bug documented
+   elsewhere in this file for the screen/subtab transition rules.) */
+.orbit-setup-content > div {
+  animation: screen-enter 0.24s cubic-bezier(0.16,1,0.3,1) both;
+}
+
+/* ─── TOPBAR — depth shadow ─── */
+[data-brand="orbit"] [style*="height:var(--topbar-height)"] {
+  box-shadow: 0 1px 0 var(--border-subtle), 0 2px 14px rgba(14,18,32,0.05) !important;
+}
+
+/* ─── TABLE HEADERS — subtle indigo tint ─── */
+sc-raw-thead sc-raw-tr {
+  background: linear-gradient(180deg, #F3F4FF 0%, #F8F9FC 100%) !important;
+}
+
+/* ─── TOPBAR avatar ring ─── */
+[data-brand="orbit"] [style*="height:var(--topbar-height)"] [style*="border-radius:9999px"][style*="font-weight:700"] {
+  box-shadow: 0 0 0 2px #fff, 0 0 0 3.5px rgba(79,70,229,0.55) !important;
+}
+
+/* ─── CARD hover glow ─── */
+[data-brand="orbit"] [style*="var(--bg-surface)"][style*="border-radius:12px"]:hover {
+  box-shadow: 0 4px 22px rgba(79,70,229,0.10), 0 1px 4px rgba(79,70,229,0.05) !important;
+}
+
+/* ─── Topbar search focus ring ─── */
+[data-brand="orbit"] [style*="border-radius:9999px"][style*="padding:9px 16px"]:focus-within {
+  border-color: rgba(79,70,229,0.4) !important;
+  box-shadow: 0 0 0 3px rgba(79,70,229,0.10) !important;
+}
+
+/* ─── Badge colour richness ─── */
+/* :not(mark) matters here: search-result highlighting (getHighlightParts/
+   highlightSegments) renders matched text as <mark style="background:
+   var(--status-warning-bg);color:inherit;...">, deliberately using
+   `inherit` so the highlighted word's text color flows with whatever row
+   it's in. This rule's attribute-selector was written only with Badge
+   components in mind (which pair this same background with an explicit
+   status-*-text color) but matches on the inline-style substring alone, so
+   it was also hijacking the Leads highlight's `color:inherit` and forcing
+   a fixed amber-orange onto it instead — the highlighted word could read
+   as washed-out/oddly-colored depending on the row's own background,
+   the "highlighted text looks broken" bug reported for Leads search. */
+[style*="background:var(--status-success-bg)"]:not(mark) { background: #DCFCE7 !important; color: #15803D !important; }
+[style*="background:var(--status-danger-bg)"]:not(mark)  { background: #FEE2E2 !important; color: #DC2626 !important; }
+[style*="background:var(--status-warning-bg)"]:not(mark) { background: #FEF3C7 !important; color: #D97706 !important; }
+[style*="background:var(--status-info-bg)"]:not(mark)    { background: #EEF2FF !important; color: #4338CA !important; }
+
+/* ─── Sidebar nav item transitions ─── */
+[data-brand="orbit"] [style*="width:var(--sidebar-width)"] [style*="cursor:pointer"] {
+  transition: background 0.15s ease, color 0.15s ease !important;
+}
+
+/* ─── Keep icon-padded inputs from getting double-overridden ─── */
+.login-input[type="email"],
+.login-input[type="password"] {
+  padding-left: 44px !important;
+}
+
+
+  
+/* ═══════════════════════════════════════════════════════════════════
+   ORBIT UNIVERSAL POLISH v3 — pure CSS, zero layout/position changes,
+   zero JS/backend changes. Targets things the prior rounds' polish
+   passes didn't reach yet: native checkboxes, disabled form controls,
+   placeholders, page-shell depth, and Kanban column definition.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ─── Smooth in-page scrolling (e.g. jumping a drawer's content into
+   view) — zero layout impact, purely how scrolling itself feels. ─── */
+html { scroll-behavior: smooth; }
+
+/* ─── Native checkboxes (Employee access-level tick-boxes) were plain
+   unstyled browser defaults — the one remaining native form control this
+   app never themed. `accent-color` recolors a real native checkbox (ticks,
+   focus ring included) to match the brand without swapping it for a fake
+   custom-markup one, so keyboard/screen-reader behavior is untouched. ─── */
+input[type="checkbox"] {
+  accent-color: var(--brand-primary);
+  width: 17px;
+  height: 17px;
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+/* ─── Disabled form fields — inputs/textareas had no disabled treatment
+   at all (only <select> did); a field greyed out because the viewer isn't
+   an Owner/Finance editor rendered with zero visual difference from an
+   editable one until you actually tried to type in it. ─── */
+input:disabled,
+textarea:disabled {
+  background: var(--color-neutral-50) !important;
+  color: var(--text-muted) !important;
+  cursor: not-allowed !important;
+  opacity: 0.75;
+}
+
+/* ─── Consistent placeholder color everywhere — previously only the
+   (dark-themed) login inputs had an explicit placeholder color; every
+   other field across the app fell back to each browser's own default
+   grey, which doesn't match this app's muted-text token. ─── */
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-muted);
+  opacity: 0.75;
+}
+
+/* ─── App shell background — a very subtle top-to-bottom gradient
+   instead of a single flat fill, for a touch of depth behind every
+   screen. Scoped to the shell root specifically (not the --bg-page
+   token itself), so components that reuse --bg-page as a literal flat
+   fill elsewhere (Kanban columns, empty-state panels, table stripes)
+   are unaffected — only the outermost page backdrop gets it. ─── */
+[data-brand="orbit"] {
+  background: linear-gradient(180deg, #F3F5FA 0%, #EEF1F7 100%) !important;
+}
+
+/* ─── Kanban columns — previously just a flat --bg-page fill with
+   rounded corners, no border/depth of its own to separate it from the
+   page shell's own background (especially now that the shell has its
+   own subtle gradient). A hairline border + faint inset shadow gives
+   each column a clearer "tray" identity without changing size/position. ─── */
+[data-brand="orbit"] [style*="width:264px"][style*="flex-shrink:0"] {
+  border: 1px solid var(--border-subtle) !important;
+  box-shadow: inset 0 1px 3px rgba(14,18,32,0.035) !important;
+}
+
+/* ============================================================
+   ORBIT — smoothness pass
+   ============================================================
+   The sc-raw-tr/-td/-th/-thead/-tbody selectors further up this file
+   (search "Table rows") only ever matched the OLD bundle's custom tag
+   names — this app renders real <tr>/<td>/<th>/<thead>/<tbody>, so every
+   one of those table hover/active/sticky-header rules has been silently
+   dead here the whole time. Re-targeted below at the real tags — kept to
+   the safe, purely-additive pieces (transitions, hover/active feedback,
+   header tint, last-row border cleanup), not the !important font-size/
+   padding overrides the old rules also had, which would have clobbered
+   every page's own already-tuned inline thStyle/tdStyle objects. */
+tr[style*="cursor:pointer"] {
+  transition: background 0.12s ease;
+}
+tr[style*="cursor:pointer"]:hover {
+  background: var(--bg-hover);
+}
+tr[style*="cursor:pointer"]:active {
+  background: var(--bg-active);
+}
+td {
+  transition: background 0.12s ease, color 0.12s ease;
+}
+tbody tr:last-child {
+  border-bottom: none !important;
+}
+thead tr {
+  background: linear-gradient(180deg, #F3F4FF 0%, #F8F9FC 100%);
+}
+
+/* Buttons, links, and form controls — smooth hover/press feedback on
+   every one of them, not just the specific inline-style-matching
+   selectors already defined above for particular button variants. */
+button, a {
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease,
+              box-shadow 0.15s ease, transform 0.1s ease, opacity 0.15s ease;
+}
+button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+input, select, textarea {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+
+/* Any card using the shared --shadow-card token (Kanban cards, list-row
+   cards, stat cards, settings rows) already lifts to --shadow-card-hover
+   on hover via rules elsewhere in this file — this just makes sure that
+   lift eases in instead of snapping. */
+[style*="var(--shadow-card)"] {
+  transition: box-shadow 0.18s ease, transform 0.18s ease, border-color 0.18s ease;
+}
+
+/* Sidebar nav items already recolor on hover/active via the attribute
+   selectors near the top of this file — this adds the transition so that
+   recolor fades in instead of snapping between states. */
+[data-brand="orbit"] [style*="width:var(--sidebar-width)"] a {
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+/* Page content — fades/lifts in on every mount, which in the App Router
+   means every route navigation (each page is a fresh component instance)
+   and every full reload, instead of instantly popping into place. */
+@keyframes orbit-content-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: none; }
+}
+.orbit-screen-content > * {
+  animation: orbit-content-fade-in 0.22s ease-out;
+}

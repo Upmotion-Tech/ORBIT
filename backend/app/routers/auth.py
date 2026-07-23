@@ -56,7 +56,7 @@ async def login(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="No account found with this email.",
         )
-    if not verify_password(body.password, employee.password_hash):
+    if not await verify_password(body.password, employee.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect password.",
@@ -133,18 +133,18 @@ async def change_password(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Account no longer exists.",
         )
-    if not verify_password(body.current_password, employee.password_hash):
+    if not await verify_password(body.current_password, employee.password_hash):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Current password is incorrect.",
         )
-    if verify_password(body.new_password, employee.password_hash):
+    if await verify_password(body.new_password, employee.password_hash):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="New password must be different from your current password.",
         )
     await repo.update(employee, {
-        "password_hash": get_password_hash(body.new_password),
+        "password_hash": await get_password_hash(body.new_password),
         "must_change_password": False,
         "updated_by": employee.email,
         "updated_at": now_pkt(),

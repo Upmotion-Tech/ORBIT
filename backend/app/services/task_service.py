@@ -130,6 +130,8 @@ class TaskService:
                 notif_type="Task Assigned",
                 title="Assigned to new task",
                 message=f"You have been assigned to task '{task.title}' under project '{project.name}'.",
+                related_type="task",
+                related_id=task.id,
             )
 
         await self._audit(user, "Created", task.title, f"Project '{project.name}'")
@@ -193,6 +195,8 @@ class TaskService:
                 notif_type="Task Assigned",
                 title="Assigned to task",
                 message=f"You have been assigned to task '{updated_task.title}' under project '{proj_name}'.",
+                related_type="task",
+                related_id=updated_task.id,
             )
 
         if "status" in data and updated_task.status != old_status:

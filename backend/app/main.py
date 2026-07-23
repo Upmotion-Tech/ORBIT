@@ -1,12 +1,12 @@
-import os
 import logging
 from contextlib import asynccontextmanager
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
@@ -43,9 +43,9 @@ from app.routers import (
     attendance,
     wfh_requests,
     customers,
+    policies,
 )
 
-STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
 logger = logging.getLogger("orbit.attendance")
 
 
@@ -62,6 +62,18 @@ async def _run_attendance_sweep():
         count = await service.run_end_of_day_sweep()
         await db.commit()
         logger.info(f"[attendance] end-of-day sweep marked {count} employee(s) absent")
+
+
+async def _run_notification_cleanup():
+    # Notifications are meant to be a short-lived "what just happened" feed,
+    # not a permanent log (that's what the Audit Trail is for) — anything
+    # older than 24h is deleted outright, read or not, so the list never
+    # grows unbounded.
+    async with async_session_factory() as db:
+        repo = NotificationRepository(db)
+        count = await repo.delete_older_than(hours=24)
+        await db.commit()
+        logger.info(f"[notifications] cleanup swept {count} notification(s) older than 24h")
 
 
 @asynccontextmanager
@@ -84,6 +96,10 @@ async def lifespan(app: FastAPI):
     # per day if this ever runs as more than one worker process.
     scheduler = AsyncIOScheduler(timezone=PKT)
     scheduler.add_job(_run_attendance_sweep, CronTrigger(hour=23, minute=55, timezone=PKT))
+    # Hourly rather than daily — a straight 24h-old cutoff means yesterday's
+    # notifications should disappear close to when they actually turn 24h
+    # old, not all at once at some fixed time of day.
+    scheduler.add_job(_run_notification_cleanup, IntervalTrigger(hours=1))
     scheduler.start()
 
     yield
@@ -144,6 +160,7 @@ app.include_router(crm_sources.router)
 app.include_router(attendance.router)
 app.include_router(wfh_requests.router)
 app.include_router(customers.router)
+app.include_router(policies.router)
 
 
 
@@ -153,6 +170,7 @@ async def health_check():
 
 
 @app.get("/")
-async def serve_frontend():
-    index_path = os.path.join(STATIC_DIR, "index.html")
-    return FileResponse(index_path)
+async def root():
+    # The frontend is a separate app (frontend-next, deployed independently
+    # on Vercel) — this backend is API-only, no bundle to serve at "/" anymore.
+    return {"status": "ok", "app": settings.app_name, "message": "ORBIT API — see /docs for interactive API documentation."}

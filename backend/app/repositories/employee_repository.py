@@ -83,6 +83,25 @@ class EmployeeRepository:
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
+    async def find_by_exact_name(self, name: str) -> Optional[Employee]:
+        # Exact (case-insensitive) match — for resolving a manager name
+        # (Employee.manager is a free-text name, not an FK) to the actual
+        # manager's record, e.g. to target a leave/WFH notification at them
+        # specifically rather than broadcasting to a role. `find_by_name`
+        # below is a "contains" search for UI autocomplete and would wrongly
+        # match e.g. "John" against both "John Smith" and "Johnny Appleseed".
+        # func.trim() on the stored column too — matched against only the
+        # *input* being stripped, a stored name with incidental leading/
+        # trailing whitespace (e.g. a typo'd "Syed Hashim " at data entry)
+        # would otherwise silently never match and no notification would go
+        # out, with nothing in the UI hinting why.
+        query = select(Employee).where(
+            func.lower(func.trim(Employee.name)) == name.strip().lower(),
+            Employee.deleted_at.is_(None),
+        )
+        result = await self.db.execute(query)
+        return result.scalars().first()
+
     async def find_by_name(self, name: str) -> list[Employee]:
         query = select(Employee).where(
             func.lower(Employee.name).contains(name.strip().lower()),

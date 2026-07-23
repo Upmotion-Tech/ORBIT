@@ -27,6 +27,11 @@ class Project(Base):
     start_date: Mapped[date] = mapped_column(Date, nullable=True)
     deadline: Mapped[date] = mapped_column(Date, nullable=True)
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="Not Started")
+    # Set when status transitions to "Completed" (and cleared if reopened) —
+    # drives the "hide from the board 20 days after completion, but keep
+    # visible in Past Projects" rule. Distinct from updated_at, which churns
+    # on any field edit, not just a status change.
+    completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     at_risk: Mapped[bool] = mapped_column(Boolean, default=False)
     budget: Mapped[float] = mapped_column(Float, default=0.0)
     description: Mapped[str] = mapped_column(Text, nullable=True)

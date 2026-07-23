@@ -50,19 +50,8 @@ class InvoiceService:
         data["updated_by"] = user
         invoice = await self.invoice_repo.create(data)
 
-        if self.notification_repo:
-            await self.notification_repo.create(
-                user_id="finance",
-                notif_type="Invoice Created",
-                title="New Invoice Draft Created",
-                message=f"Invoice {invoice.invoice_number} for client {invoice.client} was created by {user}."
-            )
-            await self.notification_repo.create(
-                user_id="owner",
-                notif_type="Invoice Created",
-                title="New Invoice Draft Created",
-                message=f"Invoice {invoice.invoice_number} for client {invoice.client} was created by {user}."
-            )
+        # Invoice notifications were removed per request — the Audit Trail
+        # below still records creation/status changes for Finance/Owner.
         await self._audit(user, "Created", invoice.invoice_number, f"Client '{invoice.client}'")
         return invoice
 
@@ -77,17 +66,7 @@ class InvoiceService:
         data["updated_by"] = user
         updated_invoice = await self.invoice_repo.update(invoice, data)
 
-        # Trigger notification if status changed
         new_status = updated_invoice.status
-        if old_status != new_status and self.notification_repo:
-            notif_type = f"Invoice {new_status}"
-            title = f"Invoice Status Changed to {new_status}"
-            message = f"Invoice {updated_invoice.invoice_number} for client {updated_invoice.client} is now marked as {new_status}."
-
-            # Send to both finance and owner
-            await self.notification_repo.create(user_id="finance", notif_type=notif_type, title=title, message=message)
-            await self.notification_repo.create(user_id="owner", notif_type=notif_type, title=title, message=message)
-
         if old_status != new_status:
             await self._audit(user, "Status Changed", updated_invoice.invoice_number, f"'{old_status}' → '{new_status}'")
         else:

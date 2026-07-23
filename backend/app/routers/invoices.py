@@ -68,8 +68,8 @@ async def get_invoice_pdf(
     inv = await service.get_invoice(invoice_id)
     if not inv:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found.")
-    # docx->PDF conversion drives Word via COM automation, a blocking call —
-    # run it off the event loop so it doesn't stall other requests.
+    # reportlab PDF generation is synchronous, CPU-bound work — run it off
+    # the event loop so it doesn't stall other requests while it builds.
     pdf_bytes, filename = await asyncio.get_event_loop().run_in_executor(
         None, service.generate_invoice_pdf, inv
     )

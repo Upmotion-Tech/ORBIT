@@ -25,6 +25,7 @@ from app.models.crm_source import CrmSource
 from app.models.attendance import AttendanceRecord
 from app.models.wfh_request import WfhRequest
 from app.models.customer import Customer
+from app.models.policy import Policy
 
 __all__ = [
     "Lead",
@@ -54,5 +55,6 @@ __all__ = [
     "AttendanceRecord",
     "WfhRequest",
     "Customer",
+    "Policy",
 ]
 

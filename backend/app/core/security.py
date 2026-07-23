@@ -1,3 +1,4 @@
+import asyncio
 import secrets
 import string
 from datetime import datetime, timedelta, timezone
@@ -25,18 +26,31 @@ def generate_temp_password(length: int = 10) -> str:
     return "".join(chars)
 
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
+def _verify_password_sync(plain_password: str, hashed_password: str) -> bool:
     return bcrypt.checkpw(
         plain_password.encode("utf-8"),
         hashed_password.encode("utf-8"),
     )
 
 
-def get_password_hash(password: str) -> str:
+def _hash_password_sync(password: str) -> str:
     return bcrypt.hashpw(
         password.encode("utf-8"),
         bcrypt.gensalt(),
     ).decode("utf-8")
+
+
+async def verify_password(plain_password: str, hashed_password: str) -> bool:
+    # bcrypt is deliberately slow (~100-300ms per call) and, being a plain
+    # synchronous C call, used to run directly on the event loop — blocking
+    # every other concurrent request (an unrelated lead/project/task create,
+    # someone else's login) for that whole duration. Off-loaded to a thread
+    # so it costs this request time but nobody else's.
+    return await asyncio.to_thread(_verify_password_sync, plain_password, hashed_password)
+
+
+async def get_password_hash(password: str) -> str:
+    return await asyncio.to_thread(_hash_password_sync, password)
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:

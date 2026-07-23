@@ -51,7 +51,7 @@ class EmployeeService:
         return self._to_response(employee, persona)
 
     async def create_employee(
-        self, data: dict, user="anonymous", persona=None,
+        self, data: dict, user="anonymous", persona=None, background_tasks=None,
     ) -> EmployeeResponse:
         if not has_role(persona, "owner", "hr", "finance"):
             raise HTTPException(
@@ -100,7 +100,7 @@ class EmployeeService:
         password = (data.pop("password", None) or "").strip()
         if not password:
             password = generate_temp_password()
-        password_hash = get_password_hash(password)
+        password_hash = await get_password_hash(password)
 
         data["email"] = email
         data["password_hash"] = password_hash
@@ -115,9 +115,23 @@ class EmployeeService:
 
         employee = await self.employee_repo.create(data)
 
-        email_sent = False
-        if self.email_service:
-            email_sent = await self.email_service.send_welcome_email(
+        # Sending the welcome email inline used to make employee creation
+        # wait on a full SMTP round-trip (connect + TLS + login + send —
+        # multi-second, sometimes worse) before the request could even
+        # return. asyncio.to_thread already kept it off the event loop for
+        # other requests, but this specific request still blocked on it.
+        # Scheduling it as a background task lets the response return the
+        # moment the DB write is done, and the email goes out right after —
+        # which also means we can no longer confirm success synchronously,
+        # so the temp password is now always returned as a fallback rather
+        # than only when the send demonstrably failed.
+        if self.email_service and background_tasks is not None:
+            background_tasks.add_task(
+                self.email_service.send_welcome_email,
+                to_email=employee.email, to_name=employee.name, temp_password=password,
+            )
+        elif self.email_service:
+            await self.email_service.send_welcome_email(
                 to_email=employee.email, to_name=employee.name, temp_password=password,
             )
 
@@ -135,14 +149,13 @@ class EmployeeService:
         await self._audit(user, "Created", employee.name, f"Role '{employee.role}'")
 
         resp = self._to_response(employee, persona)
-        resp.welcome_email_sent = email_sent
-        if not email_sent:
-            # Fallback so the account isn't unreachable — the caller (HR/
-            # Owner) needs some way to hand over the credential if the mail
-            # never arrived. Now that this is the real password they typed
-            # (not a random one), this is really just confirming it back to
-            # them rather than handing over a secret they never saw.
-            resp.temp_password = password
+        # Welcome email is now scheduled in the background (see above), so
+        # success can't be confirmed synchronously — welcome_email_sent stays
+        # unset, and the real password the caller typed is always handed
+        # back as a fallback rather than only when the send demonstrably
+        # failed, so HR/Owner always has a way to give the account to the
+        # new hire even if the mail never arrives.
+        resp.temp_password = password
         return resp
 
     async def update_employee(
@@ -192,12 +205,12 @@ class EmployeeService:
         if "password" in data:
             pw = data.pop("password")
             if pw:
-                if verify_password(pw, employee.password_hash):
+                if await verify_password(pw, employee.password_hash):
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail="New password matches the current password.",
                     )
-                data["password_hash"] = get_password_hash(pw)
+                data["password_hash"] = await get_password_hash(pw)
                 # Only force a mandatory re-change when someone ELSE assigned
                 # this password (HR/Owner resetting another employee's
                 # account) — that's "assigned on the employee's behalf, not
@@ -226,20 +239,10 @@ class EmployeeService:
 
         employee = await self.employee_repo.update(employee, data)
 
-        if self.notification_repo:
-            # HR/Owner-relevant only — was broadcasting to "all", so every
-            # employee got notified whenever *anyone else's* record changed
-            # (e.g. Ayesha Siddiqui getting "Hamza Farooq's record has been
-            # updated"). The employee whose own record changed already finds
-            # out by looking at their own profile; this notification exists
-            # for HR/Owner to track changes, not for company-wide broadcast.
-            for target in ("hr", "owner"):
-                await self.notification_repo.create(
-                    user_id=target,
-                    notif_type="Employee Updated",
-                    title="Employee record updated",
-                    message=f"{employee.name}'s record has been updated.",
-                )
+        # "Employee record updated" notifications were removed per request —
+        # HR/Owner already have the Audit Trail (see _audit below) to track
+        # changes; a passive notification on every single field edit wasn't
+        # wanted.
 
         if password_changed:
             await self._audit(user, "Password Changed", employee.name)

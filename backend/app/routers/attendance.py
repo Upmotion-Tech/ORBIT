@@ -55,7 +55,7 @@ async def get_all_attendance(
     year: Optional[int] = None,
     month: Optional[int] = None,
     employee_id: Optional[str] = None,
-    current_user: dict = Depends(get_hr_user),
+    current_user: dict = Depends(get_current_user),
     service: AttendanceService = Depends(get_attendance_service),
 ):
     today = now_pkt().date()
