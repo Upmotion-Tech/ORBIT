@@ -476,8 +476,13 @@ html, body {
   }
   .orbit-topbar-search {
     max-width: none !important;
-    order: 10;
-    flex-basis: 100%;
+    /* Shell.tsx's inline style="flex:1" also sets flex-basis:0% as part of
+       that shorthand — a plain (non-!important) flex-basis override here
+       was silently losing to it, leaving the search box shrunk to a sliver
+       instead of actually wrapping onto its own row. The `flex` shorthand
+       with !important overrides all three (grow/shrink/basis) at once. */
+    flex: 1 1 100% !important;
+    order: 10 !important;
   }
   /* Full label ("Mark Attendance" / "Attendance marked" / "Marking…") is the
      single widest item in the topbar — icon-only on phones keeps its own
