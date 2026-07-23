@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime
+from typing import Optional
 
-from sqlalchemy import String, Text, DateTime, ForeignKey
+from sqlalchemy import String, Text, DateTime, ForeignKey, LargeBinary
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -20,10 +21,15 @@ class Policy(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     category: Mapped[str] = mapped_column(String(100), nullable=False, default="General")
 
-    # Either content (owner typed/pasted text) or file_url (owner uploaded a
+    # Either content (owner typed/pasted text) or file_data (owner uploaded a
     # PDF) is populated — never both required, a policy can have just one.
     content: Mapped[str] = mapped_column(Text, nullable=True)
-    file_url: Mapped[str] = mapped_column(String(500), nullable=True)
+    # Stored directly in Postgres (Neon), not on local disk — Render's
+    # filesystem is ephemeral and gets wiped on every redeploy, which
+    # silently 404'd every previously-uploaded policy PDF the first time the
+    # backend redeployed after upload. The DB is already the one thing in
+    # this stack that reliably persists across deploys.
+    file_data: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
     file_name: Mapped[str] = mapped_column(String(255), nullable=True)
     # Text extracted from the uploaded PDF at upload time, cached here so the
     # RAG assistant can read it straight from the DB on every query instead

@@ -1,13 +1,12 @@
 import os
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, get_owner_department_user
 from app.repositories.policy_repository import PolicyRepository
 from app.services.policy_service import PolicyService, extract_pdf_text
-from app.services.storage_service import storage_service
 from app.schemas.policy import (
     PolicyCreate,
     PolicyUpdate,
@@ -91,12 +90,22 @@ async def upload_policy_file(
             detail="Only PDF files are supported for policy documents.",
         )
 
-    await file.seek(0)
-    filename = await storage_service.save(file, prefix=f"policy_{policy_id}_")
-    url = storage_service.get_url(filename)
     extracted_text = extract_pdf_text(content)
+    return await service.attach_file(policy_id, content, file.filename or "policy.pdf", extracted_text)
 
-    return await service.attach_file(policy_id, url, file.filename or filename, extracted_text)
+
+@router.get("/{policy_id}/file")
+async def get_policy_file(
+    policy_id: str,
+    current_user: dict = Depends(get_current_user),
+    service: PolicyService = Depends(get_policy_service),
+):
+    file_data, file_name = await service.get_file(policy_id)
+    return Response(
+        content=file_data,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{file_name}"'},
+    )
 
 
 @router.delete("/{policy_id}/file", response_model=PolicyResponse)

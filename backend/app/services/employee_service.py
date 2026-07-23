@@ -125,15 +125,17 @@ class EmployeeService:
         # which also means we can no longer confirm success synchronously,
         # so the temp password is now always returned as a fallback rather
         # than only when the send demonstrably failed.
-        if self.email_service and background_tasks is not None:
-            background_tasks.add_task(
-                self.email_service.send_welcome_email,
-                to_email=employee.email, to_name=employee.name, temp_password=password,
-            )
-        elif self.email_service:
-            await self.email_service.send_welcome_email(
-                to_email=employee.email, to_name=employee.name, temp_password=password,
-            )
+        # Disabled for now, per explicit request — uncomment to resume
+        # sending the welcome email on employee creation.
+        # if self.email_service and background_tasks is not None:
+        #     background_tasks.add_task(
+        #         self.email_service.send_welcome_email,
+        #         to_email=employee.email, to_name=employee.name, temp_password=password,
+        #     )
+        # elif self.email_service:
+        #     await self.email_service.send_welcome_email(
+        #         to_email=employee.email, to_name=employee.name, temp_password=password,
+        #     )
 
         if self.notification_repo:
             # HR/Owner-relevant only — broadcasting to "all" meant every

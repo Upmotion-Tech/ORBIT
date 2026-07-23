@@ -117,6 +117,27 @@ export default function MePoliciesPage() {
     }
   };
 
+  const openPolicyFile = async (p: Policy) => {
+    if (!p.file_url) return;
+    try {
+      // A plain <a href> pointing straight at this API path won't work — the
+      // endpoint requires the Bearer token from localStorage, which the
+      // browser only attaches to fetch/XHR calls, never a bare anchor
+      // navigation. Fetch it as this page (with auth) and open the actual
+      // PDF bytes as a blob URL instead — same pattern finance/page.tsx
+      // already uses for downloading invoice PDFs.
+      const token = localStorage.getItem("orbit_token");
+      const res = await fetch(p.file_url, { headers: token ? { Authorization: "Bearer " + token } : {} });
+      if (!res.ok) throw new Error("Could not load the PDF.");
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      window.open(blobUrl, "_blank", "noopener,noreferrer");
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+    } catch (err) {
+      pushToast((err as Error).message || "Could not open the PDF.", "error");
+    }
+  };
+
   const removePolicy = (p: Policy) => {
     if (!window.confirm(`Remove "${p.title}"? This cannot be undone.`)) return;
     policiesApi.remove(p.id).then(
@@ -239,7 +260,7 @@ export default function MePoliciesPage() {
               </div>
             )}
             {viewPolicy.file_url && (
-              <a href={viewPolicy.file_url} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 600, color: "var(--text-link)", textDecoration: "none" }}>
+              <a href="#" onClick={(e) => { e.preventDefault(); openPolicyFile(viewPolicy); }} style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 600, color: "var(--text-link)", textDecoration: "none" }}>
                 📄 Open {viewPolicy.file_name || "PDF document"}
               </a>
             )}
