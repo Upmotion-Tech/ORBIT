@@ -623,10 +623,10 @@ export default function DevPage() {
             <button className="orbit-setup-tab" style={{ fontWeight: tab === "tasks" ? 600 : 400 }} onClick={() => setTab("tasks")}>Tasks</button>
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           {tab === "projects" && (
             <>
-              <div style={{ display: "flex", background: "var(--bg-page)", borderRadius: 9999, padding: 3, gap: 2 }}>
+              <div className="orbit-pill-toggle" style={{ display: "flex", background: "var(--bg-page)", borderRadius: 9999, padding: 3, gap: 2 }}>
                 <button onClick={() => setProjSubView("kanban")} style={{ border: "none", borderRadius: 9999, padding: "7px 16px", cursor: "pointer", fontSize: 13, fontWeight: 600, background: projSubView === "kanban" ? "#fff" : "transparent", color: projSubView === "kanban" ? "var(--brand-primary)" : "var(--text-secondary)" }}>Kanban</button>
                 <button onClick={() => setProjSubView("list")} style={{ border: "none", borderRadius: 9999, padding: "7px 16px", cursor: "pointer", fontSize: 13, fontWeight: 600, background: projSubView === "list" ? "#fff" : "transparent", color: projSubView === "list" ? "var(--brand-primary)" : "var(--text-secondary)" }}>List</button>
                 {isOwnerDept && (
@@ -638,7 +638,7 @@ export default function DevPage() {
           )}
           {tab === "tasks" && (
             <>
-              <div style={{ display: "flex", background: "var(--bg-page)", borderRadius: 9999, padding: 3, gap: 2 }}>
+              <div className="orbit-pill-toggle" style={{ display: "flex", background: "var(--bg-page)", borderRadius: 9999, padding: 3, gap: 2 }}>
                 <button onClick={() => setTaskSubView("kanban")} style={{ border: "none", borderRadius: 9999, padding: "7px 16px", cursor: "pointer", fontSize: 13, fontWeight: 600, background: taskSubView === "kanban" ? "#fff" : "transparent", color: taskSubView === "kanban" ? "var(--brand-primary)" : "var(--text-secondary)" }}>Kanban</button>
                 <button onClick={() => setTaskSubView("list")} style={{ border: "none", borderRadius: 9999, padding: "7px 16px", cursor: "pointer", fontSize: 13, fontWeight: 600, background: taskSubView === "list" ? "#fff" : "transparent", color: taskSubView === "list" ? "var(--brand-primary)" : "var(--text-secondary)" }}>List</button>
               </div>

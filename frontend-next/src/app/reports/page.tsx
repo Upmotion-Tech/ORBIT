@@ -125,7 +125,7 @@ export default function ReportsPage() {
             Cross-department view for decision-making · figures in {reportsCurrency === "PKR" ? "PKR (₨)" : "USD ($)"}
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
           <select
             value={dateRange}
             onChange={(e) => setDateRange(e.target.value)}
@@ -138,7 +138,7 @@ export default function ReportsPage() {
           </select>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Report in</span>
-            <div style={{ display: "flex", background: "var(--bg-page)", borderRadius: 9999, padding: 3, gap: 2 }}>
+            <div className="orbit-pill-toggle" style={{ display: "flex", background: "var(--bg-page)", borderRadius: 9999, padding: 3, gap: 2 }}>
               <button onClick={() => setCurrency("USD")} style={{ border: "none", borderRadius: 9999, padding: "6px 16px", cursor: "pointer", fontSize: 13, fontWeight: 600, background: reportsCurrency === "USD" ? "#fff" : "transparent", color: reportsCurrency === "USD" ? "var(--brand-primary)" : "var(--text-secondary)" }}>USD</button>
               <button onClick={() => setCurrency("PKR")} style={{ border: "none", borderRadius: 9999, padding: "6px 16px", cursor: "pointer", fontSize: 13, fontWeight: 600, background: reportsCurrency === "PKR" ? "#fff" : "transparent", color: reportsCurrency === "PKR" ? "var(--brand-primary)" : "var(--text-secondary)" }}>PKR</button>
             </div>

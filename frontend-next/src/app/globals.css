@@ -457,20 +457,59 @@ html, body {
   .orbit-sidebar-backdrop {
     display: block !important;
   }
+  /* The topbar was a fixed-height, non-wrapping flex row sized for desktop
+     (hamburger + search + Mark Attendance button with a full text label +
+     notification bell + avatar/name/role) — six items with several of them
+     flexShrink:0, which doesn't fit any phone width without either
+     overlapping or spilling past the edge. Letting it wrap (with height:auto
+     so a wrapped second row actually has room instead of getting clipped by
+     the fixed --topbar-height) is the robust fallback regardless of exactly
+     how narrow the phone is; the rules below independently shrink the worst
+     offenders so wrapping is rarely even needed in practice. */
   .orbit-topbar {
-    padding: 0 12px !important;
-    gap: 10px !important;
+    padding: 8px 12px !important;
+    gap: 8px !important;
+    height: auto !important;
+    min-height: var(--topbar-height) !important;
+    flex-wrap: wrap !important;
+    row-gap: 8px !important;
   }
   .orbit-topbar-search {
     max-width: none !important;
+    order: 10;
+    flex-basis: 100%;
+  }
+  /* Full label ("Mark Attendance" / "Attendance marked" / "Marking…") is the
+     single widest item in the topbar — icon-only on phones keeps its own
+     pill compact enough that the rest of the row (notif bell, profile chip)
+     still fits before anything needs to wrap onto its own row. */
+  .orbit-attendance-btn {
+    padding: 9px !important;
+  }
+  .orbit-attendance-label {
+    display: none;
   }
   .orbit-profile-chip .orbit-profile-role {
     display: none;
   }
   .orbit-profile-chip .orbit-profile-name {
-    max-width: 96px;
+    max-width: 72px;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  /* Pill segment controls (Kanban/List/Past Projects, Kanban/List/Past
+     Leads, This Month/Last Month, USD/PKR) across dashboard/reports/hr/crm/
+     dev — each button's 16px horizontal padding assumes desktop width; 2-3
+     of them side by side plus a "New X" button next to them was overflowing
+     or getting cut off on a phone. Letting the pill bar itself wrap (rather
+     than only the row it sits in) is the fallback for "any" phone width,
+     with tighter padding so it rarely needs to. */
+  .orbit-pill-toggle {
+    flex-wrap: wrap;
+  }
+  .orbit-pill-toggle button {
+    padding: 6px 12px !important;
   }
 
   /* Every page (dashboard, reports, finance, hr, crm, dev, me-*, setup) lays
@@ -548,10 +587,16 @@ html, body {
   animation: orbit-modal-panel-in 0.18s cubic-bezier(0.16,1,0.3,1) reverse both !important;
 }
 
-/* ─── Top navigation bar ─── */
+/* ─── Top navigation bar ───
+   Was rgba(241,243,246,0.96) — the literal same RGB as --bg-sidebar's
+   #F1F3F6 below, which combined with --bg-page's near-identical #F0F2F7
+   meant sidebar/topbar/page canvas were all effectively one indistinguishable
+   shade of light gray. A clean translucent-white "glass" tone gives the
+   topbar its own distinct surface identity instead of blending into the
+   sidebar directly to its left. */
 [data-brand="orbit"] [style*="topbar"],
 [data-brand="orbit"] [style*="border-bottom"][style*="bg-surface"][style*="flex"] {
-  background: rgba(241,243,246,0.96) !important;
+  background: rgba(255,255,255,0.92) !important;
   backdrop-filter: blur(12px) saturate(1.4);
   -webkit-backdrop-filter: blur(12px) saturate(1.4);
   border-bottom: 1px solid var(--border-subtle) !important;
@@ -889,12 +934,16 @@ sc-raw-tr[style*="cursor:pointer"]:hover span[style*="text-muted"] {
 sc-raw-thead { position: sticky; top: 0; z-index: 1; background: var(--bg-surface); }
 sc-raw-thead sc-raw-tr { background: var(--color-neutral-50); }
 
-/* ─── Sidebar active state enhancement ─── */
-[data-brand="orbit"] [style*="sidebar"] a[style*="primary"],
-[data-brand="orbit"] [style*="sidebar"] [style*="primary"] {
-  background: var(--bg-active) !important;
-  border-radius: var(--radius-sm) !important;
-}
+/* Sidebar active-item styling now lives entirely in the "Sidebar active nav
+   item" rule earlier in this file (dark pill + white text/icon) — this
+   broad [style*="primary"] rule used to also match a substring inside the
+   *icon's own* inline style (backgroundColor: var(--brand-primary) via its
+   CSS-mask technique — see Icon in healer-bundle.js), and at equal
+   specificity to the dark-pill rule, source order made this one win for the
+   background — leaving the active item's background at a near-transparent
+   rgba(79,70,229,0.09) with a white-forced icon on top of it, i.e. the icon
+   effectively invisible against its own barely-tinted background. Removed
+   rather than rescoped since the later rule already fully replaces it. */
 
 /* ─── Micro: active press on clickable rows ─── */
 sc-raw-tr[style*="cursor:pointer"]:active {
@@ -1483,7 +1532,11 @@ body { font-size: 14.5px; }
   display: flex !important;
   flex-direction: column !important;
   min-height: 100% !important;
-  background: #F1F3F6 !important;
+  /* A touch cooler/richer than --bg-page's #F0F2F7 (the main content canvas
+     behind it) and distinct from the topbar's near-white glass tone above —
+     was the exact same #F1F3F6 as the topbar used to be, so sidebar/topbar/
+     page canvas all read as one flat shade of light gray. */
+  background: #EAECF3 !important;
   --text-body-size: 13.5px;
   --text-eyebrow-size: 10.5px;
   --sidebar-section-gap: 14px;

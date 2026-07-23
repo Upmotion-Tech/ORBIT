@@ -762,7 +762,7 @@ export default function HrPage() {
                 <select value={attendanceEmployeeFilter} onChange={(e) => setAttendanceEmployeeFilter(e.target.value)} aria-label="Filter attendance history by employee" style={selectStyle}>
                   {attendanceEmployeeOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
-                <div style={{ display: "flex", background: "var(--bg-page)", borderRadius: 9999, padding: 3, gap: 2 }}>
+                <div className="orbit-pill-toggle" style={{ display: "flex", background: "var(--bg-page)", borderRadius: 9999, padding: 3, gap: 2 }}>
                   <button onClick={goThisMonth} style={{ border: "none", borderRadius: 9999, padding: "7px 16px", cursor: "pointer", fontSize: 13, fontWeight: 600, background: attendanceMonth === thisMonthStr ? "#fff" : "transparent", color: attendanceMonth === thisMonthStr ? "var(--brand-primary)" : "var(--text-secondary)" }}>This Month</button>
                   <button onClick={goLastMonth} style={{ border: "none", borderRadius: 9999, padding: "7px 16px", cursor: "pointer", fontSize: 13, fontWeight: 600, background: attendanceMonth !== thisMonthStr ? "#fff" : "transparent", color: attendanceMonth !== thisMonthStr ? "var(--brand-primary)" : "var(--text-secondary)" }}>Last Month</button>
                 </div>

@@ -535,6 +535,8 @@ export default function Shell({ children }: { children: React.ReactNode }) {
               <button
                 onClick={markAttendance}
                 disabled={marking || attendanceMarkedToday}
+                aria-label={attendanceMarkedToday ? "Attendance marked" : marking ? "Marking attendance" : "Mark attendance"}
+                className="orbit-attendance-btn"
                 style={{
                   display: "flex", alignItems: "center", gap: 8,
                   border: "none", borderRadius: 9999, padding: "9px 16px",
@@ -546,7 +548,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
                 }}
               >
                 <Icon name={attendanceMarkedToday ? "circle-check" : "clock"} size={15} color="#fff" />
-                {attendanceMarkedToday ? "Attendance marked" : marking ? "Marking…" : "Mark Attendance"}
+                <span className="orbit-attendance-label">{attendanceMarkedToday ? "Attendance marked" : marking ? "Marking…" : "Mark Attendance"}</span>
               </button>
             )}
 

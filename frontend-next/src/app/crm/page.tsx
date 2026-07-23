@@ -511,8 +511,8 @@ export default function CrmPage() {
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
         <h1 style={{ margin: 0, fontSize: 19, fontWeight: 700, color: "var(--text-primary)" }}>Lead Pipeline</h1>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ display: "flex", background: "var(--bg-page)", borderRadius: 9999, padding: 3, gap: 2 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <div className="orbit-pill-toggle" style={{ display: "flex", background: "var(--bg-page)", borderRadius: 9999, padding: 3, gap: 2 }}>
             <button onClick={() => setView("kanban")} style={{ border: "none", borderRadius: 9999, padding: "7px 16px", cursor: "pointer", fontSize: 13, fontWeight: 600, background: view === "kanban" ? "#fff" : "transparent", color: view === "kanban" ? "var(--brand-primary)" : "var(--text-secondary)" }}>Kanban</button>
             <button onClick={() => setView("list")} style={{ border: "none", borderRadius: 9999, padding: "7px 16px", cursor: "pointer", fontSize: 13, fontWeight: 600, background: view === "list" ? "#fff" : "transparent", color: view === "list" ? "var(--brand-primary)" : "var(--text-secondary)" }}>List</button>
             {isOwnerDept && (
