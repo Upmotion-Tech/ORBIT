@@ -357,6 +357,23 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     [access.dashboard, access.crm, access.customers, access.dev, access.finance, access.hr, persona]
   );
 
+  // Sidebar items navigate via router.push() on click rather than a real
+  // <Link>, so without this, Next.js only starts fetching a route's code
+  // *after* the click — the first visit to any given screen in a session
+  // pays that fetch/compile cost as visible lag. Prefetching every
+  // currently-visible item up front (same mechanism a <Link> uses under the
+  // hood) means that cost is already paid by the time the click happens.
+  useEffect(() => {
+    const allItems = [
+      ...sections.flatMap((s) => (s.show ? s.items : [])),
+      ...(showManagerSection ? managerItems : []),
+      ...meItems,
+      ...(access.permissions ? adminItems : []),
+    ];
+    allItems.forEach((item: NavItem) => router.prefetch(screenIdToPath(item.id)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sections, showManagerSection, access.permissions]);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
