@@ -19,6 +19,7 @@ import {
   financeStatsApi,
   expenseCategoriesApi,
   projectsApi,
+  leadsApi,
   moneyC,
   moneyPKR,
   numVal,
@@ -26,6 +27,7 @@ import {
   todayISO,
   MONTH_NAMES,
   DEPARTMENT_OPTIONS,
+  normalizeSearchText,
 } from "@/lib/orbit-client";
 import { Button, Input, Select, Badge, Icon, Modal } from "@/design-system/healer-bundle";
 import { useClosingTransition } from "@/lib/use-closing-transition";
@@ -49,6 +51,7 @@ type SalarySlip = {
 type Milestone = { id: string; project_id: string; project_name?: string; name: string; amount: number; currency: string; expected_date: string; status: string };
 type Project = { id: string; name: string; client: string };
 type Category = { id: string; name: string };
+type Lead = { id: string; name: string; stage: string };
 
 const INVOICE_STATUSES = ["Draft", "New", "Sent", "Overdue", "Paid", "Unpaid"];
 const EXPENSE_STATUSES = ["Pending", "Approved", "Rejected"];
@@ -72,6 +75,7 @@ export default function FinancePage() {
   const [slips, setSlips] = useState<SalarySlip[]>([]);
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [leads, setLeads] = useState<Lead[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [payrollMonth, setPayrollMonth] = useState(todayISO().slice(0, 7));
 
@@ -90,7 +94,12 @@ export default function FinancePage() {
   };
   useEffect(loadFinance, [payrollMonth]);
   useEffect(() => {
+    // Both fetched with no status/stage filter — the line item picker below
+    // needs to offer every project and every lead regardless of status
+    // (Completed/archived projects, Won/Lost leads all included), not just
+    // whatever a given screen's own default view happens to show.
     projectsApi.list().then((p: Project[]) => setProjects(p)).catch(() => {});
+    leadsApi.list().then((l: Lead[]) => setLeads(l)).catch(() => {});
     expenseCategoriesApi.list().then((c: Category[]) => setCategories(c)).catch(() => {});
   }, []);
 
@@ -100,6 +109,15 @@ export default function FinancePage() {
   const [invCurrency, setInvCurrency] = useState("");
   const [invProject, setInvProject] = useState("");
   const [invDrawerId, setInvDrawerId] = useState<string | null>(null);
+
+  // ---- Line item project/lead picker (searchable, every status/stage) ----
+  const [linePickerOpen, setLinePickerOpen] = useState<number | null>(null);
+  const [linePickerQuery, setLinePickerQuery] = useState("");
+  type LinkableItem = { type: "project" | "lead"; id: string; label: string; sublabel: string };
+  const linkableItems: LinkableItem[] = [
+    ...projects.filter((p) => p.client !== "Internal").map((p) => ({ type: "project" as const, id: p.id, label: p.name, sublabel: p.client })),
+    ...leads.map((l) => ({ type: "lead" as const, id: l.id, label: l.name, sublabel: l.stage })),
+  ];
   const [invForm, setInvForm] = useState({
     invoiceNumber: "", client: "", currency: "USD", invoiceType: "Fixed", issueDate: todayISO(), due: "", status: "Draft",
     paidDate: "", notes: "", lineItems: [blankLineItem()], bankAccountName: "", bankAccountNumber: "", bankIban: "", bankName: "",
@@ -231,6 +249,25 @@ export default function FinancePage() {
       autoSaveInvoiceField("lineItems", updated);
       return updated;
     });
+  };
+  const setLineItemLink = (index: number, item: LinkableItem | null) => {
+    setInvForm((f) => {
+      const items = f.lineItems.slice();
+      const current = items[index];
+      // Only a real Project has a project_id worth persisting (it's a real
+      // FK on the invoice — see invoice_service.py's _apply_line_items,
+      // which auto-derives Invoice.project_id from the first line item that
+      // has one). A Lead isn't a project, so picking one just fills in the
+      // description text the same way — no fake/invalid project link.
+      items[index] = item
+        ? { ...current, projectId: item.type === "project" ? item.id : "", description: item.label }
+        : { ...current, projectId: "" };
+      const updated = { ...f, lineItems: items };
+      autoSaveInvoiceField("lineItems", updated);
+      return updated;
+    });
+    setLinePickerOpen(null);
+    setLinePickerQuery("");
   };
   const addInvoiceLineItem = () => setInvForm((f) => ({ ...f, lineItems: [...f.lineItems, blankLineItem()] }));
   const removeInvoiceLineItem = (index: number) => {
@@ -751,10 +788,34 @@ export default function FinancePage() {
                   {invForm.lineItems.map((li, idx) => (
                     <div key={idx} style={{ border: "1px solid var(--border-subtle)", borderRadius: 8, padding: 12, marginBottom: 10 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                        <select value={li.projectId} disabled={!isFinanceEditor} onChange={(e) => setInvoiceLineItemField(idx, "projectId", e.target.value)} style={{ flex: 1, marginRight: 8, fontFamily: "var(--font-sans)", fontSize: 12.5, padding: "6px 8px", borderRadius: 6, border: "1px solid var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-primary)" }}>
-                          <option value="">No linked project</option>
-                          {projects.filter((p) => p.client !== "Internal").map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                        </select>
+                        <div style={{ position: "relative", flex: 1, marginRight: 8 }}>
+                          <input
+                            type="text"
+                            placeholder="Search projects & leads…"
+                            disabled={!isFinanceEditor}
+                            value={linePickerOpen === idx ? linePickerQuery : (li.projectId ? (projects.find((p) => p.id === li.projectId)?.name || "") : "")}
+                            onFocus={() => { setLinePickerOpen(idx); setLinePickerQuery(""); }}
+                            onChange={(e) => setLinePickerQuery(e.target.value)}
+                            onBlur={() => setTimeout(() => setLinePickerOpen((cur) => (cur === idx ? null : cur)), 150)}
+                            style={{ width: "100%", boxSizing: "border-box", fontFamily: "var(--font-sans)", fontSize: 12.5, padding: "6px 8px", borderRadius: 6, border: "1px solid var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-primary)" }}
+                          />
+                          {linePickerOpen === idx && (
+                            <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 20, maxHeight: 220, overflowY: "auto", background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 8, boxShadow: "var(--shadow-popover)", marginTop: 4 }}>
+                              <div onMouseDown={(e) => { e.preventDefault(); setLineItemLink(idx, null); }} style={{ padding: "8px 10px", fontSize: 12, color: "var(--text-muted)", cursor: "pointer", borderBottom: "1px solid var(--border-subtle)" }}>No linked project</div>
+                              {(() => {
+                                const q = normalizeSearchText(linePickerQuery);
+                                const matches = linkableItems.filter((it) => !q || normalizeSearchText(it.label).includes(q)).slice(0, 30);
+                                if (!matches.length) return <div style={{ padding: "8px 10px", fontSize: 12.5, color: "var(--text-muted)" }}>No matches</div>;
+                                return matches.map((it) => (
+                                  <div key={it.type + it.id} onMouseDown={(e) => { e.preventDefault(); setLineItemLink(idx, it); }} style={{ padding: "8px 10px", fontSize: 12.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                                    <span style={{ color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.label}</span>
+                                    <span style={{ fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-muted)", flexShrink: 0 }}>{it.type === "project" ? "Project" : "Lead · " + it.sublabel}</span>
+                                  </div>
+                                ));
+                              })()}
+                            </div>
+                          )}
+                        </div>
                         {invForm.lineItems.length > 1 && isFinanceEditor && <a href="#" onClick={(e) => { e.preventDefault(); removeInvoiceLineItem(idx); }} style={{ fontSize: 12, fontWeight: 600, color: "var(--status-danger-text)", textDecoration: "none", whiteSpace: "nowrap" }}>Remove</a>}
                       </div>
                       {!li.projectId && <input type="text" placeholder="Description" value={li.description} disabled={!isFinanceEditor} onChange={(e) => setInvoiceLineItemField(idx, "description", e.target.value)} style={{ width: "100%", boxSizing: "border-box", marginBottom: 8, fontFamily: "var(--font-sans)", fontSize: 13, padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border-subtle)", background: "var(--bg-page)", color: "var(--text-primary)" }} />}

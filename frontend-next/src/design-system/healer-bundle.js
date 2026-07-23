@@ -1232,6 +1232,8 @@ function Select({
     style: {
       width: '100%',
       appearance: 'none',
+      WebkitAppearance: 'none',
+      MozAppearance: 'none',
       fontFamily: 'var(--font-sans)',
       fontSize: 'var(--text-body-size)',
       color: 'var(--text-primary)',

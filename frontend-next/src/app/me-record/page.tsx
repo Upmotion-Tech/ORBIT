@@ -16,6 +16,7 @@ import { payrollApi, todayISO, moneyPKR, fromISO, MONTH_NAMES } from "@/lib/orbi
 import { useAuth } from "@/lib/auth-context";
 import { useAppData } from "@/lib/app-data-context";
 import { useToast } from "@/lib/toast-context";
+import { Icon } from "@/design-system/healer-bundle";
 
 type SalarySlip = {
   employee_id: string;
@@ -114,8 +115,9 @@ export default function MeRecordPage() {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 14, padding: "10px 0" }}>
             <span style={{ color: "var(--text-secondary)" }}>Contract</span>
             {contractUrl ? (
-              <a href="#" onClick={(e) => { e.preventDefault(); openContract(); }} style={{ fontSize: 14, fontWeight: 600, color: "var(--text-link)", textDecoration: "none" }}>
-                📄 Open {contractName}
+              <a href="#" onClick={(e) => { e.preventDefault(); openContract(); }} style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 600, color: "var(--text-link)", textDecoration: "none" }}>
+                <Icon name="file-text" size={16} color="var(--text-link)" />
+                Open {contractName}
               </a>
             ) : (
               <span style={{ color: "var(--text-primary)", fontWeight: 500 }}>—</span>

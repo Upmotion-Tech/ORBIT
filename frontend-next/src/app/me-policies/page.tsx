@@ -12,7 +12,7 @@ import remarkGfm from "remark-gfm";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast-context";
 import { policiesApi, getEmployeeName, PKT_TZ } from "@/lib/orbit-client";
-import { Button, Input, Modal } from "@/design-system/healer-bundle";
+import { Button, Input, Modal, Icon } from "@/design-system/healer-bundle";
 
 // Compact element overrides so the assistant's markdown (bold, numbered/
 // bulleted lists, the occasional table) fits a narrow chat bubble instead of
@@ -285,7 +285,8 @@ export default function MePoliciesPage() {
             )}
             {viewPolicy.file_url && (
               <a href="#" onClick={(e) => { e.preventDefault(); openPolicyFile(viewPolicy); }} style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 600, color: "var(--text-link)", textDecoration: "none" }}>
-                📄 Open {viewPolicy.file_name || "PDF document"}
+                <Icon name="file-text" size={16} color="var(--text-link)" />
+                Open {viewPolicy.file_name || "PDF document"}
               </a>
             )}
             {!viewPolicy.content && !viewPolicy.file_url && (
