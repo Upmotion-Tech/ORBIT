@@ -135,6 +135,7 @@ class EmployeeResponse(BaseModel):
     # vs today (PKT), never trust a client-sent value for this.
     probation_status: Optional[str] = None
     contract_file_url: Optional[str] = None
+    contract_file_name: Optional[str] = None
     birthdate: Optional[date] = None
     phone: Optional[str] = None
     emergency_contact: Optional[str] = None

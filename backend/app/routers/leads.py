@@ -1,7 +1,8 @@
+import mimetypes
 from datetime import date
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile, File, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -12,7 +13,6 @@ from app.schemas.lead import LeadCreate, LeadUpdate, LeadStageUpdate, LeadRespon
 from app.schemas.lead_activity import ActivityCreate, ActivityResponse, ActivityListResponse
 from app.schemas.common import ErrorResponse, WarningResponse
 from app.services.lead_service import LeadService
-from app.services.storage_service import storage_service
 from app.repositories.project_repository import ProjectRepository
 from app.repositories.notification_repository import NotificationRepository
 from app.repositories.audit_log_repository import AuditLogRepository
@@ -153,9 +153,8 @@ async def upload_scope_document(
     service: LeadService = Depends(get_lead_service),
     current_user: dict = Depends(get_crm_editor_user),
 ):
-    filename = await storage_service.save(file, prefix="scope_")
-    url = storage_service.get_url(filename)
-    lead, error = await service.upload_document(lead_id, "scope_document", url, user=current_user.get("user_id", "anonymous"), persona_roles=current_user.get("roles"))
+    content = await file.read()
+    lead, error = await service.upload_document(lead_id, "scope_document", content, file.filename or "scope-document", user=current_user.get("user_id", "anonymous"), persona_roles=current_user.get("roles"))
     if error:
         raise HTTPException(status_code=404, detail=error)
     return WarningResponse(success=True, data=lead.model_dump() if lead else None)
@@ -168,12 +167,40 @@ async def upload_signed_contract(
     service: LeadService = Depends(get_lead_service),
     current_user: dict = Depends(get_crm_editor_user),
 ):
-    filename = await storage_service.save(file, prefix="contract_")
-    url = storage_service.get_url(filename)
-    lead, error = await service.upload_document(lead_id, "signed_contract", url, user=current_user.get("user_id", "anonymous"), persona_roles=current_user.get("roles"))
+    content = await file.read()
+    lead, error = await service.upload_document(lead_id, "signed_contract", content, file.filename or "signed-contract", user=current_user.get("user_id", "anonymous"), persona_roles=current_user.get("roles"))
     if error:
         raise HTTPException(status_code=404, detail=error)
     return WarningResponse(success=True, data=lead.model_dump() if lead else None)
+
+
+def _guess_media_type(filename: str) -> str:
+    ctype, _ = mimetypes.guess_type(filename)
+    return ctype or "application/octet-stream"
+
+
+@router.get("/{lead_id}/scope-document")
+async def get_scope_document(
+    lead_id: str,
+    service: LeadService = Depends(get_lead_service),
+    current_user: dict = Depends(get_current_user),
+):
+    data, filename, error = await service.get_document(lead_id, "scope_document")
+    if error or not data:
+        raise HTTPException(status_code=404, detail=error or "No scope document attached to this lead.")
+    return Response(content=data, media_type=_guess_media_type(filename or ""), headers={"Content-Disposition": f'inline; filename="{filename}"'})
+
+
+@router.get("/{lead_id}/signed-contract")
+async def get_signed_contract(
+    lead_id: str,
+    service: LeadService = Depends(get_lead_service),
+    current_user: dict = Depends(get_current_user),
+):
+    data, filename, error = await service.get_document(lead_id, "signed_contract")
+    if error or not data:
+        raise HTTPException(status_code=404, detail=error or "No signed contract attached to this lead.")
+    return Response(content=data, media_type=_guess_media_type(filename or ""), headers={"Content-Disposition": f'inline; filename="{filename}"'})
 
 
 @router.delete("/{lead_id}/scope-document", response_model=WarningResponse)

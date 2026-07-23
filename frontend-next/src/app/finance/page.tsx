@@ -35,6 +35,7 @@ type Invoice = {
   invoice_type?: string; status: string; issue_date?: string | null; due_date?: string | null; paid_date?: string | null;
   notes?: string; line_items?: { project_id?: string | null; description: string; qty: number; unit_price: number }[];
   bank_account_name?: string; bank_account_number?: string; bank_iban?: string; bank_name?: string;
+  registration_number?: string; ntn?: string;
 };
 type Expense = {
   id: string; category: string; amount: number; currency: string; expense_type?: string; department: string;
@@ -102,6 +103,7 @@ export default function FinancePage() {
   const [invForm, setInvForm] = useState({
     invoiceNumber: "", client: "", currency: "USD", invoiceType: "Fixed", issueDate: todayISO(), due: "", status: "Draft",
     paidDate: "", notes: "", lineItems: [blankLineItem()], bankAccountName: "", bankAccountNumber: "", bankIban: "", bankName: "",
+    registrationNumber: "", ntn: "",
   });
   const [invoiceSaving, setInvoiceSaving] = useState(false);
 
@@ -133,7 +135,7 @@ export default function FinancePage() {
       setInvForm({
         invoiceNumber: "UPM-CZ-" + todayISO().slice(0, 4) + "-", client: "", currency: "USD", invoiceType: "Fixed",
         issueDate: todayISO(), due: "", status: "Draft", paidDate: "", notes: "", lineItems: [blankLineItem()],
-        bankAccountName: "", bankAccountNumber: "", bankIban: "", bankName: "",
+        bankAccountName: "", bankAccountNumber: "", bankIban: "", bankName: "", registrationNumber: "", ntn: "",
       });
     } else {
       const inv = invoices.find((i) => i.id === id);
@@ -145,6 +147,7 @@ export default function FinancePage() {
             projectId: li.project_id || "", description: li.description || "", qty: String(li.qty || 1), unitPrice: String(li.unit_price ?? ""),
           })),
           bankAccountName: inv.bank_account_name || "", bankAccountNumber: inv.bank_account_number || "", bankIban: inv.bank_iban || "", bankName: inv.bank_name || "",
+          registrationNumber: inv.registration_number || "", ntn: inv.ntn || "",
         });
       }
     }
@@ -181,6 +184,8 @@ export default function FinancePage() {
       case "bankAccountNumber": return { bank_account_number: form.bankAccountNumber || null };
       case "bankIban": return { bank_iban: form.bankIban || null };
       case "bankName": return { bank_name: form.bankName || null };
+      case "registrationNumber": return { registration_number: form.registrationNumber || null };
+      case "ntn": return { ntn: form.ntn || null };
       case "lineItems": {
         const items = form.lineItems.filter((li) => li.description && numVal(li.unitPrice) > 0).map((li) => ({ project_id: li.projectId || null, description: li.description, qty: numVal(li.qty) || 1, unit_price: numVal(li.unitPrice) }));
         return items.length ? { line_items: items } : null;
@@ -254,6 +259,7 @@ export default function FinancePage() {
         issue_date: invForm.issueDate, due_date: invForm.due, status: invForm.status,
         paid_date: invForm.status === "Paid" && invForm.paidDate ? invForm.paidDate : null, notes: invForm.notes || "", line_items: lineItems,
         bank_account_name: invForm.bankAccountName || null, bank_account_number: invForm.bankAccountNumber || null, bank_iban: invForm.bankIban || null, bank_name: invForm.bankName || null,
+        registration_number: invForm.registrationNumber || null, ntn: invForm.ntn || null,
       })
       .then(
         () => {
@@ -771,6 +777,13 @@ export default function FinancePage() {
                   </div>
                 </div>
                 <Input label="Notes (optional)" value={invForm.notes} disabled={!isFinanceEditor} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setInvoiceField("notes", e.target.value)} />
+                <div style={{ marginTop: 6 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Company details (optional)</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    <Input label="Registration number" value={invForm.registrationNumber} disabled={!isFinanceEditor} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setInvoiceField("registrationNumber", e.target.value)} />
+                    <Input label="NTN" value={invForm.ntn} disabled={!isFinanceEditor} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setInvoiceField("ntn", e.target.value)} />
+                  </div>
+                </div>
                 <div style={{ marginTop: 6 }}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Bank details (optional)</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>

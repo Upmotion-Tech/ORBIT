@@ -295,7 +295,7 @@ class ProjectService:
             return None
 
         lead = await self.lead_repo.find_by_id(lead_id)
-        if not lead or lead.stage != "Won" or not lead.scope_document_url or not lead.signed_contract_url:
+        if not lead or lead.stage != "Won" or not lead.scope_document_data or not lead.signed_contract_data:
             return None
 
         # Check if project already exists
@@ -339,13 +339,12 @@ class ProjectService:
         project = await self.project_repo.create(project_data)
 
         # Add scope document as first attachment
-        if lead.scope_document_url:
-            filename = lead.scope_document_url.rsplit("/", 1)[-1]
+        if lead.scope_document_data:
             await self.project_repo.add_attachment(
                 project_id=project.id,
-                filename=filename,
-                url=lead.scope_document_url,
-                size_bytes=0,  # size unknown during auto-migration
+                filename=lead.scope_document_filename or "scope-document.pdf",
+                file_data=lead.scope_document_data,
+                size_bytes=len(lead.scope_document_data),
                 uploaded_by="system",
             )
 

@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime, date
+from typing import Optional
 
-from sqlalchemy import String, Date, DateTime, Float, Boolean, Text, JSON, Index
+from sqlalchemy import String, Date, DateTime, Float, Boolean, Text, JSON, Index, LargeBinary
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -39,9 +40,12 @@ class Employee(Base):
     access_levels: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=lambda: ["employee"])
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="Active")
     probation_end: Mapped[date] = mapped_column(Date, nullable=True)
-    # Real file reference (storage_service URL), replacing what used to be a
-    # placeholder boolean flag with no upload feature ever built behind it.
-    contract_file_url: Mapped[str] = mapped_column(String(500), nullable=True)
+    # Stored directly in Postgres (Neon), not on local disk — Render's
+    # filesystem is ephemeral and wipes every uploaded file on redeploy (same
+    # fix already applied to Policy PDFs, Lead documents, and Project
+    # attachments — see policy_service.py for the original of this pattern).
+    contract_file_data: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
+    contract_file_name: Mapped[str] = mapped_column(String(255), nullable=True)
     birthdate: Mapped[date] = mapped_column(Date, nullable=True)
     # Personal contact numbers — always stored as "+92" + 10 digits (enforced
     # client-side; kept as a plain string here since it's a phone number, not

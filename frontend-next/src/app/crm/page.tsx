@@ -315,6 +315,25 @@ export default function CrmPage() {
     );
   };
 
+  const openLeadFile = async (url: string) => {
+    // Scope docs/signed contracts are now served from the DB behind an
+    // authenticated endpoint (Render's disk is ephemeral — see
+    // backend/app/services/policy_service.py for the same fix applied to
+    // policy PDFs first), so a plain <a href> with no auth header would just
+    // 401. Fetch with the token and open the bytes as a blob instead.
+    try {
+      const token = localStorage.getItem("orbit_token");
+      const res = await fetch(url, { headers: token ? { Authorization: "Bearer " + token } : {} });
+      if (!res.ok) throw new Error("Could not load the file.");
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      window.open(blobUrl, "_blank", "noopener,noreferrer");
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+    } catch (err) {
+      pushToast((err as Error).message || "Could not open the file.", "error");
+    }
+  };
+
   const askDeleteLead = (id: string) => setDeleteConfirmId(id);
   const confirmDeleteLead = () => {
     if (!deleteConfirmId) return;
@@ -743,7 +762,7 @@ export default function CrmPage() {
                       <div>
                         <div style={{ fontSize: 13.5, color: "var(--text-primary)", fontWeight: 500, marginBottom: 2 }}>{label}</div>
                         {has ? (
-                          <a href={url || "#"} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>
+                          <a href="#" onClick={(e) => { e.preventDefault(); if (url) openLeadFile(url); }} style={{ textDecoration: "none" }}>
                             <Badge tone="success">{"Attached: " + (name || (kind === "scope" ? "scope-document.pdf" : "signed-contract.pdf"))}</Badge>
                           </a>
                         ) : (

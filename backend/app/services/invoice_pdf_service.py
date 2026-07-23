@@ -5,10 +5,15 @@ production server as it does locally. This replaces the previous approach
 (filling app/templates/invoice_template.docx with python-docx, then
 converting to PDF via docx2pdf/Word COM automation), which only ever worked
 on a Windows machine with Microsoft Word installed and produced a crashed/
-corrupt download in production. Visual style follows the same brand
-palette already used by dashboard_export_service.py's PDF export (brand
-purple #4F46E5, light fills, thin gray rules) for consistency across the
-app's exports — it is not a pixel copy of the old Word template.
+corrupt download in production.
+
+Letterhead content (address, logo, approval signature/stamp) mirrors the
+original Invoice Template.docx field-for-field — extracted directly from
+that file's XML/embedded images, not guessed. An earlier version of this
+generator used ORBIT's own internal-tool tagline ("Operational Revenue &
+Business Intelligence") as if it were company letterhead text, and used a
+square icon-badge logo instead of the real wordmark embedded in the actual
+template — both fixed here.
 """
 import io
 import os
@@ -22,7 +27,12 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 
 from app.models.invoice import Invoice
 
-LOGO_PATH = os.path.join(os.path.dirname(__file__), "..", "assets", "upmotion_logo.png")
+ASSETS_DIR = os.path.join(os.path.dirname(__file__), "..", "assets")
+LOGO_PATH = os.path.join(ASSETS_DIR, "upmotion_logo.png")
+STAMP_PATH = os.path.join(ASSETS_DIR, "upmotion_stamp.png")
+
+COMPANY_ADDRESS = "29-C Main Gulberg, Lahore Pakistan"
+APPROVER_NAME = "Unas Zubair"
 
 CURRENCY_SYMBOL = {"USD": "$", "PKR": "₨"}
 CURRENCY_WORDS = {"USD": "US Dollars", "PKR": "Pakistani Rupees"}
@@ -100,16 +110,18 @@ def generate_invoice_pdf_bytes(invoice: Invoice) -> bytes:
 
     # ---- Letterhead ----
     if os.path.exists(LOGO_PATH):
-        logo = Image(LOGO_PATH, width=0.5 * inch, height=0.5 * inch)
-        header = Table(
-            [[logo, Paragraph("Upmotion Tech", company_style)]],
-            colWidths=[0.6 * inch, 5.8 * inch],
-        )
-        header.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("LEFTPADDING", (0, 0), (0, 0), 0)]))
-        story.append(header)
+        # Real wordmark logo (2.99:1 aspect ratio) — sized to keep that ratio
+        # rather than the old square-icon crop this used to show.
+        logo = Image(LOGO_PATH, width=1.6 * inch, height=1.6 / 2.9924 * inch)
+        story.append(logo)
     else:
         story.append(Paragraph("Upmotion Tech", company_style))
-    story.append(Paragraph("Operational Revenue &amp; Business Intelligence", tagline_style))
+    story.append(Spacer(1, 4))
+    story.append(Paragraph(COMPANY_ADDRESS, tagline_style))
+    if invoice.registration_number:
+        story.append(Paragraph(f"Registration Number: {invoice.registration_number}", tagline_style))
+    if invoice.ntn:
+        story.append(Paragraph(f"NTN: {invoice.ntn}", tagline_style))
     story.append(Spacer(1, 18))
 
     # ---- Issued To / Invoice No / Date ----
@@ -167,6 +179,21 @@ def generate_invoice_pdf_bytes(invoice: Invoice) -> bytes:
     if invoice.notes:
         story.append(Paragraph("Notes", section_style))
         story.append(Paragraph(invoice.notes, body_style))
+
+    # ---- Approval signature ----
+    story.append(Spacer(1, 16))
+    approval_text = [
+        Paragraph("Approved by:", label_style),
+        Paragraph(APPROVER_NAME, value_style),
+        Paragraph("Upmotion Tech", body_style),
+    ]
+    if os.path.exists(STAMP_PATH):
+        stamp = Image(STAMP_PATH, width=0.9 * inch, height=0.9 / 1.1818 * inch)
+        approval_row = Table([[approval_text, stamp]], colWidths=[4.4 * inch, 1.2 * inch])
+        approval_row.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
+        story.append(approval_row)
+    else:
+        story.extend(approval_text)
 
     # ---- Bank details ----
     if any([invoice.bank_account_name, invoice.bank_account_number, invoice.bank_iban, invoice.bank_name]):

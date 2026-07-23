@@ -15,6 +15,7 @@ import { useEffect, useState } from "react";
 import { payrollApi, todayISO, moneyPKR, fromISO, MONTH_NAMES } from "@/lib/orbit-client";
 import { useAuth } from "@/lib/auth-context";
 import { useAppData } from "@/lib/app-data-context";
+import { useToast } from "@/lib/toast-context";
 
 type SalarySlip = {
   employee_id: string;
@@ -50,6 +51,7 @@ const cardStyle: React.CSSProperties = { background: "var(--bg-surface)", border
 export default function MeRecordPage() {
   const { currentUser } = useAuth();
   const { employees } = useAppData();
+  const { pushToast } = useToast();
   const [slip, setSlip] = useState<SalarySlip | null>(null);
 
   useEffect(() => {
@@ -70,6 +72,27 @@ export default function MeRecordPage() {
   const emergencyRelation = emp?.emergency_contact_relation as string | undefined;
   const emergencyValue = emergencyContact ? (emergencyRelation ? `${emergencyContact} (${emergencyRelation})` : emergencyContact) : undefined;
 
+  const contractUrl = emp?.contract_file_url as string | undefined;
+  const contractName = (emp?.contract_file_name as string | undefined) || "contract";
+
+  const openContract = async () => {
+    if (!contractUrl) return;
+    // The contract is served from the DB behind an authenticated endpoint
+    // (Render's disk is ephemeral) — a plain <a href> with no auth header
+    // would just 401. Fetch with the token and open the bytes as a blob.
+    try {
+      const token = localStorage.getItem("orbit_token");
+      const res = await fetch(contractUrl, { headers: token ? { Authorization: "Bearer " + token } : {} });
+      if (!res.ok) throw new Error("Could not load your contract file.");
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      window.open(blobUrl, "_blank", "noopener,noreferrer");
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+    } catch (err) {
+      pushToast((err as Error).message || "Could not open your contract file.", "error");
+    }
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <h1 style={{ margin: 0, fontSize: 19, fontWeight: 700, color: "var(--text-primary)" }}>My Record</h1>
@@ -88,6 +111,16 @@ export default function MeRecordPage() {
           <Row label="Phone" value={emp?.phone as string} />
           <Row label="Email" value={emp?.email as string} />
           <Row label="Emergency contact" value={emergencyValue} />
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 14, padding: "10px 0" }}>
+            <span style={{ color: "var(--text-secondary)" }}>Contract</span>
+            {contractUrl ? (
+              <a href="#" onClick={(e) => { e.preventDefault(); openContract(); }} style={{ fontSize: 14, fontWeight: 600, color: "var(--text-link)", textDecoration: "none" }}>
+                📄 Open {contractName}
+              </a>
+            ) : (
+              <span style={{ color: "var(--text-primary)", fontWeight: 500 }}>—</span>
+            )}
+          </div>
         </div>
 
         <div style={cardStyle}>

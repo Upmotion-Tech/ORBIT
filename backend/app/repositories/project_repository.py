@@ -95,12 +95,12 @@ class ProjectRepository:
         await self.db.flush()
         return project
 
-    async def add_attachment(self, project_id: str, filename: str, url: str, size_bytes: int, uploaded_by: str) -> ProjectAttachment:
+    async def add_attachment(self, project_id: str, filename: str, file_data: bytes, size_bytes: int, uploaded_by: str) -> ProjectAttachment:
         attachment = ProjectAttachment(
             id=str(uuid.uuid4()),
             project_id=project_id,
             filename=filename,
-            url=url,
+            file_data=file_data,
             size_bytes=size_bytes,
             uploaded_by=uploaded_by,
         )

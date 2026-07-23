@@ -1,8 +1,9 @@
+import mimetypes
 import os
 from datetime import date
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Response, status, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -189,21 +190,17 @@ async def upload_attachment(
 
     existing = await service.project_repo.find_attachment_by_id_and_filename(project_id, file.filename)
 
-    # If it is a replacement, remove the old file
+    # If it is a replacement, remove the old row (its bytes live in the DB,
+    # nothing on disk to clean up)
     if existing:
-        await storage_service.delete(existing.filename)
         await service.project_repo.delete_attachment(existing)
-
-    # Save physical file
-    filename = await storage_service.save(file, prefix=f"proj_{project_id}_")
-    url = storage_service.get_url(filename)
 
     user_id = current_user.get("user_id") or persona
     user_name = current_user.get("name") or persona
     attachment = await service.project_repo.add_attachment(
         project_id=project_id,
         filename=file.filename,
-        url=url,
+        file_data=content,
         size_bytes=file_size,
         uploaded_by=user_name,
     )
@@ -234,11 +231,29 @@ async def upload_attachment(
         "message": "Attachment uploaded successfully.",
         "attachment": {
             "name": attachment.filename,
-            "url": attachment.url,
+            "url": f"/api/projects/{project_id}/attachments/{attachment.filename}/file",
             "size_bytes": attachment.size_bytes,
             "uploaded_by": attachment.uploaded_by,
         }
     }
+
+
+@router.get("/{project_id}/attachments/{filename}/file")
+async def get_attachment_file(
+    project_id: str,
+    filename: str,
+    current_user: dict = Depends(get_current_user),
+    service: ProjectService = Depends(get_project_service),
+):
+    attachment = await service.project_repo.find_attachment_by_id_and_filename(project_id, filename)
+    if not attachment or not attachment.file_data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attachment not found on this project.")
+    ctype, _ = mimetypes.guess_type(attachment.filename)
+    return Response(
+        content=attachment.file_data,
+        media_type=ctype or "application/octet-stream",
+        headers={"Content-Disposition": f'inline; filename="{attachment.filename}"'},
+    )
 
 
 @router.delete("/{project_id}/attachments/{filename}")
@@ -263,7 +278,6 @@ async def delete_attachment(
             detail="Attachment not found on this project.",
         )
 
-    await storage_service.delete(attachment.filename)
     await service.project_repo.delete_attachment(attachment)
     return {"success": True, "message": "Attachment deleted successfully."}
 
@@ -276,7 +290,7 @@ async def get_attachments(
     attachments = await service.project_repo.get_attachments(project_id)
     return [{
         "name": a.filename,
-        "url": a.url,
+        "url": f"/api/projects/{project_id}/attachments/{a.filename}/file",
         "size_bytes": a.size_bytes,
         "uploaded_by": a.uploaded_by,
     } for a in attachments]

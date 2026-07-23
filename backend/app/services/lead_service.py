@@ -8,7 +8,6 @@ from app.repositories.lead_repository import LeadRepository
 from app.repositories.activity_repository import ActivityRepository
 from app.schemas.lead import LeadResponse, LeadListResponse
 from app.schemas.lead_activity import ActivityResponse, ActivityListResponse
-from app.services.storage_service import storage_service
 
 
 VALID_STAGES = ["New", "Contacted", "Proposal", "Negotiation", "Won", "Lost"]
@@ -253,22 +252,24 @@ class LeadService:
             total_pages=1,
         )
 
-    async def upload_document(self, lead_id: str, doc_type: str, url: str, user: str = "anonymous", persona_roles: Optional[list] = None) -> tuple[Optional[LeadResponse], Optional[str]]:
+    async def upload_document(self, lead_id: str, doc_type: str, file_data: bytes, filename: str, user: str = "anonymous", persona_roles: Optional[list] = None) -> tuple[Optional[LeadResponse], Optional[str]]:
         lead = await self.lead_repo.find_by_id(lead_id)
         if not lead:
             return None, "Lead not found"
 
         update_data = {}
         if doc_type == "scope_document":
-            update_data["scope_document_url"] = url
+            update_data["scope_document_data"] = file_data
+            update_data["scope_document_filename"] = filename
         elif doc_type == "signed_contract":
-            update_data["signed_contract_url"] = url
+            update_data["signed_contract_data"] = file_data
+            update_data["signed_contract_filename"] = filename
         else:
             return None, f"Unknown document type: {doc_type}"
 
         lead = await self.lead_repo.update(lead, update_data)
 
-        if lead.scope_document_url and lead.signed_contract_url:
+        if lead.scope_document_data and lead.signed_contract_data:
             await self.lead_repo.update(lead, {"is_locked_revenue": True})
             lead.is_locked_revenue = True
 
@@ -278,28 +279,35 @@ class LeadService:
             "note": f"{doc_type.replace('_', ' ').title()} uploaded",
             "created_by": user,
         })
-        
+
         await self._check_auto_project(lead, user)
 
         return self._to_response(lead, persona_roles), None
+
+    async def get_document(self, lead_id: str, doc_type: str) -> tuple[Optional[bytes], Optional[str], Optional[str]]:
+        lead = await self.lead_repo.find_by_id(lead_id)
+        if not lead:
+            return None, None, "Lead not found"
+        if doc_type == "scope_document":
+            return lead.scope_document_data, lead.scope_document_filename, None
+        if doc_type == "signed_contract":
+            return lead.signed_contract_data, lead.signed_contract_filename, None
+        return None, None, f"Unknown document type: {doc_type}"
 
     async def remove_document(self, lead_id: str, doc_type: str, user: str = "anonymous", persona_roles: Optional[list] = None) -> tuple[Optional[LeadResponse], Optional[str]]:
         lead = await self.lead_repo.find_by_id(lead_id)
         if not lead:
             return None, "Lead not found"
 
-        url_field = {"scope_document": "scope_document_url", "signed_contract": "signed_contract_url"}.get(doc_type)
-        if not url_field:
+        data_field = {"scope_document": "scope_document_data", "signed_contract": "signed_contract_data"}.get(doc_type)
+        filename_field = {"scope_document": "scope_document_filename", "signed_contract": "signed_contract_filename"}.get(doc_type)
+        if not data_field:
             return None, f"Unknown document type: {doc_type}"
 
-        existing_url = getattr(lead, url_field)
-        if not existing_url:
+        if not getattr(lead, data_field):
             return None, f"{doc_type.replace('_', ' ').title()} is not attached"
 
-        filename = existing_url.rsplit("/", 1)[-1]
-        await storage_service.delete(filename)
-
-        lead = await self.lead_repo.update(lead, {url_field: None, "is_locked_revenue": False})
+        lead = await self.lead_repo.update(lead, {data_field: None, filename_field: None, "is_locked_revenue": False})
 
         await self.activity_repo.create({
             "lead_id": lead.id,
@@ -337,6 +345,11 @@ class LeadService:
         )
         resp = LeadResponse.model_validate(lead)
         resp.is_overdue_follow_up = is_overdue
+        # Computed, not stored — served out of the DB via a dedicated
+        # authenticated endpoint rather than a static disk path (see
+        # get_document above / the leads.py router).
+        resp.scope_document_url = f"/api/leads/{lead.id}/scope-document" if lead.scope_document_data else None
+        resp.signed_contract_url = f"/api/leads/{lead.id}/signed-contract" if lead.signed_contract_data else None
 
         # An employee holding the "crm" access level functions as Owner for
         # this module — full view, including deal value. Only someone with
@@ -348,7 +361,7 @@ class LeadService:
         return resp
 
     async def _check_auto_project(self, lead: Lead, user: str) -> None:
-        if self.project_repo and lead.stage == "Won" and lead.scope_document_url and lead.signed_contract_url:
+        if self.project_repo and lead.stage == "Won" and lead.scope_document_data and lead.signed_contract_data:
             from app.services.project_service import ProjectService
             project_service = ProjectService(self.project_repo, self.lead_repo, self.notification_repo)
             await project_service.check_and_create_project_from_lead(lead.id, user)

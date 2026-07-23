@@ -32,7 +32,8 @@ Orbit/
 │   │   ├── repositories/          # Raw SQLAlchemy async queries (Routers/Services never touch DB directly)
 │   │   ├── services/              # Core business logic, RBAC checks, validation, audit logging
 │   │   ├── routers/                # Thin FastAPI route handlers mapping HTTP verbs to service methods
-│   │   ├── storage/                # Physical storage directory for uploaded attachments
+│   │   ├── assets/                 # Static brand assets baked into generated PDFs (logo, approval stamp)
+│   │   ├── storage/                # Physical storage directory — legacy; see §6, uploads no longer go here
 │   │   └── templates/              # (legacy — see §3, invoice PDF no longer uses this)
 │   └── scripts/                   # DB seed & cleanup scripts
 └── frontend-next/                 # THE frontend — Next.js (App Router) + TypeScript
@@ -67,7 +68,12 @@ npm run dev
 - Three sub-features that existed in the original but were disabled there (User Management tab, Permissions matrix tab, Holiday Calendar panel) are likewise **excluded** here, matching that same UX decision — not omissions.
 - `frontend-next/src/lib/app-data-context.tsx` holds cross-page shared state, including `crmStagesList` — CRM pipeline stages have no backend table; they're in-memory only and reset on a full reload, by design (see `frontend-next/CLAUDE.md` for why this needed a shared context rather than local page state).
 - Kanban boards (CRM leads, Dev projects, Dev tasks) support real drag-and-drop between columns in addition to the inline status `<select>` — dropping a card just calls the exact same status-change function the dropdown already used, so every existing permission rule and validation gate (e.g. CRM's Won-stage attachment gate, sequential-stage guard) still applies.
-- Deep-linking: every lead/project/task/customer/employee card or "View" link is a real `<a href="#/type/id">` (see `deepLinkHref`/`parseDeepLinkHash`/`clearDeepLinkHash` in `orbit-client.js`) — this is what makes right-click/ctrl-click/middle-click "open in new tab" work, and it's also how the topbar Universal Search opens a result: navigate to the owning page with that hash, and a mount effect on that page reads the hash and opens the right drawer.
+- Deep-linking: every lead/project/task/customer/employee card or "View" link is a real `<a href="#/type/id">` (see `deepLinkHref`/`parseDeepLinkHash`/`clearDeepLinkHash` in `orbit-client.js`) — this is what makes right-click/ctrl-click/middle-click "open in new tab" work, and it's also how the topbar Universal Search opens a result: navigate to the owning page with that hash, and a mount effect on that page reads the hash and opens the right drawer. The same `#/type/id` hash also now supports `leave` and `wfh` types (not just `lead`/`project`/`task`/`employee`/`customer`).
+- **Access guard**: `Shell.tsx` redirects any user away from a screen their `access_levels` don't actually cover (`isScreenAllowed` + a `useEffect` calling `router.replace` to `deriveLandingFromAccess`'s result) — this was a real gap, not just cosmetic: the sidebar link being hidden was previously the *only* thing stopping a user from landing on/navigating to a screen (e.g. Dashboard) they had no business seeing, whether by bookmark, direct URL, or simply logging in at the bare root URL. Don't remove this guard without replacing it with something equivalent.
+- **Notifications** carry `related_type`/`related_id` (`task`, `project`, `lead`, `leave`, `wfh`) set server-side wherever they're created, so the frontend's `notificationHref` (`Shell.tsx`) can deep-link a click straight to the actual record instead of doing nothing. An hourly scheduled job (`_run_notification_cleanup` in `app/main.py`) deletes any notification older than 24h, read or not — notifications are a short-lived "what just happened" feed, not a permanent log (that's what the Audit Trail is for).
+- **Mark Attendance** is also a topbar quick action (`Shell.tsx`), not only a button on the My Attendance page — both call the same idempotent `POST /api/attendance/mark`.
+- **Responsive layout**: a first pass exists (sidebar auto-collapses/becomes an overlay on phone-sized viewports, topbar reflows) — this app was fixed-width/desktop-only before. Individual pages' own content (tables, Kanban boards, side-by-side cards) still isn't redesigned for mobile; it scrolls horizontally within its own section rather than reflowing.
+- **New-employee welcome email is currently disabled** (commented out, not deleted, in `employee_service.py`'s `create_employee`) per an explicit request — the temp password is still generated and returned in the response, it's just not emailed out right now. Uncomment the `email_service.send_welcome_email(...)` calls to resume sending it.
 
 ---
 
@@ -102,8 +108,20 @@ Access levels are stored as a list on the employee record (`access_levels` JSON/
 
 ---
 
-## 6. Database & Persistence Mechanics
+## 6. Company Policies & AI Assistant
 
+- **Model**: `Policy` (`app/models/policy.py`) — a policy is either typed `content` (text) or an uploaded PDF (`file_data`/`file_name`, stored as bytes — see §7's file-storage standard), never both required. `extracted_text` caches the PDF's text (via `pypdf`) at upload time so the assistant never has to re-parse the binary on every question.
+- **Access**: any authenticated employee can read policies and ask the assistant. Creating/editing/deleting a policy (or its file) is gated on **Owner department** specifically (`get_owner_department_user` in `app/core/dependencies.py`, checking `department == "Owner"`) — the same convention used elsewhere for HR/CRM/Dev/Setup Owner-only actions, not the `"owner"` access-level token.
+- **RAG assistant** (`POST /api/policies/ask`, `app/services/groq_service.py` + `policy_service.py`): deliberately **not** a vector-embedding pipeline — every question re-reads all current policies fresh from the DB and stuffs their content into the prompt, so anything an Owner just published or edited is immediately answerable with zero re-indexing step. Backed by Groq's OpenAI-compatible chat completions API (`GROQ_API` env var, model configurable via `GROQ_MODEL`, defaults to `llama-3.3-70b-versatile`). If `GROQ_API` is unset, the endpoint returns a clean "not configured" message rather than erroring.
+- **Frontend** (`frontend-next/src/app/me-policies/page.tsx`): Owner-only "Add Policy" (text or PDF), a table of published policies any employee can open, and a chat-style assistant box rendering the model's markdown response properly (`react-markdown` + `remark-gfm` — the raw response is real markdown, not plain text).
+
+---
+
+## 7. Database & Persistence Mechanics
+
+- **File uploads are stored as bytes in Postgres, never on local disk.** Render's filesystem is ephemeral — it's wiped on every redeploy, which silently 404'd every previously-uploaded file the first time the backend redeployed after upload. Every upload feature (Policy PDFs, Lead scope documents/signed contracts, Project attachments, Employee contracts) stores the raw bytes directly in a `..._data` `LargeBinary`/`BYTEA` column (plus a `..._name` column for the original filename) instead of a disk path, and is served back through a dedicated **authenticated** `GET` endpoint (e.g. `GET /api/policies/{id}/file`, `GET /api/leads/{id}/scope-document`, `GET /api/projects/{id}/attachments/{filename}/file`, `GET /api/employees/{id}/contract`) rather than a public static-file URL. Response schemas expose a computed `..._url` field (e.g. `resp.file_url = f"/api/policies/{id}/file" if policy.file_data else None`) built fresh on every response, not stored.
+  - **Frontend consequence**: because these are now authenticated endpoints, a plain `<a href={url} target="_blank">` doesn't work (the browser sends no `Authorization` header on a bare anchor navigation — it would just 401). Every "open/view file" link in the frontend instead does `fetch(url, { headers: { Authorization: 'Bearer ' + token } })`, converts the response to a Blob, and opens that via `URL.createObjectURL` + `window.open(...)`. See any of `me-policies`, `crm`, `dev`, `hr`, or `me-record`'s page.tsx for the exact pattern.
+  - The old `backend/app/storage/` directory and `storage_service.py` still exist and are still used for `ALLOWED_EXTENSIONS`/size-limit validation helpers, but no feature writes a new file there anymore — don't reintroduce disk-based storage for anything new.
 - **Environment Switching**: `DATABASE_URL` specifies the database. Unset → SQLite (`orbit.db`). Set → PostgreSQL (Neon).
 - **No Trailing Slashes on API Routes**: FastAPI routes must be registered without trailing slashes (e.g. `/api/audit`, `/api/projects`). Trailing slashes trigger HTTP 307 redirects across CORS boundaries which strip the `Authorization` header.
 - **Schema & Pydantic Schema Alignment**:
@@ -115,11 +133,11 @@ Access levels are stored as a list on the employee record (`access_levels` JSON/
     1. Setting nullable FK references to `NULL` (`Task.assignee_id`, `Task.created_by_id`, `Project.created_by_id`, `Customer.created_by_id`, `LeaveRequest.approved_by_id`).
     2. Deleting related records in `AttendanceRecord`, `WfhRequest`, `AuditLog`, `ProjectComment`, `LeaveRequest`, `SalarySlip`, `Expense`, and `Notification`.
     3. Deleting the `Employee` row cleanly without foreign key constraint errors.
-- **Invoice PDF generation is pure Python** (`app/services/invoice_pdf_service.py`, reportlab) — no Word, no LibreOffice, no external binary. It used to fill a Word template (`app/templates/invoice_template.docx`) and convert it via `docx2pdf` (Windows/MS-Word COM automation only), which crashed on Render's Linux servers; that whole approach is gone.
+- **Invoice PDF generation is pure Python** (`app/services/invoice_pdf_service.py`, reportlab) — no Word, no LibreOffice, no external binary. It used to fill a Word template (`app/templates/invoice_template.docx`) and convert it via `docx2pdf` (Windows/MS-Word COM automation only), which crashed on Render's Linux servers; that whole approach is gone. The generated letterhead (logo, company address, "Approved by" signature + partner stamp) is extracted directly from the original `Invoice Template.docx` and its embedded images (`app/assets/upmotion_logo.png`, `app/assets/upmotion_stamp.png`) — an earlier rewrite had drifted from that template (wrong logo asset, and had used ORBIT's own internal-tool tagline as if it were company letterhead text). `Invoice.registration_number`/`Invoice.ntn` are set per-invoice at creation time (Finance's invoice form), not fixed constants, and appear on the letterhead only when provided.
 
 ---
 
-## 7. Operational Checklist & Commands
+## 8. Operational Checklist & Commands
 
 ### Running Backend Locally
 ```bash

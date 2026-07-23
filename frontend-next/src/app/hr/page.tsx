@@ -49,7 +49,7 @@ type Employee = {
   id: string; name: string; role: string; department: string; manager?: string | null; start_date?: string | null;
   employment_type: string; probation_status?: string; probation_end?: string | null; email: string; salary?: number;
   birthdate?: string | null; phone?: string | null; emergency_contact?: string | null; emergency_contact_relation?: string | null;
-  contract_file_url?: string | null; access_levels?: string[]; status?: string;
+  contract_file_url?: string | null; contract_file_name?: string | null; access_levels?: string[]; status?: string;
 };
 type LeaveBalance = { casual_remaining: number; sick_remaining: number; annual_remaining: number };
 type Leave = {
@@ -331,6 +331,22 @@ export default function HrPage() {
       (err: Error) => pushToast(err.message || "Could not remove the contract file.", "error")
     );
   };
+  const openEmployeeContract = async (url: string) => {
+    // Contracts are served from the DB behind an authenticated endpoint
+    // (Render's disk is ephemeral) — a plain <a href> with no auth header
+    // would just 401/404. Fetch with the token and open the bytes as a blob.
+    try {
+      const token = localStorage.getItem("orbit_token");
+      const res = await fetch(url, { headers: token ? { Authorization: "Bearer " + token } : {} });
+      if (!res.ok) throw new Error("Could not load the contract file.");
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      window.open(blobUrl, "_blank", "noopener,noreferrer");
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+    } catch (err) {
+      pushToast((err as Error).message || "Could not open the contract file.", "error");
+    }
+  };
 
   const hrEmployeeRows = (employees as Employee[]).map((e) => ({
     id: e.id, name: e.name, role: e.role, dept: e.department, manager: e.manager || "—", start: e.start_date || "—",
@@ -355,7 +371,7 @@ export default function HrPage() {
         phoneDisplay: selEmpRaw.phone || "+92",
         emergencyContactDisplay: selEmpRaw.emergency_contact || "+92",
         hasContract: !!selEmpRaw.contract_file_url,
-        contractFileName: selEmpRaw.contract_file_url ? selEmpRaw.contract_file_url.split("/").pop() : null,
+        contractFileName: selEmpRaw.contract_file_url ? (selEmpRaw.contract_file_name || selEmpRaw.contract_file_url.split("/").pop()) : null,
         contractUploadLabel: selEmpRaw.contract_file_url ? "Replace" : "Upload",
       }
     : null;
@@ -906,7 +922,7 @@ export default function HrPage() {
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                       <div>
                         {selEmployee.hasContract ? (
-                          <a href={selEmployee.contract_file_url || "#"} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}><Badge tone="success">{"Attached: " + selEmployee.contractFileName}</Badge></a>
+                          <a href="#" onClick={(e) => { e.preventDefault(); if (selEmployee.contract_file_url) openEmployeeContract(selEmployee.contract_file_url); }} style={{ textDecoration: "none" }}><Badge tone="success">{"Attached: " + selEmployee.contractFileName}</Badge></a>
                         ) : (
                           <Badge tone="neutral">Not attached</Badge>
                         )}

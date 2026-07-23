@@ -24,6 +24,8 @@ class InvoiceCreate(BaseModel):
     bank_account_number: Optional[str] = None
     bank_iban: Optional[str] = None
     bank_name: Optional[str] = None
+    registration_number: Optional[str] = None
+    ntn: Optional[str] = None
 
     @field_validator("line_items")
     @classmethod
@@ -48,6 +50,8 @@ class InvoiceUpdate(BaseModel):
     bank_account_number: Optional[str] = None
     bank_iban: Optional[str] = None
     bank_name: Optional[str] = None
+    registration_number: Optional[str] = None
+    ntn: Optional[str] = None
 
     @field_validator("line_items")
     @classmethod
@@ -75,6 +79,8 @@ class InvoiceResponse(BaseModel):
     bank_account_number: Optional[str] = None
     bank_iban: Optional[str] = None
     bank_name: Optional[str] = None
+    registration_number: Optional[str] = None
+    ntn: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     created_by: Optional[str] = None

@@ -7,10 +7,31 @@
 // the DB on every question — see backend/app/services/policy_service.py).
 
 import { useEffect, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast-context";
 import { policiesApi, getEmployeeName, PKT_TZ } from "@/lib/orbit-client";
 import { Button, Input, Modal } from "@/design-system/healer-bundle";
+
+// Compact element overrides so the assistant's markdown (bold, numbered/
+// bulleted lists, the occasional table) fits a narrow chat bubble instead of
+// using react-markdown's default block spacing, which is sized for a full
+// document rather than a 13.5px chat message.
+const markdownComponents = {
+  p: ({ children }: { children?: React.ReactNode }) => <p style={{ margin: "0 0 8px" }}>{children}</p>,
+  ul: ({ children }: { children?: React.ReactNode }) => <ul style={{ margin: "0 0 8px", paddingLeft: 18 }}>{children}</ul>,
+  ol: ({ children }: { children?: React.ReactNode }) => <ol style={{ margin: "0 0 8px", paddingLeft: 18 }}>{children}</ol>,
+  li: ({ children }: { children?: React.ReactNode }) => <li style={{ marginBottom: 3 }}>{children}</li>,
+  strong: ({ children }: { children?: React.ReactNode }) => <strong style={{ fontWeight: 700 }}>{children}</strong>,
+  table: ({ children }: { children?: React.ReactNode }) => (
+    <div style={{ overflowX: "auto", marginBottom: 8 }}>
+      <table style={{ borderCollapse: "collapse", fontSize: 13 }}>{children}</table>
+    </div>
+  ),
+  th: ({ children }: { children?: React.ReactNode }) => <th style={{ border: "1px solid var(--border-subtle)", padding: "4px 8px", textAlign: "left" }}>{children}</th>,
+  td: ({ children }: { children?: React.ReactNode }) => <td style={{ border: "1px solid var(--border-subtle)", padding: "4px 8px" }}>{children}</td>,
+};
 
 type Policy = {
   id: string;
@@ -221,9 +242,12 @@ export default function MePoliciesPage() {
                 borderRadius: 12,
                 padding: "10px 14px",
                 fontSize: 13.5,
-                whiteSpace: "pre-wrap",
               }}>
-                {m.text}
+                {m.role === "assistant" ? (
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{m.text}</ReactMarkdown>
+                ) : (
+                  <div style={{ whiteSpace: "pre-wrap" }}>{m.text}</div>
+                )}
               </div>
             ))}
             {asking && (

@@ -10,13 +10,15 @@
 |---|---|
 | **CRM** | Sales leads, pipeline stages (New → Contacted → Proposal → Negotiation → Won/Lost) with drag-and-drop between stages, scope documents & signed contract attachments, duplicate lead detection, activity logging, lead comments, and Won/Lost leads archived to a separate Past Leads view. |
 | **Software Dev** | Projects (automatically created when CRM lead is marked `Won`) and Tasks/Subtasks, Kanban (drag-and-drop) & list views, team member assignment, time logging, multi-file attachments, threaded comments, and Completed projects archived to a Past Projects view 20 days after completion. |
-| **Finance** | Invoices (with real, dependency-free PDF generation), Expenses (with category & department budget tracking), Payroll / salary slips, Payment milestones, and financial stats overview. |
-| **HR** | Employee directory, leave requests & balances (approval now happens via the employee's manager, not HR), daily attendance marking (day-by-day history with Back/Next navigation), Work From Home (WFH) requests, hiring pipeline (job openings + candidates), and leave policy settings. |
+| **Finance** | Invoices (real PDF generation matching the company's actual letterhead — logo, address, registration/NTN, approval signature & stamp), Expenses (with category & department budget tracking), Payroll / salary slips, Payment milestones, and financial stats overview. |
+| **HR** | Employee directory, leave requests & balances (approval now happens via the employee's manager, not HR), daily attendance marking (day-by-day history with Back/Next navigation, plus a one-click topbar "Mark Attendance" action), Work From Home (WFH) requests, hiring pipeline (job openings + candidates), and leave policy settings. |
+| **Company Policies & AI Assistant** | Owner-published policies (typed text or PDF upload) any employee can read, plus a RAG-style AI assistant (Groq-backed) that answers policy questions grounded in whatever's currently published — no re-indexing step, it re-reads the DB fresh on every question. |
+| **My Record** | An employee's own full profile (manager, start date, birthdate, phone, emergency contact, etc.), latest salary slip breakdown, and their own contract file — all strictly read-only. |
 | **Dashboard & Reports** | Company-wide revenue/cash-position overview, delayed-project tracking, project profitability, resource utilization, expense category budgets, exportable to Excel/PDF. |
 | **Setup** | Exchange rates (USD/PKR), pipeline stages & lead sources, leave policy settings, audit trail, employee management & role configuration. |
 | **Universal Search** | Topbar search across leads, projects, tasks (including tags), customers, and people — click a result to jump straight to it. |
-| **Auth & Permissions** | Real JWT authentication, bcrypt password hashing, per-employee multi-select access levels (`owner`, `dashboard`, `crm`, `dev`, `finance`, `hr`, `permissions`, `customers`, `employee`), mandatory password change on initial login / admin reset (no forced re-login afterward), instant account deactivation, and dynamic role updates. |
-| **Notifications & Audit Trail** | Targeted notifications (e.g. a leave/WFH request notifies the employee's actual manager, not every Owner/HR person), and comprehensive real-time audit logging for sensitive actions across all modules. |
+| **Auth & Permissions** | Real JWT authentication, bcrypt password hashing, per-employee multi-select access levels (`owner`, `dashboard`, `crm`, `dev`, `finance`, `hr`, `permissions`, `customers`, `employee`), mandatory password change on initial login / admin reset (no forced re-login afterward), instant account deactivation, dynamic role updates, and a route-level access guard (not just a hidden sidebar link) so a user can never land on a screen their access levels don't cover. |
+| **Notifications & Audit Trail** | Targeted, deep-linking notifications (clicking one jumps straight to the actual task/project/lead/leave/WFH request; a leave/WFH request notifies the employee's actual manager, not every Owner/HR person), notifications auto-clear after 24h, and comprehensive real-time audit logging for sensitive actions across all modules. |
 
 ---
 
@@ -31,10 +33,12 @@
 | **Development Database** | SQLite (`sqlite+aiosqlite:///./orbit.db`, zero-config local fallback) |
 | **Auth / Security** | JWT (`python-jose`) + `bcrypt` password hashing (off the event loop via `asyncio.to_thread`) |
 | **Document Generation** | ReportLab — invoice PDFs and dashboard exports are both generated directly in Python, no external binary (Word, LibreOffice, etc.) required |
+| **AI Assistant** | Groq (OpenAI-compatible chat completions API) powers the Company Policies RAG assistant |
+| **File Storage** | Every upload (policy PDFs, lead documents, project attachments, employee contracts) is stored as bytes directly in Postgres, not local disk — Render's filesystem is ephemeral and wipes on redeploy |
 | **Timezone Standard** | Pakistan Standard Time (PKT, `Asia/Karachi`, fixed UTC+05:00, no DST) |
 | **Backend Hosting** | **Render** |
 | **Frontend Hosting** | **Vercel** |
-| **Frontend Architecture** | Next.js (App Router) + TypeScript — real routing, one route per screen |
+| **Frontend Architecture** | Next.js (App Router) + TypeScript — real routing, one route per screen, with a first responsive/mobile pass on the core layout |
 
 ---
 
@@ -53,7 +57,7 @@ Orbit/
 │   │   ├── repositories/   # DB query abstraction layer
 │   │   ├── services/       # Core business logic & permission checks
 │   │   ├── routers/        # Thin FastAPI HTTP route handlers
-│   │   └── storage/        # Local physical upload directory
+│   │   └── storage/        # Legacy local upload directory (uploads now live in Postgres, see below)
 │   └── scripts/            # Database seed scripts
 └── frontend-next/          # The frontend — Next.js (App Router) + TypeScript
 ```
@@ -90,6 +94,8 @@ npm run dev
 ## 🔒 Security & Access Control Highlights
 
 - **Dynamic Role Refresh**: User access levels (`access_levels`) are re-validated from the database on every authenticated API call, allowing permission updates to take effect instantly without forcing users to re-login.
+- **Route-Level Access Guard**: the frontend actively redirects a user away from any screen their access levels don't cover, rather than relying solely on the sidebar hiding a link to it.
 - **Dev Member Project & Task Isolation**: Engineers in the `Dev Member` department only see projects to which they are explicitly assigned (`team_ids`) and associated tasks.
+- **Authenticated File Access**: every uploaded file (contracts, policy PDFs, lead documents, project attachments) is served through an authenticated endpoint, not a public static URL — viewing one requires a valid session token.
 - **Safe Account Deletion**: Hard deletion of an employee account automatically unlinks/cleans up associated records across attendance, WFH requests, audit logs, comments, and tasks cleanly.
 - **PKT Time Standardization**: Timestamps across all endpoints and UI views use Pakistan Standard Time (`Asia/Karachi`, UTC+05:00) consistently.

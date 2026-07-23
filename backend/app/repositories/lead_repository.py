@@ -140,7 +140,7 @@ class LeadRepository:
         lead.stage = stage
         lead.updated_at = now_pkt()
         if stage == "Won":
-            lead.is_locked_revenue = bool(lead.scope_document_url and lead.signed_contract_url)
+            lead.is_locked_revenue = bool(lead.scope_document_data and lead.signed_contract_data)
         await self.db.flush()
         return lead
 

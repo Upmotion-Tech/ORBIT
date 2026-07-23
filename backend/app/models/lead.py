@@ -1,7 +1,8 @@
 import uuid
 from datetime import date, datetime
+from typing import Optional
 
-from sqlalchemy import String, Float, Date, DateTime, Boolean, Text, ForeignKey, Index
+from sqlalchemy import String, Float, Date, DateTime, Boolean, Text, ForeignKey, Index, LargeBinary
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -32,8 +33,13 @@ class Lead(Base):
     actual_closure_date: Mapped[date] = mapped_column(Date, nullable=True)
     follow_up_date: Mapped[date] = mapped_column(Date, nullable=True)
 
-    scope_document_url: Mapped[str] = mapped_column(String(500), nullable=True)
-    signed_contract_url: Mapped[str] = mapped_column(String(500), nullable=True)
+    # Stored directly in Postgres (Neon), not on local disk — Render's
+    # filesystem is ephemeral and wipes every uploaded file on redeploy (the
+    # same fix already applied to Policy PDFs; see policy_service.py).
+    scope_document_data: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
+    scope_document_filename: Mapped[str] = mapped_column(String(255), nullable=True)
+    signed_contract_data: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
+    signed_contract_filename: Mapped[str] = mapped_column(String(255), nullable=True)
 
     is_locked_revenue: Mapped[bool] = mapped_column(Boolean, default=False)
 

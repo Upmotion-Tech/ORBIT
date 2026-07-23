@@ -34,6 +34,11 @@ class Invoice(Base):
     bank_account_number: Mapped[str] = mapped_column(String(100), nullable=True)
     bank_iban: Mapped[str] = mapped_column(String(100), nullable=True)
     bank_name: Mapped[str] = mapped_column(String(255), nullable=True)
+    # Company registration/tax numbers — set per-invoice at creation time
+    # (not a fixed company-wide constant), shown on the letterhead of the
+    # generated PDF next to the address.
+    registration_number: Mapped[str] = mapped_column(String(100), nullable=True)
+    ntn: Mapped[str] = mapped_column(String(100), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_pkt)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_pkt, onupdate=now_pkt)

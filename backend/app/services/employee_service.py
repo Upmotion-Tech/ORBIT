@@ -255,7 +255,7 @@ class EmployeeService:
         return self._to_response(employee, persona)
 
     async def upload_contract(
-        self, employee_id: str, url: str, user="anonymous", persona=None,
+        self, employee_id: str, file_data: bytes, filename: str, user="anonymous", persona=None,
     ) -> EmployeeResponse:
         employee = await self.employee_repo.find_by_id(employee_id)
         if not employee:
@@ -265,18 +265,18 @@ class EmployeeService:
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only Owner, HR, or Finance can upload a contract file.",
             )
-        # Replacing an existing contract — remove the old physical file so
-        # storage doesn't accumulate orphaned uploads.
-        if employee.contract_file_url:
-            from app.services.storage_service import storage_service
-            old_filename = employee.contract_file_url.rsplit("/", 1)[-1]
-            await storage_service.delete(old_filename)
-
         employee = await self.employee_repo.update(employee, {
-            "contract_file_url": url, "updated_by": user, "updated_at": now_pkt(),
+            "contract_file_data": file_data, "contract_file_name": filename,
+            "updated_by": user, "updated_at": now_pkt(),
         })
         await self._audit(user, "Contract Uploaded", employee.name)
         return self._to_response(employee, persona)
+
+    async def get_contract(self, employee_id: str) -> tuple[Optional[bytes], Optional[str]]:
+        employee = await self.employee_repo.find_by_id(employee_id)
+        if not employee or not employee.contract_file_data:
+            return None, None
+        return employee.contract_file_data, employee.contract_file_name
 
     async def remove_contract(
         self, employee_id: str, user="anonymous", persona=None,
@@ -289,15 +289,11 @@ class EmployeeService:
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only Owner, HR, or Finance can remove a contract file.",
             )
-        if not employee.contract_file_url:
+        if not employee.contract_file_data:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No contract file attached.")
 
-        from app.services.storage_service import storage_service
-        filename = employee.contract_file_url.rsplit("/", 1)[-1]
-        await storage_service.delete(filename)
-
         employee = await self.employee_repo.update(employee, {
-            "contract_file_url": None, "updated_by": user, "updated_at": now_pkt(),
+            "contract_file_data": None, "contract_file_name": None, "updated_by": user, "updated_at": now_pkt(),
         })
         await self._audit(user, "Contract Removed", employee.name)
         return self._to_response(employee, persona)
@@ -400,4 +396,7 @@ class EmployeeService:
             resp.salary = None
         if resp.probation_end:
             resp.probation_status = "In Probation" if now_pkt().date() < resp.probation_end else "Cleared"
+        # Computed, not stored — served out of the DB via a dedicated
+        # authenticated endpoint rather than a static disk path.
+        resp.contract_file_url = f"/api/employees/{employee.id}/contract" if employee.contract_file_data else None
         return resp

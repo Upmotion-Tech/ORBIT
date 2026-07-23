@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime
+from typing import Optional
 
-from sqlalchemy import String, DateTime, Integer, Index, ForeignKey
+from sqlalchemy import String, DateTime, Integer, Index, ForeignKey, LargeBinary
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -19,7 +20,10 @@ class ProjectAttachment(Base):
 
     project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), nullable=False)
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
-    url: Mapped[str] = mapped_column(String(500), nullable=False)
+    # Stored directly in Postgres (Neon), not on local disk — Render's
+    # filesystem is ephemeral and wipes every uploaded file on redeploy (the
+    # same fix already applied to Policy PDFs and Lead documents).
+    file_data: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     uploaded_by: Mapped[str] = mapped_column(String(255), nullable=True)
 

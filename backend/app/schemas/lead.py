@@ -77,6 +77,8 @@ class LeadResponse(BaseModel):
 
     scope_document_url: Optional[str] = None
     signed_contract_url: Optional[str] = None
+    scope_document_filename: Optional[str] = None
+    signed_contract_filename: Optional[str] = None
     is_locked_revenue: bool = False
 
     created_at: Optional[datetime] = None

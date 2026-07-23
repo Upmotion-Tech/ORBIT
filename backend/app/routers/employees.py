@@ -1,11 +1,13 @@
+import mimetypes
 import os
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.dependencies import get_persona_roles, get_current_user, get_owner_user
+from app.core.permissions import has_role
 from app.repositories.employee_repository import EmployeeRepository
 from app.repositories.notification_repository import NotificationRepository
 from app.repositories.audit_log_repository import AuditLogRepository
@@ -108,7 +110,6 @@ async def upload_employee_contract(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail="File size exceeds maximum limit of 10MB.",
         )
-    await file.seek(0)
 
     ext = os.path.splitext(file.filename or ".bin")[1].lower()
     if ext not in storage_service.ALLOWED_EXTENSIONS:
@@ -117,12 +118,35 @@ async def upload_employee_contract(
             detail=f"Allowed file types: {', '.join(storage_service.ALLOWED_EXTENSIONS)}",
         )
 
-    filename = await storage_service.save(file, prefix=f"contract_{employee_id}_")
-    url = storage_service.get_url(filename)
     return await service.upload_contract(
-        employee_id, url,
+        employee_id, content, file.filename or "contract",
         user=current_user.get("user_id", "anonymous"),
         persona=persona,
+    )
+
+
+@router.get("/{employee_id}/contract")
+async def get_employee_contract(
+    employee_id: str,
+    current_user: dict = Depends(get_current_user),
+    persona: list = Depends(get_persona_roles),
+    service: EmployeeService = Depends(get_employee_service),
+):
+    # Owner/HR/Finance can view anyone's contract (same gate as upload/
+    # remove); an employee can always view their own — that's the whole
+    # point of surfacing this on My Record.
+    is_self = current_user.get("user_id") == employee_id
+    if not is_self and not has_role(persona, "owner", "hr", "finance"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have permission to view this contract.")
+
+    data, filename = await service.get_contract(employee_id)
+    if not data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No contract file attached to this employee.")
+    ctype, _ = mimetypes.guess_type(filename or "")
+    return Response(
+        content=data,
+        media_type=ctype or "application/octet-stream",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
     )
 
 

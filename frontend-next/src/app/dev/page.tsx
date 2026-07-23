@@ -339,6 +339,23 @@ export default function DevPage() {
     );
   };
 
+  const openAttachment = async (url: string) => {
+    // Attachments are served from the DB behind an authenticated endpoint
+    // (Render's disk is ephemeral) — a plain <a href> with no auth header
+    // would just 401. Fetch with the token and open the bytes as a blob.
+    try {
+      const token = localStorage.getItem("orbit_token");
+      const res = await fetch(url, { headers: token ? { Authorization: "Bearer " + token } : {} });
+      if (!res.ok) throw new Error("Could not load the file.");
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      window.open(blobUrl, "_blank", "noopener,noreferrer");
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+    } catch (err) {
+      pushToast((err as Error).message || "Could not open the file.", "error");
+    }
+  };
+
   const addProjectComment = (id: string) => {
     const text = projCommentDraft.trim();
     if (!text) return;
@@ -944,7 +961,7 @@ export default function DevPage() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>
                   {(selProject.attachments || []).map((att, i) => (
                     <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 10px", border: "1px solid var(--border-subtle)", borderRadius: 8 }}>
-                      <a href={att.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: "var(--text-link)", textDecoration: "none" }}>{att.filename || att.name}</a>
+                      <a href="#" onClick={(e) => { e.preventDefault(); openAttachment(att.url); }} style={{ fontSize: 13, color: "var(--text-link)", textDecoration: "none" }}>{att.filename || att.name}</a>
                       {showProjectFinance && <a href="#" onClick={(e) => { e.preventDefault(); removeProjectAttachment(selProject.id, att.filename || att.name || ""); }} style={{ fontSize: 12.5, fontWeight: 500, color: "var(--status-danger-text)", textDecoration: "none" }}>Remove</a>}
                     </div>
                   ))}
