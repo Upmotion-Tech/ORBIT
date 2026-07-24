@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { MotionConfig } from "framer-motion";
@@ -16,6 +16,14 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "ORBIT",
   description: "Operational Revenue & Business Intelligence Tool",
+};
+
+// Tints the mobile browser chrome (Chrome's address bar, the status bar
+// once installed as an app) to match the brand instead of the browser's
+// own default — separate from `metadata` since Next.js moved viewport/
+// theme-color out of the metadata export.
+export const viewport: Viewport = {
+  themeColor: "#4F46E5",
 };
 
 export default function RootLayout({

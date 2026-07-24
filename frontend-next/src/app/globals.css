@@ -1763,6 +1763,25 @@ sc-raw-thead sc-raw-tr {
    view) — zero layout impact, purely how scrolling itself feels. ─── */
 html { scroll-behavior: smooth; }
 
+/* ─── Smoother scrolling inside every nested scroll region ───
+   Drawers, dropdown flyouts (search/notifications), .orbit-screen-content,
+   and Kanban boards are each an inline-styled overflow:auto / overflow-x:
+   auto / overflow-y:auto container — matched the same way every other
+   inline-style retrofit in this file is, since none of them share a class.
+   -webkit-overflow-scrolling gives real momentum/inertial scrolling inside
+   these on iOS Safari (nested overflow containers there default to a
+   stuttery step-scroll instead of the page's own native momentum).
+   overscroll-behavior stops scrolling past the end of one of these from
+   "leaking" into scrolling whatever's behind it — that rubber-band/
+   scroll-chaining handoff is what reads as janky on a trackpad or mouse
+   wheel too, not just touch, so this isn't gated to a mobile media query. */
+[style*="overflow:auto"],
+[style*="overflow-y:auto"],
+[style*="overflow-x:auto"] {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
 /* ─── Native checkboxes (Employee access-level tick-boxes) were plain
    unstyled browser defaults — the one remaining native form control this
    app never themed. `accent-color` recolors a real native checkbox (ticks,
