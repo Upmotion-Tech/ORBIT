@@ -95,6 +95,11 @@ def generate_invoice_pdf_bytes(invoice: Invoice) -> bytes:
         buf, pagesize=letter,
         topMargin=0.6 * inch, bottomMargin=0.6 * inch,
         leftMargin=0.6 * inch, rightMargin=0.6 * inch,
+        # Without these, reportlab defaults every PDF's Title/Author metadata
+        # to the literal string "anonymous" — that's what a PDF viewer's tab
+        # title or file-properties panel shows if it's never set explicitly.
+        title=f"Invoice {invoice.invoice_number}" if invoice.invoice_number else "Invoice",
+        author="Upmotion Tech",
     )
     styles = getSampleStyleSheet()
     company_style = ParagraphStyle("ORBITCompany", parent=styles["Title"], fontSize=18, spaceAfter=0)

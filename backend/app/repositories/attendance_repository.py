@@ -1,6 +1,6 @@
 from datetime import date
 
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.attendance import AttendanceRecord
@@ -58,3 +58,19 @@ class AttendanceRepository:
             )
         )
         return list(result.scalars().all())
+
+    async def erase_present_in_range(self, start: date, end: date) -> int:
+        """Deletes any self-marked "Present" record whose date falls in
+        [start, end] — used when a holiday is declared after the fact and
+        some employees had already marked themselves present for a day
+        that's now retroactively a holiday. Deleting the row removes the
+        marked_at timestamp along with it, not just the status."""
+        result = await self.db.execute(
+            delete(AttendanceRecord).where(
+                AttendanceRecord.date >= start,
+                AttendanceRecord.date <= end,
+                AttendanceRecord.status == "Present",
+            )
+        )
+        await self.db.flush()
+        return result.rowcount or 0

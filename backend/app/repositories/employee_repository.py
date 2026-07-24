@@ -75,6 +75,11 @@ class EmployeeRepository:
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
+    async def find_earliest_start_date(self):
+        query = select(func.min(Employee.start_date)).where(Employee.deleted_at.is_(None))
+        result = await self.db.execute(query)
+        return result.scalar_one_or_none()
+
     async def find_by_email(self, email: str) -> Optional[Employee]:
         query = select(Employee).where(
             func.lower(Employee.email) == email.strip().lower(),

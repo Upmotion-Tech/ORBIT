@@ -16,6 +16,8 @@ from app.repositories.attendance_repository import AttendanceRepository
 from app.repositories.employee_repository import EmployeeRepository
 from app.repositories.notification_repository import NotificationRepository
 from app.repositories.wfh_request_repository import WfhRequestRepository
+from app.repositories.leave_repository import LeaveRepository
+from app.repositories.holiday_repository import HolidayRepository
 from app.services.attendance_service import AttendanceService
 from app.routers import (
     auth,
@@ -44,6 +46,8 @@ from app.routers import (
     wfh_requests,
     customers,
     policies,
+    tax_slabs,
+    tax_certificates,
 )
 
 logger = logging.getLogger("orbit.attendance")
@@ -57,7 +61,8 @@ async def _run_attendance_sweep():
     async with async_session_factory() as db:
         service = AttendanceService(
             AttendanceRepository(db), EmployeeRepository(db), NotificationRepository(db),
-            wfh_repo=WfhRequestRepository(db),
+            wfh_repo=WfhRequestRepository(db), leave_repo=LeaveRepository(db),
+            holiday_repo=HolidayRepository(db),
         )
         count = await service.run_end_of_day_sweep()
         await db.commit()
@@ -161,6 +166,8 @@ app.include_router(attendance.router)
 app.include_router(wfh_requests.router)
 app.include_router(customers.router)
 app.include_router(policies.router)
+app.include_router(tax_slabs.router)
+app.include_router(tax_certificates.router)
 
 
 

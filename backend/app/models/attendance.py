@@ -18,10 +18,14 @@ class AttendanceRecord(Base):
     )
     employee_id: Mapped[str] = mapped_column(String(36), ForeignKey("employees.id"), nullable=False)
     date: Mapped[date] = mapped_column(Date, nullable=False)
-    status: Mapped[str] = mapped_column(String(20), nullable=False)  # "Present" | "Absent"
+    status: Mapped[str] = mapped_column(String(20), nullable=False)  # "Present" | "Absent" | "WFH" | "Leave"
     # Set only when the employee actually clicked Mark Attendance — null for
     # a row the end-of-day sweep created because nothing was ever marked.
     marked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Set only when status == "Leave" — the approved LeaveRequest the
+    # end-of-day sweep found for this day, so the UI can show who granted it
+    # (LeaveRequest.approved_by_id) without duplicating that data here.
+    leave_request_id: Mapped[str] = mapped_column(String(36), ForeignKey("leave_requests.id"), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_pkt)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_pkt, onupdate=now_pkt)

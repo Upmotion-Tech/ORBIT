@@ -100,6 +100,21 @@ class LeaveRepository:
         result = await self.db.execute(query)
         return list(result.scalars().all())
 
+    async def find_approved_for_employee_and_date(self, employee_id: str, day: date) -> Optional[LeaveRequest]:
+        # end_date is nullable — a null end_date means a single-day leave
+        # (see LeaveService._count_days), equivalent to end_date == start_date.
+        query = select(LeaveRequest).where(
+            LeaveRequest.employee_id == employee_id,
+            LeaveRequest.status == "Approved",
+            LeaveRequest.start_date <= day,
+            or_(
+                LeaveRequest.end_date >= day,
+                and_(LeaveRequest.end_date.is_(None), LeaveRequest.start_date == day),
+            ),
+        )
+        result = await self.db.execute(query)
+        return result.scalars().first()
+
     async def create(self, data: dict) -> LeaveRequest:
         leave = LeaveRequest(**data)
         self.db.add(leave)

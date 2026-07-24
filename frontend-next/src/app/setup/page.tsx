@@ -21,30 +21,50 @@ import {
   expenseCategoriesApi,
   expensesApi,
   leavePolicyApi,
+  holidaysApi,
   settingsApi,
   auditLogApi,
+  taxSlabsApi,
+  taxCertificatesApi,
+  moneyPKR,
   numVal,
   formatCommentTimestamp,
   formatActivityTimestamp,
   getEmployeeName,
   derivePersonaFlavor,
+  MONTH_NAMES,
+  downloadAuthenticatedPdf,
+  fromISO,
 } from "@/lib/orbit-client";
-import { Button, Badge } from "@/design-system/healer-bundle";
+import { Button, Badge, Input } from "@/design-system/healer-bundle";
 import { useClosingTransition } from "@/lib/use-closing-transition";
 
 type CrmSource = { id: string; name: string };
 type ExpenseCategory = { id: string; name: string };
 type LeavePolicy = { casual_days: number; sick_days: number; annual_days: number };
+type Holiday = { id: string; name: string; date: string; end_date?: string | null; day_count: number };
 type AuditLogEntry = {
   id: string; created_at?: string; actor_id?: string | null; action: string;
   entity_type?: string; entity_label?: string; detail?: string | null;
 };
+type TaxSlab = { id: string; min_salary: number; max_salary: number | null; tax_percentage: number; fixed_tax: number; active: boolean };
+type FiscalYearOption = { label: string; start_month: string; end_month: string };
+type MonthlyTaxSummaryLine = { month: string; employees_paid: number; total_gross: number; total_tax: number };
+type MonthlyTaxSummary = { fiscal_year: string; months: MonthlyTaxSummaryLine[]; total_gross: number; total_tax: number };
 
-type SetupTab = "stages" | "leave" | "audit" | "currency" | "employees";
+function fyMonthLabel(month?: string): string {
+  if (!month) return "";
+  const [y, m] = month.split("-");
+  const idx = parseInt(m, 10) - 1;
+  if (!y || idx < 0 || idx > 11 || !MONTH_NAMES[idx]) return month;
+  return `${MONTH_NAMES[idx]} ${y}`;
+}
+
+type SetupTab = "stages" | "leave" | "audit" | "currency" | "employees" | "tax";
 
 export default function SetupPage() {
   const { currentUser } = useAuth();
-  const { employees, reloadEmployees, crmStagesList, setCrmStagesList } = useAppData();
+  const { employees, reloadEmployees, holidays, reloadHolidays, crmStagesList, setCrmStagesList } = useAppData();
   const { pushToast } = useToast();
 
   const accessLevels = currentUser?.access_levels || [];
@@ -62,8 +82,8 @@ export default function SetupPage() {
   const [crmNewExpenseCategoryInput, setCrmNewExpenseCategoryInput] = useState("");
 
   useEffect(() => {
-    crmSourcesApi.list().then((data: CrmSource[]) => setApiCrmSources(data)).catch(() => {});
-    expenseCategoriesApi.list().then((data: ExpenseCategory[]) => setApiExpenseCategories(data)).catch(() => {});
+    crmSourcesApi.list().then((data: CrmSource[]) => setApiCrmSources(data)).catch(() => { });
+    expenseCategoriesApi.list().then((data: ExpenseCategory[]) => setApiExpenseCategories(data)).catch(() => { });
   }, []);
 
   const addCrmStage = () => {
@@ -223,6 +243,84 @@ export default function SetupPage() {
     );
   };
 
+  // ---- Holiday Calendar ----
+  // Can be added in advance or after the dates have already passed (backend
+  // retroactively erases any "Present" attendance already marked for days
+  // now covered, and notifies every employee either way — see
+  // HolidayService.create_holiday). Blocking attendance on these dates is
+  // enforced entirely server-side (AttendanceService); this tab is just
+  // add/list/delete.
+  const [holidayFormOpen, setHolidayFormOpen] = useState(false);
+  const [holidayForm, setHolidayForm] = useState({ name: "", startDate: "", endDate: "" });
+  const [savingHoliday, setSavingHoliday] = useState(false);
+
+  const openNewHolidayForm = () => {
+    setHolidayForm({ name: "", startDate: "", endDate: "" });
+    setHolidayFormOpen(true);
+  };
+  const cancelHolidayForm = () => setHolidayFormOpen(false);
+
+  const holidayDayCount = (() => {
+    if (!holidayForm.startDate) return 0;
+    const start = new Date(holidayForm.startDate + "T00:00:00");
+    const end = holidayForm.endDate ? new Date(holidayForm.endDate + "T00:00:00") : start;
+    const diffDays = Math.round((end.getTime() - start.getTime()) / 86400000);
+    return diffDays < 0 ? 0 : diffDays + 1;
+  })();
+
+  const saveHoliday = () => {
+    if (savingHoliday) return;
+    const name = holidayForm.name.trim();
+    if (!name || !holidayForm.startDate) {
+      pushToast("Title and start date are required.", "error");
+      return;
+    }
+    if (holidayForm.endDate && holidayForm.endDate < holidayForm.startDate) {
+      pushToast("End date can't be before start date.", "error");
+      return;
+    }
+    setSavingHoliday(true);
+    holidaysApi.create({
+      name,
+      date: holidayForm.startDate,
+      end_date: holidayForm.endDate || null,
+    }).then(
+      (holiday: Holiday) => {
+        setSavingHoliday(false);
+        setHolidayFormOpen(false);
+        reloadHolidays();
+        pushToast(`${holiday.name} added — every employee has been notified.`);
+      },
+      (err: Error) => {
+        setSavingHoliday(false);
+        pushToast(err.message || "Could not add holiday.", "error");
+      }
+    );
+  };
+
+  const deleteHoliday = (holiday: Holiday) => {
+    if (!window.confirm(`Delete "${holiday.name}"?`)) return;
+    holidaysApi.remove(holiday.id).then(
+      () => reloadHolidays(),
+      (err: Error) => pushToast(err.message || "Could not delete holiday.", "error")
+    );
+  };
+
+  // Holidays accumulate year over year — default the list to the current
+  // year so it stays a short, relevant "what's coming up / what already
+  // happened this year" view rather than every holiday ever added, with a
+  // picker to look at any other year that actually has holidays in it.
+  const currentYear = new Date().getFullYear();
+  const [holidayYear, setHolidayYear] = useState(currentYear);
+  const holidayYearOptions = Array.from(
+    new Set(holidays.map((h: Holiday) => parseInt(h.date.slice(0, 4), 10)).concat([currentYear]))
+  ).sort((a, b) => b - a);
+  const holidaysInYear = holidays.filter((h: Holiday) => {
+    const startYear = parseInt(h.date.slice(0, 4), 10);
+    const endYear = h.end_date ? parseInt(h.end_date.slice(0, 4), 10) : startYear;
+    return holidayYear >= startYear && holidayYear <= endYear;
+  });
+
   // ---- Audit Trail (lazy-loaded on first visit to the tab, per original) ----
   const [apiAuditLog, setApiAuditLog] = useState<AuditLogEntry[] | null>(null);
   const loadAuditLog = () => {
@@ -255,7 +353,7 @@ export default function SetupPage() {
         setCurrencyUpdatedAt(data.updated_at || null);
         setCurrencyUpdatedBy(data.updated_by || null);
       },
-      () => {}
+      () => { }
     );
   }, []);
 
@@ -335,6 +433,143 @@ export default function SetupPage() {
     );
   };
 
+  // ---- Tax Slabs (owner-only) ----
+  // Annual income-tax brackets the payroll engine reads Income Tax from
+  // (see backend/app/services/tax_slab_service.py) — min/max here are
+  // ANNUAL figures, not monthly, matching how Pakistani salary tax slabs
+  // actually work (annualize monthly gross x12, then match).
+  const [taxSlabs, setTaxSlabs] = useState<TaxSlab[]>([]);
+  const [taxSlabFormOpen, setTaxSlabFormOpen] = useState(false);
+  const [editingTaxSlabId, setEditingTaxSlabId] = useState<string | null>(null);
+  const [taxSlabForm, setTaxSlabForm] = useState({ minSalary: "", maxSalary: "", taxPercentage: "", fixedTax: "" });
+  const [taxSlabSaving, setTaxSlabSaving] = useState(false);
+
+  useEffect(() => {
+    taxSlabsApi.list().then((data: TaxSlab[]) => setTaxSlabs(data)).catch(() => { });
+  }, []);
+
+  // ---- Year-end Tax Certificates: monthly deduction summary + company
+  // statement. Every figure here is read fresh from SalarySlip rows (no
+  // separate certificate table) — see TaxCertificateService on the backend.
+  const isOwnerDept = currentUser?.department === "Owner";
+  const [summaryYears, setSummaryYears] = useState<FiscalYearOption[]>([]);
+  const [summaryFy, setSummaryFy] = useState("");
+  const [monthlySummary, setMonthlySummary] = useState<MonthlyTaxSummary | null>(null);
+  const [companyYears, setCompanyYears] = useState<FiscalYearOption[]>([]);
+  const [companyFy, setCompanyFy] = useState("");
+  const [downloadingCompanyCert, setDownloadingCompanyCert] = useState(false);
+
+  useEffect(() => {
+    taxCertificatesApi.summaryYears().then((years: FiscalYearOption[]) => {
+      setSummaryYears(years);
+      if (years.length) setSummaryFy(years[0].label);
+    }).catch(() => { });
+  }, []);
+
+  useEffect(() => {
+    if (isOwnerDept) {
+      taxCertificatesApi.companyYears().then((years: FiscalYearOption[]) => {
+        setCompanyYears(years);
+        if (years.length) setCompanyFy(years[0].label);
+      }).catch(() => { });
+    }
+  }, [isOwnerDept]);
+
+  useEffect(() => {
+    if (!summaryFy) return;
+    taxCertificatesApi.monthlySummary(summaryFy).then(
+      (data: MonthlyTaxSummary) => setMonthlySummary(data),
+      () => setMonthlySummary(null)
+    );
+  }, [summaryFy]);
+
+  const downloadCompanyTaxCertificate = async () => {
+    if (!companyFy || downloadingCompanyCert) return;
+    setDownloadingCompanyCert(true);
+    try {
+      await downloadAuthenticatedPdf(taxCertificatesApi.companyPdfUrl(companyFy), `company-tax-statement-${companyFy}.pdf`);
+    } catch (err) {
+      pushToast((err as Error).message || "Could not generate the company tax certificate.", "error");
+    } finally {
+      setDownloadingCompanyCert(false);
+    }
+  };
+
+  const openNewTaxSlabForm = () => {
+    setEditingTaxSlabId(null);
+    setTaxSlabForm({ minSalary: "", maxSalary: "", taxPercentage: "", fixedTax: "0" });
+    setTaxSlabFormOpen(true);
+  };
+  const openEditTaxSlabForm = (slab: TaxSlab) => {
+    setEditingTaxSlabId(slab.id);
+    setTaxSlabForm({
+      minSalary: String(slab.min_salary),
+      maxSalary: slab.max_salary == null ? "" : String(slab.max_salary),
+      taxPercentage: String(slab.tax_percentage),
+      fixedTax: String(slab.fixed_tax),
+    });
+    setTaxSlabFormOpen(true);
+  };
+  const cancelTaxSlabForm = () => {
+    setTaxSlabFormOpen(false);
+    setEditingTaxSlabId(null);
+  };
+  const saveTaxSlab = () => {
+    if (taxSlabSaving) return;
+    const minSalary = numVal(taxSlabForm.minSalary);
+    const maxSalary = taxSlabForm.maxSalary.trim() === "" ? null : numVal(taxSlabForm.maxSalary);
+    const taxPercentage = numVal(taxSlabForm.taxPercentage);
+    const fixedTax = numVal(taxSlabForm.fixedTax || "0");
+    if (!taxSlabForm.minSalary.trim() || isNaN(minSalary) || minSalary < 0) {
+      pushToast("Enter a valid minimum salary.", "error");
+      return;
+    }
+    if (maxSalary !== null && (isNaN(maxSalary) || maxSalary <= minSalary)) {
+      pushToast("Max salary must be greater than min salary (or left blank for no upper limit).", "error");
+      return;
+    }
+    if (!taxSlabForm.taxPercentage.trim() || isNaN(taxPercentage) || taxPercentage < 0 || taxPercentage > 100) {
+      pushToast("Enter a valid tax percentage (0–100).", "error");
+      return;
+    }
+    setTaxSlabSaving(true);
+    const payload = { min_salary: minSalary, max_salary: maxSalary, tax_percentage: taxPercentage, fixed_tax: fixedTax };
+    const req = editingTaxSlabId ? taxSlabsApi.update(editingTaxSlabId, payload) : taxSlabsApi.create(payload);
+    req.then(
+      (saved: TaxSlab) => {
+        setTaxSlabSaving(false);
+        setTaxSlabFormOpen(false);
+        setEditingTaxSlabId(null);
+        setTaxSlabs((cur) => {
+          const exists = cur.some((s) => s.id === saved.id);
+          const next = exists ? cur.map((s) => (s.id === saved.id ? saved : s)) : [...cur, saved];
+          return next.slice().sort((a, b) => a.min_salary - b.min_salary);
+        });
+        pushToast(editingTaxSlabId ? "Tax slab updated." : "Tax slab added.");
+      },
+      (err: Error) => {
+        setTaxSlabSaving(false);
+        pushToast(err.message || "Could not save the tax slab.", "error");
+      }
+    );
+  };
+  const toggleTaxSlabActive = (slab: TaxSlab) => {
+    taxSlabsApi.update(slab.id, { active: !slab.active }).then(
+      (updated: TaxSlab) => setTaxSlabs((cur) => cur.map((s) => (s.id === updated.id ? updated : s))),
+      (err: Error) => pushToast(err.message || "Could not update the tax slab.", "error")
+    );
+  };
+  const deleteTaxSlab = (slab: TaxSlab) => {
+    if (!window.confirm("Delete this tax slab? This can't be undone.")) return;
+    taxSlabsApi.remove(slab.id).then(
+      () => {
+        setTaxSlabs((cur) => cur.filter((s) => s.id !== slab.id));
+        pushToast("Tax slab deleted.");
+      },
+      (err: Error) => pushToast(err.message || "Could not delete the tax slab.", "error")
+    );
+  };
+
   const tabBtnStyle = (active: boolean): React.CSSProperties => ({ fontWeight: active ? 600 : 400 });
 
   const auditRows = (apiAuditLog || []).map((a) => ({
@@ -348,7 +583,7 @@ export default function SetupPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-        <h1 style={{ margin: 0, fontSize: 19, fontWeight: 700, color: "var(--text-primary)" }}>Setup</h1>
+        <h1 style={{ margin: 0, fontSize: 19, fontWeight: 700, color: "var(--text-primary)" }}>Settings</h1>
         <div className="orbit-setup-tabs">
           <button className="orbit-setup-tab" style={tabBtnStyle(setupTab === "stages")} onClick={() => setSetupTab("stages")}>Stages &amp; Sources</button>
           <button className="orbit-setup-tab" style={tabBtnStyle(setupTab === "leave")} onClick={() => setSetupTab("leave")}>Leave &amp; Holidays</button>
@@ -356,6 +591,9 @@ export default function SetupPage() {
           <button className="orbit-setup-tab" style={tabBtnStyle(setupTab === "currency")} onClick={() => setSetupTab("currency")}>Currency</button>
           {isOwnerReal && (
             <button className="orbit-setup-tab" style={tabBtnStyle(setupTab === "employees")} onClick={() => setSetupTab("employees")}>Employees</button>
+          )}
+          {isOwnerReal && (
+            <button className="orbit-setup-tab" style={tabBtnStyle(setupTab === "tax")} onClick={() => setSetupTab("tax")}>Tax Slabs</button>
           )}
         </div>
       </div>
@@ -446,7 +684,7 @@ export default function SetupPage() {
         )}
 
         {setupTab === "leave" && (
-          <div style={{ maxWidth: 480 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, alignItems: "start" }}>
             <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-card)", padding: 24 }}>
               <h2 style={{ margin: "0 0 16px", fontSize: 16, fontWeight: 700, color: "var(--text-primary)" }}>Company-wide Annual Leave Balances</h2>
               <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 16 }}>
@@ -471,6 +709,75 @@ export default function SetupPage() {
               </div>
               {isOwnerReal && <Button variant="primary" onClick={saveLeavePolicy}>Save Policy</Button>}
               <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 12 }}>Every employee&apos;s balance is this allotment minus their approved leave for the year — visible on their profile and in My Leave.</div>
+            </div>
+
+            <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-card)", padding: 24 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 16 }}>
+                <div>
+                  <h2 style={{ margin: "0 0 4px", fontSize: 16, fontWeight: 700, color: "var(--text-primary)" }}>Holiday Calendar</h2>
+                  <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)" }}>Attendance can&apos;t be marked on these dates, and every employee gets notified once a holiday is added — whether it&apos;s announced ahead of time or added after the dates have already passed.</p>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <select value={holidayYear} onChange={(e) => setHolidayYear(Number(e.target.value))}
+                    style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border-subtle)", background: "var(--bg-page)", color: "var(--text-primary)", fontSize: 13.5, fontWeight: 600 }}>
+                    {holidayYearOptions.map((y: number) => (
+                      <option key={y} value={y}>{y}{y === currentYear ? " (current)" : ""}</option>
+                    ))}
+                  </select>
+                  {isOwnerReal && <Button variant="primary" icon="plus" onClick={openNewHolidayForm}>Add Holiday</Button>}
+                </div>
+              </div>
+
+              {holidayFormOpen && (
+                <div style={{ background: "var(--bg-page)", borderRadius: 12, padding: 20, display: "flex", flexDirection: "column", gap: 14, marginBottom: 16 }}>
+                  <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }}>New Holiday</h3>
+                  <Input label="Title" value={holidayForm.name} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setHolidayForm((f) => ({ ...f, name: e.target.value }))} placeholder="e.g. Eid ul-Fitr" />
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                    <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" }}>
+                      Start date
+                      <input type="date" value={holidayForm.startDate} onChange={(e) => setHolidayForm((f) => ({ ...f, startDate: e.target.value }))}
+                        style={{ fontFamily: "var(--font-sans)", fontSize: 14, padding: "9px 12px", borderRadius: 8, border: "1px solid var(--border-strong)", outline: "none" }} />
+                    </label>
+                    <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" }}>
+                      End date (optional — blank = single day)
+                      <input type="date" value={holidayForm.endDate} onChange={(e) => setHolidayForm((f) => ({ ...f, endDate: e.target.value }))}
+                        style={{ fontFamily: "var(--font-sans)", fontSize: 14, padding: "9px 12px", borderRadius: 8, border: "1px solid var(--border-strong)", outline: "none" }} />
+                    </label>
+                  </div>
+                  {holidayForm.startDate && (
+                    <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>{holidayDayCount} day{holidayDayCount === 1 ? "" : "s"} total.</div>
+                  )}
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+                    <Button variant="ghost" onClick={cancelHolidayForm}>Cancel</Button>
+                    <Button variant="primary" onClick={saveHoliday}>{savingHoliday ? "Saving…" : "Make Holiday"}</Button>
+                  </div>
+                </div>
+              )}
+
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead><tr style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+                    <th style={thStyle}>Title</th><th style={thStyle}>Dates</th><th style={thStyle}>Days</th><th></th>
+                  </tr></thead>
+                  <tbody>
+                    {holidaysInYear.map((h: Holiday) => (
+                      <tr key={h.id} style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+                        <td style={{ padding: "12px 16px", fontSize: 14, color: "var(--text-primary)", fontWeight: 500 }}>{h.name}</td>
+                        <td style={{ padding: "12px 16px", fontSize: 13.5, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
+                          {h.end_date && h.end_date !== h.date ? `${fromISO(h.date)} – ${fromISO(h.end_date)}` : fromISO(h.date)}
+                        </td>
+                        <td style={{ padding: "12px 16px", fontSize: 13.5, color: "var(--text-secondary)" }}>{h.day_count}</td>
+                        <td style={{ padding: "12px 16px", textAlign: "right", whiteSpace: "nowrap" }}>
+                          {isOwnerReal && <a href="#" onClick={(e) => { e.preventDefault(); deleteHoliday(h); }} style={{ fontSize: 13, fontWeight: 600, color: "var(--status-danger-text)", textDecoration: "none" }}>Delete</a>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {holidaysInYear.length === 0 && (
+                <div style={{ padding: 32, textAlign: "center", color: "var(--text-muted)", fontSize: 13.5 }}>No holidays in {holidayYear}.</div>
+              )}
             </div>
           </div>
         )}
@@ -579,6 +886,126 @@ export default function SetupPage() {
                 <div style={{ padding: 32, textAlign: "center", color: "var(--text-muted)", fontSize: 13.5 }}>No audit trail records yet.</div>
               )}
             </div>
+          </div>
+        )}
+
+        {setupTab === "tax" && isOwnerReal && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+              <div>
+                <h2 style={{ margin: "0 0 4px", fontSize: 16, fontWeight: 700, color: "var(--text-primary)" }}>Income Tax Slabs</h2>
+                <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)" }}>Annual salary brackets payroll uses to auto-calculate every employee&apos;s Income Tax. Ranges are yearly figures — a monthly salary is annualized (×12) before matching.</p>
+              </div>
+              <Button variant="primary" icon="plus" onClick={openNewTaxSlabForm}>Add Slab</Button>
+            </div>
+
+            {taxSlabFormOpen && (
+              <div style={{ background: "var(--bg-page)", borderRadius: 12, padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
+                <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }}>{editingTaxSlabId ? "Edit Slab" : "New Slab"}</h3>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 14 }}>
+                  <Input label="Min salary (annual)" type="number" value={taxSlabForm.minSalary} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTaxSlabForm((f) => ({ ...f, minSalary: e.target.value }))} />
+                  <Input label="Max salary (annual, blank = no limit)" type="number" value={taxSlabForm.maxSalary} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTaxSlabForm((f) => ({ ...f, maxSalary: e.target.value }))} />
+                  <Input label="Tax %" type="number" value={taxSlabForm.taxPercentage} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTaxSlabForm((f) => ({ ...f, taxPercentage: e.target.value }))} />
+                  <Input label="Fixed tax" type="number" value={taxSlabForm.fixedTax} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTaxSlabForm((f) => ({ ...f, fixedTax: e.target.value }))} />
+                </div>
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+                  <Button variant="ghost" onClick={cancelTaxSlabForm}>Cancel</Button>
+                  <Button variant="primary" onClick={saveTaxSlab}>{taxSlabSaving ? "Saving…" : "Save Slab"}</Button>
+                </div>
+              </div>
+            )}
+
+            <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead><tr style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+                    <th style={thStyle}>Salary Range (annual)</th><th style={thStyle}>Tax %</th><th style={thStyle}>Fixed Tax</th><th style={thStyle}>Active</th><th></th>
+                  </tr></thead>
+                  <tbody>
+                    {taxSlabs.map((s) => (
+                      <tr key={s.id} style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+                        <td style={{ padding: "12px 16px", fontSize: 14, color: "var(--text-primary)", fontWeight: 500, whiteSpace: "nowrap" }}>{moneyPKR(s.min_salary)} – {s.max_salary == null ? "and above" : moneyPKR(s.max_salary)}</td>
+                        <td style={{ padding: "12px 16px", fontSize: 14, color: "var(--text-primary)", whiteSpace: "nowrap" }}>{s.tax_percentage}%</td>
+                        <td style={{ padding: "12px 16px", fontSize: 14, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{moneyPKR(s.fixed_tax)}</td>
+                        <td style={{ padding: "12px 16px" }}>
+                          <a href="#" onClick={(e) => { e.preventDefault(); toggleTaxSlabActive(s); }} style={{ textDecoration: "none" }}>
+                            <Badge tone={s.active ? "success" : "neutral"}>{s.active ? "Active" : "Inactive"}</Badge>
+                          </a>
+                        </td>
+                        <td style={{ padding: "12px 16px", textAlign: "right", whiteSpace: "nowrap" }}>
+                          <a href="#" onClick={(e) => { e.preventDefault(); openEditTaxSlabForm(s); }} style={{ fontSize: 13, fontWeight: 600, color: "var(--text-link)", textDecoration: "none", marginRight: 14 }}>Edit</a>
+                          <a href="#" onClick={(e) => { e.preventDefault(); deleteTaxSlab(s); }} style={{ fontSize: 13, fontWeight: 600, color: "var(--status-danger-text)", textDecoration: "none" }}>Delete</a>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {taxSlabs.length === 0 && (
+                <div style={{ padding: 32, textAlign: "center", color: "var(--text-muted)", fontSize: 13.5 }}>No tax slabs configured yet — Income Tax will calculate as Rs. 0 until at least one is added.</div>
+              )}
+            </div>
+
+            <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-card)", padding: 20 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 14 }}>
+                <div>
+                  <h2 style={{ margin: "0 0 4px", fontSize: 16, fontWeight: 700, color: "var(--text-primary)" }}>Monthly Tax Deduction Summary</h2>
+                  <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)" }}>Running month-by-month totals of income tax withheld across all employees — track this through the year so year-end certificates reconcile cleanly.</p>
+                </div>
+                {summaryYears.length > 0 && (
+                  <select value={summaryFy} onChange={(e) => setSummaryFy(e.target.value)} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border-subtle)", background: "var(--bg-page)", color: "var(--text-primary)", fontSize: 13.5, fontWeight: 600 }}>
+                    {summaryYears.map((y) => (
+                      <option key={y.label} value={y.label}>{y.label}{y.label === summaryYears[0]?.label ? " (current)" : ""}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              {monthlySummary && (
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead><tr style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+                      <th style={thStyle}>Month</th><th style={thStyle}>Employees Paid</th><th style={thStyle}>Total Gross Payroll</th><th style={thStyle}>Total Tax Withheld</th>
+                    </tr></thead>
+                    <tbody>
+                      {monthlySummary.months.map((m) => (
+                        <tr key={m.month} style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+                          <td style={{ padding: "10px 16px", fontSize: 13.5, color: "var(--text-primary)", fontWeight: 500, whiteSpace: "nowrap" }}>{fyMonthLabel(m.month)}</td>
+                          <td style={{ padding: "10px 16px", fontSize: 13.5, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{m.employees_paid}</td>
+                          <td style={{ padding: "10px 16px", fontSize: 13.5, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{moneyPKR(m.total_gross)}</td>
+                          <td style={{ padding: "10px 16px", fontSize: 13.5, color: "var(--text-primary)", fontWeight: 600, whiteSpace: "nowrap" }}>{moneyPKR(m.total_tax)}</td>
+                        </tr>
+                      ))}
+                      <tr>
+                        <td style={{ padding: "10px 16px", fontSize: 13.5, fontWeight: 700, color: "var(--text-primary)" }}>Total ({monthlySummary.fiscal_year})</td>
+                        <td></td>
+                        <td style={{ padding: "10px 16px", fontSize: 13.5, fontWeight: 700, color: "var(--text-primary)" }}>{moneyPKR(monthlySummary.total_gross)}</td>
+                        <td style={{ padding: "10px 16px", fontSize: 13.5, fontWeight: 700, color: "var(--text-primary)" }}>{moneyPKR(monthlySummary.total_tax)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {isOwnerDept && (
+              <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-card)", padding: 20 }}>
+                <h2 style={{ margin: "0 0 4px", fontSize: 16, fontWeight: 700, color: "var(--text-primary)" }}>Company Tax Certificate</h2>
+                <p style={{ margin: "0 0 16px", fontSize: 13, color: "var(--text-muted)" }}>A company-wide statement of tax deducted from every employee&apos;s salary — available once a fiscal year has fully closed on June 30.</p>
+                {companyYears.length > 0 ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                    <select value={companyFy} onChange={(e) => setCompanyFy(e.target.value)} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border-subtle)", background: "var(--bg-page)", color: "var(--text-primary)", fontSize: 13.5, fontWeight: 600 }}>
+                      {companyYears.map((y) => (
+                        <option key={y.label} value={y.label}>{y.label}</option>
+                      ))}
+                    </select>
+                    <Button variant="primary" icon="download" onClick={downloadCompanyTaxCertificate}>{downloadingCompanyCert ? "Generating…" : "Download Certificate"}</Button>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 13.5, color: "var(--text-muted)" }}>No fiscal year has closed yet — the first Company Tax Certificate becomes available on July 1 following the company&apos;s first full fiscal year of payroll records.</div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>

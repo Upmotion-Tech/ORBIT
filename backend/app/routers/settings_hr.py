@@ -5,6 +5,9 @@ from app.core.database import get_db
 from app.core.dependencies import get_persona_roles, get_current_user
 from app.repositories.leave_policy_repository import LeavePolicyRepository
 from app.repositories.holiday_repository import HolidayRepository
+from app.repositories.employee_repository import EmployeeRepository
+from app.repositories.notification_repository import NotificationRepository
+from app.repositories.attendance_repository import AttendanceRepository
 from app.services.leave_policy_service import LeavePolicyService
 from app.services.holiday_service import HolidayService
 from app.schemas.leave_policy import LeavePolicyUpdate, LeavePolicyResponse
@@ -22,6 +25,9 @@ def get_policy_service(db: AsyncSession = Depends(get_db)) -> LeavePolicyService
 def get_holiday_service(db: AsyncSession = Depends(get_db)) -> HolidayService:
     return HolidayService(
         holiday_repo=HolidayRepository(db),
+        employee_repo=EmployeeRepository(db),
+        notification_repo=NotificationRepository(db),
+        attendance_repo=AttendanceRepository(db),
     )
 
 
@@ -48,6 +54,7 @@ async def update_leave_policy(
 
 @router.get("/holidays", response_model=list[HolidayResponse])
 async def list_holidays(
+    current_user: dict = Depends(get_current_user),
     service: HolidayService = Depends(get_holiday_service),
 ):
     return await service.list_holidays()

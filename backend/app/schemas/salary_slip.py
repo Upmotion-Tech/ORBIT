@@ -41,6 +41,7 @@ class SalarySlipResponse(BaseModel):
     payment_status: str
     payment_date: Optional[date] = None
     notes: Optional[str] = None
+    tax_is_manual: bool = False
     created_at: datetime
     updated_at: datetime
     created_by: Optional[str] = None

@@ -31,6 +31,7 @@ import {
   isValidNumber,
   isPhoneComplete,
   formatPhoneInput,
+  formatCnicInput,
   formatCommentTimestamp,
   getEmployeeName,
   ACCESS_LEVEL_OPTIONS,
@@ -51,6 +52,7 @@ type Employee = {
   employment_type: string; probation_status?: string; probation_end?: string | null; email: string; salary?: number;
   birthdate?: string | null; phone?: string | null; emergency_contact?: string | null; emergency_contact_relation?: string | null;
   contract_file_url?: string | null; contract_file_name?: string | null; access_levels?: string[]; status?: string;
+  cnic?: string | null;
 };
 type LeaveBalance = { casual_remaining: number; sick_remaining: number; annual_remaining: number };
 type Leave = {
@@ -64,7 +66,10 @@ type Wfh = {
 };
 type Opening = { id: string; title: string; department: string; opened_at?: string; candidate_count?: number; status: string; salary_bracket?: string; experience?: string; description?: string };
 type Candidate = { id: string; name: string; rating?: number; applied_date?: string; stage: string; resume_url?: string; notes?: string };
-type AttendanceRow = { employee_id?: string; employee_name?: string; employee_department?: string; date: string; status: string; marked_at?: string | null };
+type AttendanceRow = {
+  employee_id?: string; employee_name?: string; employee_department?: string; date: string; status: string; marked_at?: string | null;
+  leave_approved_by_name?: string | null;
+};
 
 const HIRE_STAGES = ["Applied", "Screening", "Interview", "Offer", "Rejected"];
 
@@ -80,7 +85,7 @@ export default function HrPage() {
 
 function HrPageContent() {
   const { currentUser } = useAuth();
-  const { employees, reloadEmployees, leaves, allWfhRequests } = useAppData();
+  const { employees, reloadEmployees, leaves, allWfhRequests, holidays } = useAppData();
   const { pushToast } = useToast();
 
   const accessLevels = currentUser?.access_levels || [];
@@ -109,13 +114,34 @@ function HrPageContent() {
   const isNewEmployee = selEmpId === "new";
   const selEmpRaw = selEmpId && !isNewEmployee ? (employees.find((e) => e.id === selEmpId) as Employee | undefined) || null : null;
 
+  // setEmployeeFieldLive PUTs on every keystroke, and reloadEmployeesOptimistic
+  // is a no-op (see below) — the input's displayed value is 100%
+  // server-state-driven. That's fine for free-form fields (any partial
+  // string is valid), but phone/emergency contact/CNIC all require a
+  // *complete* format before the backend accepts them — every incomplete
+  // keystroke 422s, reloadEmployees() then re-fetches the still-unchanged
+  // stored value, and the character the user just typed visibly snaps back
+  // out. These three local drafts absorb every keystroke instantly and only
+  // actually call setEmployeeFieldLive once the value is complete (or
+  // cleared back to empty) — synced from the real record when the drawer
+  // opens for a given employee, not on every reload while it's open.
+  const [phoneDraft, setPhoneDraft] = useState("+92");
+  const [emergencyContactDraft, setEmergencyContactDraft] = useState("+92");
+  const [cnicDraft, setCnicDraft] = useState("");
+  useEffect(() => {
+    setPhoneDraft(selEmpRaw?.phone || "+92");
+    setEmergencyContactDraft(selEmpRaw?.emergency_contact || "+92");
+    setCnicDraft(selEmpRaw?.cnic || "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selEmpId]);
+
   const [empForm, setEmpForm] = useState({
     name: "", role: "", dept: "Employee", email: "", manager: "", type: "Full-time", start: "", salary: "",
-    password: "", accessLevels: [] as string[], birthdate: "", phone: "+92", emergencyContact: "+92", emergencyContactRelation: "",
+    password: "", accessLevels: [] as string[], birthdate: "", phone: "+92", emergencyContact: "+92", emergencyContactRelation: "", cnic: "",
   });
 
   const openNewEmployee = () => {
-    setEmpForm({ name: "", role: "", dept: "Employee", email: "", manager: "", type: "Full-time", start: "", salary: "", password: "", accessLevels: [], birthdate: "", phone: "+92", emergencyContact: "+92", emergencyContactRelation: "" });
+    setEmpForm({ name: "", role: "", dept: "Employee", email: "", manager: "", type: "Full-time", start: "", salary: "", password: "", accessLevels: [], birthdate: "", phone: "+92", emergencyContact: "+92", emergencyContactRelation: "", cnic: "" });
     setSelEmpId("new");
   };
   const selectEmployee = (id: string) => {
@@ -199,12 +225,16 @@ function HrPageContent() {
       pushToast("Enter a complete 10-digit emergency contact number after +92, or leave it blank.", "error");
       return;
     }
+    if (f.cnic && f.cnic.length !== 15) {
+      pushToast("Enter a complete CNIC (35201-5746852-5), or leave it blank.", "error");
+      return;
+    }
     employeesApi
       .create({
         name: f.name, role: f.role, department: f.dept, email: f.email, manager: f.manager || null, employment_type: f.type,
         start_date: f.start, salary: numVal(f.salary), password: f.password, access_levels: f.accessLevels.length ? f.accessLevels : ["employee"],
         birthdate: f.birthdate || null, phone: f.phone !== "+92" ? f.phone : null, emergency_contact: f.emergencyContact !== "+92" ? f.emergencyContact : null,
-        emergency_contact_relation: f.emergencyContactRelation || null,
+        emergency_contact_relation: f.emergencyContactRelation || null, cnic: f.cnic || null,
       })
       .then(
         (emp: Employee) => {
@@ -390,8 +420,6 @@ function HrPageContent() {
         leaveCasual: empLeaveBalance ? empLeaveBalance.casual_remaining : "—",
         leaveSick: empLeaveBalance ? empLeaveBalance.sick_remaining : "—",
         leaveAnnual: empLeaveBalance ? empLeaveBalance.annual_remaining : "—",
-        phoneDisplay: selEmpRaw.phone || "+92",
-        emergencyContactDisplay: selEmpRaw.emergency_contact || "+92",
         hasContract: !!selEmpRaw.contract_file_url,
         contractFileName: selEmpRaw.contract_file_url ? (selEmpRaw.contract_file_name || selEmpRaw.contract_file_url.split("/").pop()) : null,
         contractUploadLabel: selEmpRaw.contract_file_url ? "Replace" : "Upload",
@@ -608,9 +636,9 @@ function HrPageContent() {
     loadAttendanceToday();
     loadAttendanceHistory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, attendanceMonth, attendanceEmployeeFilter]);
+  }, [tab, attendanceMonth, attendanceEmployeeFilter, holidays]);
 
-  const attendanceStatusTone = (st: string) => (st === "Present" ? "success" : st === "Absent" ? "danger" : st === "WFH" ? "info" : "neutral");
+  const attendanceStatusTone = (st: string) => (st === "Present" ? "success" : st === "Absent" ? "danger" : st === "WFH" ? "info" : st === "Leave" ? "warning" : st === "Holiday" ? "info" : "neutral");
   const attendanceEmployeeOptions = [{ value: "", label: "All employees" }, ...employees.map((e) => ({ value: e.id, label: e.name }))];
   // History is organized one day at a time (Back/Next step through actual
   // calendar days) rather than a flat list of every record in the month —
@@ -803,7 +831,12 @@ function HrPageContent() {
                     <tr key={i} style={{ borderBottom: "1px solid var(--border-subtle)" }}>
                       <td style={{ padding: "12px 16px", fontSize: 13.5, color: "var(--text-primary)", fontWeight: 500 }}>{ah.employee_name}</td>
                       <td style={{ padding: "12px 16px", fontSize: 13.5, color: "var(--text-secondary)" }}>{ah.employee_department}</td>
-                      <td style={{ padding: "12px 16px" }}><Badge tone={attendanceStatusTone(ah.status)}>{ah.status}</Badge></td>
+                      <td style={{ padding: "12px 16px" }}>
+                        <Badge tone={attendanceStatusTone(ah.status)}>{ah.status}</Badge>
+                        {ah.status === "Leave" && ah.leave_approved_by_name && (
+                          <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 4 }}>Approved by {ah.leave_approved_by_name}</div>
+                        )}
+                      </td>
                       <td style={{ padding: "12px 16px", fontSize: 13.5, color: "var(--text-secondary)" }}>{ah.marked_at ? formatCommentTimestamp(ah.marked_at) : "—"}</td>
                     </tr>
                   ))}
@@ -887,6 +920,7 @@ function HrPageContent() {
                     <Input label="Emergency contact (optional)" value={empForm.emergencyContact} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmployeeFormField("emergencyContact", formatPhoneInput(e.target.value))} />
                   </div>
                   <Input label="Relation with emergency contact (optional)" value={empForm.emergencyContactRelation} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmployeeFormField("emergencyContactRelation", e.target.value)} />
+                  <Input label="CNIC (optional)" placeholder="35201-5746852-5" value={empForm.cnic} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmployeeFormField("cnic", formatCnicInput(e.target.value))} />
                 </div>
                 <div style={{ padding: "16px 24px", borderTop: "1px solid var(--border-subtle)", display: "flex", justifyContent: "flex-end", gap: 12, flexShrink: 0 }}>
                   <Button variant="ghost" onClick={closeEmployeeModalAnimated}>Cancel</Button>
@@ -934,10 +968,23 @@ function HrPageContent() {
                     <input type="date" value={selEmployee.birthdate || ""} max={todayISO()} onChange={(e) => { if (e.target.value > todayISO()) { pushToast("Birthdate cannot be in the future.", "error"); return; } setEmployeeFieldLive(selEmployee.id, "birthdate", e.target.value); }} style={dateInputStyle} />
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-                    <Input label="Mobile (optional)" value={selEmployee.phoneDisplay} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmployeeFieldLive(selEmployee.id, "phone", formatPhoneInput(e.target.value))} />
-                    <Input label="Emergency contact (optional)" value={selEmployee.emergencyContactDisplay} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmployeeFieldLive(selEmployee.id, "emergency_contact", formatPhoneInput(e.target.value))} />
+                    <Input label="Mobile (optional)" value={phoneDraft} onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                      const formatted = formatPhoneInput(e.target.value);
+                      setPhoneDraft(formatted);
+                      if (isPhoneComplete(formatted)) setEmployeeFieldLive(selEmployee.id, "phone", formatted);
+                    }} />
+                    <Input label="Emergency contact (optional)" value={emergencyContactDraft} onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                      const formatted = formatPhoneInput(e.target.value);
+                      setEmergencyContactDraft(formatted);
+                      if (isPhoneComplete(formatted)) setEmployeeFieldLive(selEmployee.id, "emergency_contact", formatted);
+                    }} />
                   </div>
                   <Input label="Relation with emergency contact (optional)" value={selEmployee.emergency_contact_relation || ""} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmployeeFieldLive(selEmployee.id, "emergency_contact_relation", e.target.value)} />
+                  <Input label="CNIC (optional)" placeholder="35201-5746852-5" value={cnicDraft} onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                    const formatted = formatCnicInput(e.target.value);
+                    setCnicDraft(formatted);
+                    if (formatted === "" || formatted.length === 15) setEmployeeFieldLive(selEmployee.id, "cnic", formatted);
+                  }} />
 
                   <div style={{ marginTop: 4, paddingTop: 12, borderTop: "1px solid var(--border-subtle)" }}>
                     <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>Contract file (optional)</div>

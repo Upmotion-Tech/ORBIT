@@ -138,6 +138,16 @@ function formatPhoneInput(raw) {
   const digits = val.slice(PREFIX.length).replace(/\D/g, '').slice(0, 10);
   return PREFIX + digits;
 }
+// Auto-inserts the two dashes as digits are typed — 5 digits, dash, 7
+// digits, dash, 1 digit (e.g. 35201-5746852-5) — so the user only ever
+// types the 13 raw digits, matching the server-side CNIC_REGEX exactly.
+function formatCnicInput(raw) {
+  const digits = (raw || '').replace(/\D/g, '').slice(0, 13);
+  let out = digits.slice(0, 5);
+  if (digits.length > 5) out += '-' + digits.slice(5, 12);
+  if (digits.length > 12) out += '-' + digits.slice(12, 13);
+  return out;
+}
 // A field left at just "+92" (untouched) counts as not provided, since these
 // fields are optional; anything else must be the full "+92" + 10 digits.
 function isPhoneComplete(v) {
@@ -563,6 +573,43 @@ async function apiFetch(path, options = {}) {
   if (!res.ok) throw new Error(apiErrorMessage(body));
   return body;
 }
+function filenameFromDisposition(res, fallback) {
+  const disposition = res.headers.get('Content-Disposition') || res.headers.get('content-disposition');
+  if (disposition) {
+    const starMatch = /filename\*=UTF-8''([^;]+)/i.exec(disposition);
+    if (starMatch) { try { return decodeURIComponent(starMatch[1]); } catch (e) { /* fall through */ } }
+    const plainMatch = /filename="?([^";]+)"?/i.exec(disposition);
+    if (plainMatch) return plainMatch[1];
+  }
+  return fallback;
+}
+// Every "Download PDF" action across Finance/My Record/Setup hits an
+// authenticated GET endpoint (Render's disk is ephemeral, so files are never
+// served as public static URLs — see CLAUDE.md §8) and needs the real
+// Authorization header, which a plain <a href> can't send. Using
+// window.open(blobUrl) to work around that loses the filename entirely
+// (a blob: URL has no name of its own) — this instead reads the backend's
+// own Content-Disposition filename and forces a real save-as-that-name
+// download via a throwaway <a download> element.
+async function downloadAuthenticatedPdf(url, fallbackFilename) {
+  const token = localStorage.getItem('orbit_token');
+  const res = await fetch(url, { headers: token ? { Authorization: 'Bearer ' + token } : {} });
+  if (!res.ok) {
+    let detail = '';
+    try { detail = apiErrorMessage(await res.json()); } catch (e) { /* no/empty JSON body */ }
+    throw new Error(detail || 'Could not download this file.');
+  }
+  const filename = filenameFromDisposition(res, fallbackFilename);
+  const blob = await res.blob();
+  const blobUrl = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = blobUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+}
 function toApiDate(displayDate) {
   return toISO(displayDate) || null;
 }
@@ -674,6 +721,38 @@ function formatLocalDateOnly(iso) {
 function todayISO() {
   const d = new Date(Date.now() + 5 * 3600 * 1000);
   return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0');
+}
+// Shared by both Mark Attendance buttons (topbar and My Attendance page) so
+// they can never disagree about whether marking is currently allowed. PKT is
+// a fixed UTC+05:00 offset with no DST (see CLAUDE.md) — shifting the UTC
+// epoch by 5 hours and reading the UTC* getters off the result gives the PKT
+// wall-clock day-of-week/hour independent of the browser's own timezone,
+// the same trick todayISO() above uses for the PKT calendar date. Mirrors
+// the backend's own enforcement in AttendanceService.mark_attendance exactly
+// (holiday check + weekday check + 8:30 AM-7:30 PM window) — this is just
+// for the UI to grey the button out proactively instead of only finding out
+// from a 400. `holidays` is the list from AppDataContext (each with `date`/
+// `end_date` as "YYYY-MM-DD" strings, `end_date` null for a single-day
+// holiday) — lexicographic comparison of ISO date strings works correctly
+// here since they're all the same YYYY-MM-DD format.
+function attendanceWindowNow(holidays) {
+  const d = new Date(Date.now() + 5 * 3600 * 1000);
+  const dayOfWeek = d.getUTCDay(); // 0=Sun ... 6=Sat
+  const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+  // Minute-precision since the window boundaries aren't on the hour.
+  const currentMinutes = d.getUTCHours() * 60 + d.getUTCMinutes();
+  const isWithinHours = currentMinutes >= (8 * 60 + 30) && currentMinutes < (19 * 60 + 30);
+  const todayIso = todayISO();
+  const holiday = (holidays || []).find((h) => {
+    const start = h.date;
+    const end = h.end_date || h.date;
+    return start <= todayIso && todayIso <= end;
+  }) || null;
+  const isHoliday = !!holiday;
+  return {
+    isWeekend, isWithinHours, isHoliday, holidayName: holiday ? holiday.name : null,
+    canMark: !isWeekend && isWithinHours && !isHoliday,
+  };
 }
 function addDaysISO(iso, days) {
   const d = new Date(iso + 'T00:00:00Z');
@@ -1000,8 +1079,33 @@ const payrollApi = {
     return apiFetch('/api/finance/payroll' + q);
   },
   get(id) { return apiFetch('/api/finance/payroll/' + id); },
+  me(limit) { return apiFetch('/api/finance/payroll/me' + (limit ? '?limit=' + limit : '')); },
   update(id, payload) { return apiFetch('/api/finance/payroll/' + id, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); },
+  resetTax(id) { return apiFetch('/api/finance/payroll/' + id + '/reset-tax', { method: 'POST' }); },
+  generateSlips(month) { return apiFetch('/api/finance/payroll/generate-slips' + (month ? '?month=' + encodeURIComponent(month) : ''), { method: 'POST' }); },
+  generateOne(slipId) { return apiFetch('/api/finance/payroll/' + slipId + '/generate', { method: 'POST' }); },
+  markAllPaid(month) { return apiFetch('/api/finance/payroll/mark-all-paid' + (month ? '?month=' + encodeURIComponent(month) : ''), { method: 'POST' }); },
   remove(id) { return apiFetch('/api/finance/payroll/' + id, { method: 'DELETE' }); }
+};
+// Setup > Tax Slabs (Owner-only writes) — the annual income-tax bracket
+// table the payroll engine reads Income Tax from; see payrollApi above.
+const taxSlabsApi = {
+  list() { return apiFetch('/api/finance/tax-slabs'); },
+  create(payload) { return apiFetch('/api/finance/tax-slabs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); },
+  update(id, payload) { return apiFetch('/api/finance/tax-slabs/' + id, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); },
+  remove(id) { return apiFetch('/api/finance/tax-slabs/' + id, { method: 'DELETE' }); }
+};
+// Year-end Tax Certificates — every figure is derived fresh from existing
+// SalarySlip rows (no separate certificate table). A fiscal year (July 1 -
+// June 30) only shows up as a download option once it has actually closed;
+// see TaxCertificateService on the backend for the exact cutoff math.
+const taxCertificatesApi = {
+  myYears() { return apiFetch('/api/finance/tax-certificates/years/me'); },
+  myPdfUrl(fiscalYear) { return '/api/finance/tax-certificates/me/pdf?fiscal_year=' + encodeURIComponent(fiscalYear); },
+  companyYears() { return apiFetch('/api/finance/tax-certificates/years/company'); },
+  companyPdfUrl(fiscalYear) { return '/api/finance/tax-certificates/company/pdf?fiscal_year=' + encodeURIComponent(fiscalYear); },
+  summaryYears() { return apiFetch('/api/finance/tax-certificates/summary-years'); },
+  monthlySummary(fiscalYear) { return apiFetch('/api/finance/tax-certificates/monthly-summary' + (fiscalYear ? '?fiscal_year=' + encodeURIComponent(fiscalYear) : '')); },
 };
 const expenseCategoriesApi = {
   list() { return apiFetch('/api/settings/finance/expense-categories'); },
@@ -1128,6 +1232,7 @@ export {
   inReporting,
   isValidEmail,
   formatPhoneInput,
+  formatCnicInput,
   isPhoneComplete,
   isValidNumber,
   CURRENCY_SYMBOL,
@@ -1143,6 +1248,7 @@ export {
   auditToDisplay,
   PKT_TZ,
   todayISO,
+  attendanceWindowNow,
   addDaysISO,
   // employee id <-> name cache
   setEmployeeCache,
@@ -1177,6 +1283,7 @@ export {
   UPLOAD_ALLOWED_EXT,
   UPLOAD_MAX_SIZE_MB,
   validateUploadFile,
+  downloadAuthenticatedPdf,
   // API client objects (all 24)
   settingsApi,
   preferencesApi,
@@ -1198,6 +1305,8 @@ export {
   invoicesApi,
   expensesApi,
   payrollApi,
+  taxSlabsApi,
+  taxCertificatesApi,
   expenseCategoriesApi,
   crmSourcesApi,
   expenseCategoryBudgetsApi,

@@ -14,6 +14,7 @@ import {
   formatActivityTimestamp,
   parseDeepLinkHash,
   clearDeepLinkHash,
+  todayISO,
 } from "@/lib/orbit-client";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast-context";
@@ -205,6 +206,7 @@ export default function MeLeavePage() {
             <input
               type="date"
               value={form.startDate}
+              min={todayISO()}
               onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))}
               style={{ fontFamily: "var(--font-sans)", fontSize: 14, padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border-strong)", background: "var(--bg-surface)", color: "var(--text-primary)" }}
             />
@@ -214,6 +216,7 @@ export default function MeLeavePage() {
             <input
               type="date"
               value={form.endDate}
+              min={form.startDate || todayISO()}
               onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))}
               style={{ fontFamily: "var(--font-sans)", fontSize: 14, padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border-strong)", background: "var(--bg-surface)", color: "var(--text-primary)" }}
             />

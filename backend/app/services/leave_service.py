@@ -63,6 +63,18 @@ class LeaveService:
 
         start = data.get("start_date")
         end = data.get("end_date")
+        # Leave can only be filed in advance or for the current day — never
+        # for a date that's already passed. This is what lets the
+        # end-of-day attendance sweep be the single source of truth for
+        # Leave vs Absent (see AttendanceService.run_end_of_day_sweep): by
+        # the time a day's sweep runs, any leave request touching that day
+        # has necessarily already been filed and decided, so there's never a
+        # stale "Absent" record that needs retroactively fixing up later.
+        if start < now_pkt().date():
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Leave requests can only be filed for today or a future date.",
+            )
         if end and end < start:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

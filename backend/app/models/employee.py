@@ -53,6 +53,9 @@ class Employee(Base):
     phone: Mapped[str] = mapped_column(String(20), nullable=True)
     emergency_contact: Mapped[str] = mapped_column(String(20), nullable=True)
     emergency_contact_relation: Mapped[str] = mapped_column(String(100), nullable=True)
+    # Always stored formatted as "XXXXX-XXXXXXX-X" (e.g. 35201-5746852-5) —
+    # enforced both client-side (input mask) and server-side (schema regex).
+    cnic: Mapped[str] = mapped_column(String(15), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

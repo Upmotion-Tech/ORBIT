@@ -19,6 +19,10 @@ EMAIL_REGEX = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 # locks the "+92" prefix in the input itself, this is the server-side
 # authoritative check in case that's ever bypassed.
 PHONE_REGEX = re.compile(r"^\+92\d{10}$")
+# 5 digits - 7 digits - 1 digit (e.g. 35201-5746852-5) — the frontend enters
+# this via an auto-dashing input mask, this is the server-side authoritative
+# check in case that's ever bypassed.
+CNIC_REGEX = re.compile(r"^\d{5}-\d{7}-\d$")
 
 
 def _validate_phone(v: Optional[str]) -> Optional[str]:
@@ -26,6 +30,14 @@ def _validate_phone(v: Optional[str]) -> Optional[str]:
         return None
     if not PHONE_REGEX.match(v):
         raise ValueError("Enter a valid number: +92 followed by 10 digits.")
+    return v
+
+
+def _validate_cnic(v: Optional[str]) -> Optional[str]:
+    if v is None or v == "":
+        return None
+    if not CNIC_REGEX.match(v):
+        raise ValueError("Enter a valid CNIC: 5 digits, a dash, 7 digits, a dash, 1 digit (e.g. 35201-5746852-5).")
     return v
 
 
@@ -51,6 +63,7 @@ class EmployeeCreate(BaseModel):
     phone: Optional[str] = Field(None, max_length=20)
     emergency_contact: Optional[str] = Field(None, max_length=20)
     emergency_contact_relation: Optional[str] = Field(None, max_length=100)
+    cnic: Optional[str] = Field(None, max_length=15)
 
     @field_validator("email")
     @classmethod
@@ -74,6 +87,11 @@ class EmployeeCreate(BaseModel):
     def _validate_phone_fields(cls, v: Optional[str]) -> Optional[str]:
         return _validate_phone(v)
 
+    @field_validator("cnic")
+    @classmethod
+    def _validate_cnic_field(cls, v: Optional[str]) -> Optional[str]:
+        return _validate_cnic(v)
+
 
 class EmployeeUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255)
@@ -92,6 +110,7 @@ class EmployeeUpdate(BaseModel):
     phone: Optional[str] = Field(None, max_length=20)
     emergency_contact: Optional[str] = Field(None, max_length=20)
     emergency_contact_relation: Optional[str] = Field(None, max_length=100)
+    cnic: Optional[str] = Field(None, max_length=15)
 
     @field_validator("email")
     @classmethod
@@ -117,6 +136,11 @@ class EmployeeUpdate(BaseModel):
     def _validate_phone_fields(cls, v: Optional[str]) -> Optional[str]:
         return _validate_phone(v)
 
+    @field_validator("cnic")
+    @classmethod
+    def _validate_cnic_field(cls, v: Optional[str]) -> Optional[str]:
+        return _validate_cnic(v)
+
 
 class EmployeeResponse(BaseModel):
     id: str
@@ -140,6 +164,7 @@ class EmployeeResponse(BaseModel):
     phone: Optional[str] = None
     emergency_contact: Optional[str] = None
     emergency_contact_relation: Optional[str] = None
+    cnic: Optional[str] = None
     must_change_password: bool = True
     is_active: bool = True
     created_at: Optional[datetime] = None

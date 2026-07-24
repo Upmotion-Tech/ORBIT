@@ -5,11 +5,15 @@
 // (script.js:5166-5210).
 
 import { useEffect, useState } from "react";
-import { attendanceApi, todayISO, formatCommentTimestamp } from "@/lib/orbit-client";
+import { attendanceApi, todayISO, formatCommentTimestamp, attendanceWindowNow } from "@/lib/orbit-client";
 import { useToast } from "@/lib/toast-context";
+import { useAppData } from "@/lib/app-data-context";
 import { Button, Icon, Badge } from "@/design-system/healer-bundle";
 
-type AttendanceRecord = { date: string; status: string; marked_at?: string | null };
+type AttendanceRecord = {
+  date: string; status: string; marked_at?: string | null;
+  leave_approved_by_name?: string | null; leave_type?: string | null;
+};
 
 function monthLabelFrom(ym: string) {
   const parts = ym.split("-");
@@ -17,11 +21,12 @@ function monthLabelFrom(ym: string) {
   return d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
 }
 function attendanceStatusTone(st: string) {
-  return st === "Present" ? "success" : st === "Absent" ? "danger" : st === "WFH" ? "info" : "neutral";
+  return st === "Present" ? "success" : st === "Absent" ? "danger" : st === "WFH" ? "info" : st === "Leave" ? "warning" : st === "Holiday" ? "info" : "neutral";
 }
 
 export default function MeAttendancePage() {
   const { pushToast } = useToast();
+  const { holidays } = useAppData();
   const [month, setMonth] = useState(todayISO().slice(0, 7));
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [marking, setMarking] = useState(false);
@@ -36,22 +41,42 @@ export default function MeAttendancePage() {
 
   useEffect(load, [month]);
 
+  // Also re-fetch whenever `holidays` changes (e.g. right after Setup
+  // creates one covering today) — the server-side erasure of a same-day
+  // "Present" row on a retroactive holiday needs this to show up promptly
+  // instead of only on next reload.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(load, [holidays]);
+
+  // This page doesn't otherwise re-render on a timer — force one every
+  // minute so a tab left open across the 8:30 AM/7:30 PM boundary (or midnight
+  // into a weekend) doesn't keep showing a stale enabled/disabled button.
+  const [, forceTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => forceTick((t) => t + 1), 60000);
+    return () => clearInterval(id);
+  }, []);
+
   const attendanceTodayIso = todayISO();
-  const isWorkingDayToday = (() => {
-    const day = new Date(attendanceTodayIso + "T00:00:00").getDay();
-    return day >= 1 && day <= 5;
-  })();
-  const todayRecord = records.find((r) => r.date === attendanceTodayIso) || null;
+  const { isWeekend, isWithinHours, isHoliday, holidayName, canMark } = attendanceWindowNow(holidays);
+  // get_my_attendance also synthesizes a "Holiday" row for a holiday date
+  // with no real record — that's not a genuine mark, so exclude it here or
+  // a holiday would look like "already marked present".
+  const todayRecord = records.find((r) => r.date === attendanceTodayIso && r.status !== "Holiday") || null;
   const hasMarkedToday = !!todayRecord;
   const markedTodayStr = todayRecord?.marked_at ? formatCommentTimestamp(todayRecord.marked_at) : null;
 
-  const cardBg = !isWorkingDayToday ? "var(--bg-page)" : hasMarkedToday ? "var(--status-success-bg)" : "var(--status-warning-bg)";
-  const cardIcon = !isWorkingDayToday ? "calendar" : hasMarkedToday ? "circle-check" : "triangle-alert";
-  const cardIconColor = !isWorkingDayToday ? "var(--text-muted)" : hasMarkedToday ? "var(--status-success-text)" : "var(--status-warning-text)";
+  // "Already marked" always wins, regardless of what the window looks like
+  // right now — someone who marked at 10:05 AM shouldn't see this flip to
+  // "Outside Hours" just because it's 8 PM now.
+  const cardBg = hasMarkedToday ? "var(--status-success-bg)" : !canMark ? "var(--bg-page)" : "var(--status-warning-bg)";
+  const cardIcon = hasMarkedToday ? "circle-check" : isHoliday ? "party-popper" : isWeekend ? "calendar" : !isWithinHours ? "clock" : "triangle-alert";
+  const cardIconColor = hasMarkedToday ? "var(--status-success-text)" : !canMark ? "var(--text-muted)" : "var(--status-warning-text)";
 
   const presentCount = records.filter((r) => r.status === "Present").length;
   const absentCount = records.filter((r) => r.status === "Absent").length;
   const wfhCount = records.filter((r) => r.status === "WFH").length;
+  const leaveCount = records.filter((r) => r.status === "Leave").length;
 
   const rows = records.map((r) => ({
     date: r.date,
@@ -59,10 +84,11 @@ export default function MeAttendancePage() {
     status: r.status,
     statusTone: attendanceStatusTone(r.status),
     markedAtStr: r.marked_at ? formatCommentTimestamp(r.marked_at) : "—",
+    leaveApprovedByName: r.leave_approved_by_name || null,
   }));
 
   const markAttendance = () => {
-    if (marking) return;
+    if (marking || !canMark) return;
     setMarking(true);
     attendanceApi.mark().then(
       () => {
@@ -87,19 +113,26 @@ export default function MeAttendancePage() {
             <Icon name={cardIcon} size={22} color={cardIconColor} />
           </div>
           <div>
-            {!isWorkingDayToday && <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-secondary)" }}>Weekend — no attendance required today.</div>}
-            {isWorkingDayToday && hasMarkedToday && <div style={{ fontSize: 15, fontWeight: 600, color: "var(--status-success-text)" }}>Marked present today at {markedTodayStr}</div>}
-            {isWorkingDayToday && !hasMarkedToday && <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-primary)" }}>You haven&apos;t marked attendance today yet.</div>}
+            {hasMarkedToday && <div style={{ fontSize: 15, fontWeight: 600, color: "var(--status-success-text)" }}>Marked present today at {markedTodayStr}</div>}
+            {!hasMarkedToday && isHoliday && <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-secondary)" }}>Holiday — {holidayName}. No attendance required today.</div>}
+            {!hasMarkedToday && !isHoliday && isWeekend && <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-secondary)" }}>Weekend — no attendance required today.</div>}
+            {!hasMarkedToday && !isHoliday && !isWeekend && !isWithinHours && <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-secondary)" }}>Attendance can only be marked between 8:30 AM and 7:30 PM.</div>}
+            {!hasMarkedToday && !isHoliday && !isWeekend && isWithinHours && <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-primary)" }}>You haven&apos;t marked attendance today yet.</div>}
+            {/* Short, always-visible reminder of the marking window — not just something you discover once you're blocked. */}
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>Attendance can only be marked between 8:30 AM – 7:30 PM, Mon–Fri.</div>
           </div>
         </div>
-        {isWorkingDayToday && !hasMarkedToday && (
+        {!hasMarkedToday && canMark && (
           <Button variant="primary" onClick={markAttendance}>Mark Attendance</Button>
+        )}
+        {!hasMarkedToday && !canMark && (
+          <Button variant="secondary" disabled>Mark Attendance</Button>
         )}
       </div>
 
       <div>
         <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 10 }}>{monthLabelFrom(month)} summary</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 24 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 24 }}>
           <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-card)", padding: 18 }}>
             <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 6 }}>Present</div>
             <div style={{ fontSize: 28, fontWeight: 700, color: "var(--status-success-text)" }}>{presentCount}</div>
@@ -111,6 +144,10 @@ export default function MeAttendancePage() {
           <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-card)", padding: 18 }}>
             <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 6 }}>Work From Home</div>
             <div style={{ fontSize: 28, fontWeight: 700, color: "var(--status-info-text)" }}>{wfhCount}</div>
+          </div>
+          <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-card)", padding: 18 }}>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 6 }}>Leave</div>
+            <div style={{ fontSize: 28, fontWeight: 700, color: "var(--status-warning-text)" }}>{leaveCount}</div>
           </div>
         </div>
       </div>
@@ -137,7 +174,12 @@ export default function MeAttendancePage() {
               <tr key={ar.date} style={{ borderBottom: "1px solid var(--border-subtle)" }}>
                 <td style={{ padding: "12px 16px", fontSize: 13.5, color: "var(--text-primary)" }}>{ar.date}</td>
                 <td style={{ padding: "12px 16px", fontSize: 13.5, color: "var(--text-secondary)" }}>{ar.dayName}</td>
-                <td style={{ padding: "12px 16px" }}><Badge tone={ar.statusTone}>{ar.status}</Badge></td>
+                <td style={{ padding: "12px 16px" }}>
+                  <Badge tone={ar.statusTone}>{ar.status}</Badge>
+                  {ar.status === "Leave" && ar.leaveApprovedByName && (
+                    <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 4 }}>Approved by {ar.leaveApprovedByName}</div>
+                  )}
+                </td>
                 <td style={{ padding: "12px 16px", fontSize: 13.5, color: "var(--text-secondary)" }}>{ar.markedAtStr}</td>
               </tr>
             ))}

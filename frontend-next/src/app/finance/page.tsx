@@ -49,6 +49,7 @@ type SalarySlip = {
   id: string; employee_id: string; employee_name?: string; employee_role?: string; employee_department?: string;
   month: string; gross_salary: number; tax: number; other_deductions: number; deduction_reason?: string;
   bonus: number; allowances: number; net_salary: number; notes?: string; payment_status: string; payment_date?: string | null;
+  tax_is_manual?: boolean;
 };
 type Milestone = { id: string; project_id: string; project_name?: string; name: string; amount: number; currency: string; expected_date: string; status: string };
 type Project = { id: string; name: string; client: string };
@@ -79,6 +80,13 @@ function FinancePageContent() {
   const accessLevels = currentUser?.access_levels || [];
   const isFinanceEditor = accessLevels.includes("owner") || accessLevels.includes("finance");
   const canRunPayroll = isFinanceEditor;
+  // Income Tax specifically is stricter than the rest of a salary slip — a
+  // "finance" access-level editor can still edit bonus/allowances/other
+  // deductions/notes/status, but only Owner *department* (not just the
+  // "owner" access-level token) may manually override an individual's
+  // auto-calculated tax (backend enforces this too; this only controls
+  // whether the field renders editable).
+  const isOwnerDept = currentUser?.department === "Owner";
 
   // Backed by ?tab= instead of local state so the Invoices/Expenses/Payroll/
   // Milestones pills are real hrefs — right-click "open in new tab" /
@@ -101,6 +109,76 @@ function FinancePageContent() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [payrollMonth, setPayrollMonth] = useState(todayISO().slice(0, 7));
+  const [generatingSlips, setGeneratingSlips] = useState(false);
+  const [markingAllPaid, setMarkingAllPaid] = useState(false);
+  const [generatingOneSlip, setGeneratingOneSlip] = useState(false);
+
+  const generateSalarySlips = () => {
+    if (generatingSlips) return;
+    setGeneratingSlips(true);
+    payrollApi.generateSlips(payrollMonth).then(
+      (result: { employees_notified: number }) => {
+        setGeneratingSlips(false);
+        pushToast(`Salary slips generated — ${result.employees_notified} employee(s) notified.`);
+        loadFinance();
+      },
+      (err: Error) => {
+        setGeneratingSlips(false);
+        pushToast(err.message || "Could not generate salary slips.", "error");
+      }
+    );
+  };
+
+  // Fancy confirm modal (replaces a bare window.confirm) — shows a live
+  // preview of exactly who's about to be paid and how much, computed from
+  // the already-loaded `slips` for this month, before anything actually runs.
+  const [markAllPaidConfirmOpen, setMarkAllPaidConfirmOpen] = useState(false);
+  const markAllPaidClosing = useClosingTransition();
+  const closeMarkAllPaidConfirmAnimated = () => markAllPaidClosing.closeWithTransition(() => setMarkAllPaidConfirmOpen(false));
+  const unpaidSlipsThisMonth = slips.filter((s) => s.payment_status !== "Paid");
+  const unpaidNetTotalThisMonth = unpaidSlipsThisMonth.reduce((sum, s) => sum + (s.net_salary || 0), 0);
+
+  const markAllPayrollPaid = () => {
+    if (markingAllPaid) return;
+    setMarkAllPaidConfirmOpen(true);
+  };
+
+  const confirmMarkAllPayrollPaid = () => {
+    if (markingAllPaid) return;
+    closeMarkAllPaidConfirmAnimated();
+    setMarkingAllPaid(true);
+    payrollApi.markAllPaid(payrollMonth).then(
+      (result: { marked_paid: number; total_net_paid: number }) => {
+        setMarkingAllPaid(false);
+        if (result.marked_paid > 0) {
+          pushToast(`All salaries settled for ${payrollMonthLabel} — ${result.marked_paid} employee${result.marked_paid === 1 ? "" : "s"} paid, ${moneyPKR(result.total_net_paid)} disbursed.`);
+        } else {
+          pushToast(`Nothing to mark — every ${payrollMonthLabel} salary slip is already Paid.`);
+        }
+        loadFinance();
+      },
+      (err: Error) => {
+        setMarkingAllPaid(false);
+        pushToast(err.message || "Could not mark salary slips as paid.", "error");
+      }
+    );
+  };
+
+  const generateOneSalarySlip = (slipId: string) => {
+    if (generatingOneSlip) return;
+    setGeneratingOneSlip(true);
+    payrollApi.generateOne(slipId).then(
+      () => {
+        setGeneratingOneSlip(false);
+        pushToast("Salary slip generated and employee notified.");
+        loadFinance();
+      },
+      (err: Error) => {
+        setGeneratingOneSlip(false);
+        pushToast(err.message || "Could not generate this salary slip.", "error");
+      }
+    );
+  };
 
   const loadFinance = () => {
     Promise.all([
@@ -346,6 +424,21 @@ function FinancePageContent() {
         URL.revokeObjectURL(url);
       });
   };
+  const downloadSalarySlipPdf = (slipId: string, employeeName?: string) => {
+    const token = localStorage.getItem("orbit_token");
+    fetch("/api/finance/payroll/" + slipId + "/pdf", { headers: token ? { Authorization: "Bearer " + token } : {} })
+      .then((r) => r.blob())
+      .then((blob) => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "salary-slip-" + (employeeName || slipId).replace(/[^a-zA-Z0-9-_]/g, "") + ".pdf";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      });
+  };
 
   // ---- Expenses ----
   const [expSearch, setExpSearch] = useState("");
@@ -470,6 +563,16 @@ function FinancePageContent() {
     payrollApi.update(slip.id, { gross_salary: fresh.gross_salary, tax: fresh.tax, other_deductions: fresh.other_deductions, deduction_reason: fresh.deduction_reason || "", bonus: fresh.bonus, allowances: fresh.allowances, notes: fresh.notes || "", payment_status: fresh.payment_status }).then(
       () => pushToast("Salary slip updated."),
       (err: Error) => pushToast(err.message, "error")
+    );
+  };
+
+  const resetIncomeTaxToAuto = (slipId: string) => {
+    payrollApi.resetTax(slipId).then(
+      (updated: SalarySlip) => {
+        setSlips((cur) => cur.map((s) => (s.id === slipId ? { ...s, tax: updated.tax, tax_is_manual: updated.tax_is_manual, net_salary: updated.net_salary } : s)));
+        pushToast("Income Tax reset to auto-calculated.");
+      },
+      (err: Error) => pushToast(err.message || "Could not reset Income Tax.", "error")
     );
   };
 
@@ -648,9 +751,17 @@ function FinancePageContent() {
 
       {tab === "payroll" && (
         <>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-secondary)" }}>Month</span>
-            <input type="month" value={payrollMonth} onChange={(e) => setPayrollMonth(e.target.value)} style={{ fontFamily: "var(--font-sans)", fontSize: 13.5, padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-primary)" }} />
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-secondary)" }}>Month</span>
+              <input type="month" value={payrollMonth} onChange={(e) => setPayrollMonth(e.target.value)} style={{ fontFamily: "var(--font-sans)", fontSize: 13.5, padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-primary)" }} />
+            </div>
+            {canRunPayroll && (
+              <div style={{ display: "flex", gap: 10 }}>
+                <Button variant="ghost" icon="circle-check" disabled={markingAllPaid} onClick={markAllPayrollPaid}>{markingAllPaid ? "Marking…" : "Mark All as Paid"}</Button>
+                <Button variant="primary" icon="file-text" disabled={generatingSlips} onClick={generateSalarySlips}>{generatingSlips ? "Generating…" : "Generate Salary Slips"}</Button>
+              </div>
+            )}
           </div>
           <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -979,7 +1090,19 @@ function FinancePageContent() {
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
               <Input label="Gross salary (PKR) — set in Employee record" value={salarySlipRaw.gross_salary} disabled />
-              <Input label="Tax (PKR)" value={salarySlipRaw.tax} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSalarySlipFieldLive(salarySlipRaw.employee_id, "tax", e.target.value)} />
+              <div>
+                <Input
+                  label={"Income Tax (PKR)" + (isOwnerDept ? "" : " — auto-calculated")}
+                  value={salarySlipRaw.tax}
+                  disabled={!isOwnerDept}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSalarySlipFieldLive(salarySlipRaw.employee_id, "tax", e.target.value)}
+                />
+                {isOwnerDept && salarySlipRaw.tax_is_manual && (
+                  <a href="#" onClick={(e) => { e.preventDefault(); resetIncomeTaxToAuto(salarySlipRaw.id); }} style={{ display: "inline-block", marginTop: 6, fontSize: 12, fontWeight: 600, color: "var(--text-link)", textDecoration: "none" }}>
+                    Manually overridden — reset to auto-calculated
+                  </a>
+                )}
+              </div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
               <Input label="Allowances (PKR)" value={salarySlipRaw.allowances} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSalarySlipFieldLive(salarySlipRaw.employee_id, "allowances", e.target.value)} />
@@ -994,7 +1117,11 @@ function FinancePageContent() {
               </div>
             </div>
             <Input label="Notes" value={salarySlipRaw.notes || ""} multiline rows={3} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSalarySlipFieldLive(salarySlipRaw.employee_id, "notes", e.target.value)} />
-            <div style={{ marginTop: 4, display: "flex", justifyContent: "flex-end" }}><Button variant="primary" onClick={() => setSalarySlipEmpId(null)}>Close</Button></div>
+            <div style={{ marginTop: 4, display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <Button variant="ghost" icon="send" disabled={generatingOneSlip} onClick={() => generateOneSalarySlip(salarySlipRaw.id)}>{generatingOneSlip ? "Generating…" : "Generate Salary Slip"}</Button>
+              <Button variant="ghost" icon="file-text" onClick={() => downloadSalarySlipPdf(salarySlipRaw.id, salarySlipRaw.employee_name)}>Download PDF</Button>
+              <Button variant="primary" onClick={() => setSalarySlipEmpId(null)}>Close</Button>
+            </div>
           </div>
         ) : (
           <div style={{ border: "1px solid var(--border-subtle)", borderRadius: 8, padding: 24 }}>
@@ -1003,14 +1130,55 @@ function FinancePageContent() {
             <Row label="Gross pay" value={moneyPKR(salarySlipRaw.gross_salary)} />
             <Row label="Allowances" value={"+" + moneyPKR(salarySlipRaw.allowances)} />
             <Row label="Bonus" value={"+" + moneyPKR(salarySlipRaw.bonus)} />
-            <Row label="Tax" value={"−" + moneyPKR(salarySlipRaw.tax)} />
+            <Row label="Income Tax" value={"−" + moneyPKR(salarySlipRaw.tax)} />
             <Row label="Other deductions" value={"−" + moneyPKR(salarySlipRaw.other_deductions)} />
             {salarySlipRaw.deduction_reason && <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginBottom: 10, marginTop: -6 }}>Reason: {salarySlipRaw.deduction_reason}</div>}
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 15, paddingTop: 10, borderTop: "1px solid var(--border-subtle)" }}><span style={{ fontWeight: 700, color: "var(--text-primary)" }}>Net pay</span><span style={{ fontWeight: 700, color: "var(--text-primary)" }}>{moneyPKR(salarySlipRaw.net_salary)}</span></div>
-            <div style={{ marginTop: 20, display: "flex", justifyContent: "flex-end" }}><Button variant="primary" onClick={() => setSalarySlipEmpId(null)}>Close</Button></div>
+            <div style={{ marginTop: 20, display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <Button variant="ghost" icon="file-text" onClick={() => downloadSalarySlipPdf(salarySlipRaw.id, salarySlipRaw.employee_name)}>Download PDF</Button>
+              <Button variant="primary" onClick={() => setSalarySlipEmpId(null)}>Close</Button>
+            </div>
           </div>
         ))}
       </Modal>
+
+      {markAllPaidConfirmOpen && (
+        <div className={"crm-overlay-fade" + (markAllPaidClosing.isClosing ? " orbit-closing" : "")} onClick={closeMarkAllPaidConfirmAnimated} style={{ position: "fixed", inset: 0, background: "rgba(17,20,30,0.45)", zIndex: 1100, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div className={"crm-pop" + (markAllPaidClosing.isClosing ? " orbit-closing" : "")} onClick={(e) => e.stopPropagation()} style={{ width: 420, maxWidth: "90vw", background: "var(--bg-surface)", borderRadius: 14, boxShadow: "var(--shadow-popover)", padding: 26 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 48, height: 48, borderRadius: "50%", background: "var(--status-success-bg, #ECFDF5)", marginBottom: 16 }}>
+              <Icon name="circle-check" size={24} color="var(--status-success-text, #059669)" />
+            </div>
+            <h2 style={{ margin: "0 0 6px", fontSize: 18, fontWeight: 700, color: "var(--text-primary)" }}>Mark all salaries as Paid?</h2>
+            <p style={{ margin: "0 0 18px", fontSize: 13.5, color: "var(--text-secondary)" }}>For <b>{payrollMonthLabel}</b> — every employee will receive a &ldquo;Salary Disbursed&rdquo; notification.</p>
+
+            {unpaidSlipsThisMonth.length > 0 ? (
+              <>
+                <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
+                  <div style={{ flex: 1, background: "var(--bg-page)", borderRadius: 10, padding: "14px 16px" }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 4 }}>Employees</div>
+                    <div style={{ fontSize: 20, fontWeight: 700, color: "var(--text-primary)" }}>{unpaidSlipsThisMonth.length}</div>
+                  </div>
+                  <div style={{ flex: 1, background: "var(--bg-page)", borderRadius: 10, padding: "14px 16px" }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 4 }}>Total Disbursed</div>
+                    <div style={{ fontSize: 20, fontWeight: 700, color: "var(--text-primary)" }}>{moneyPKR(unpaidNetTotalThisMonth)}</div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+                  <Button variant="ghost" onClick={closeMarkAllPaidConfirmAnimated}>Cancel</Button>
+                  <Button variant="primary" icon="circle-check" onClick={confirmMarkAllPayrollPaid}>Mark {unpaidSlipsThisMonth.length} as Paid</Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p style={{ margin: "0 0 20px", fontSize: 13.5, color: "var(--text-muted)" }}>Every {payrollMonthLabel} salary slip is already Paid — nothing to do here.</p>
+                <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                  <Button variant="ghost" onClick={closeMarkAllPaidConfirmAnimated}>Close</Button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

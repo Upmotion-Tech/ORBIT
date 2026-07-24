@@ -12,6 +12,7 @@ import {
   leavesApi,
   wfhApi,
   notificationsApi,
+  holidaysApi,
   setEmployeeCache,
 } from "@/lib/orbit-client";
 import { useAuth } from "@/lib/auth-context";
@@ -20,15 +21,18 @@ type Employee = { id: string; name: string; manager?: string | null; [key: strin
 type LeaveRequest = { id: string; status: string; employee_id: string; [key: string]: unknown };
 type WfhRequest = { id: string; status: string; employee_id: string; [key: string]: unknown };
 type Notification = { id: string; is_read: boolean; type?: string; title?: string; message?: string; created_at?: string; [key: string]: unknown };
+type Holiday = { id: string; name: string; date: string; end_date?: string | null; day_count: number };
 
 type AppDataContextValue = {
   employees: Employee[];
   leaves: LeaveRequest[];
   allWfhRequests: WfhRequest[];
   notifications: Notification[];
+  holidays: Holiday[];
   reloadEmployees: () => void;
   reloadLeavesAndWfh: () => void;
   reloadNotifications: () => void;
+  reloadHolidays: () => void;
   crmStagesList: string[];
   setCrmStagesList: React.Dispatch<React.SetStateAction<string[]>>;
 };
@@ -55,6 +59,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
   const [allWfhRequests, setAllWfhRequests] = useState<WfhRequest[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [crmStagesList, setCrmStagesList] = useState<string[]>(CRM_STAGES_DEFAULT);
 
   const reloadEmployees = useCallback(() => {
@@ -93,11 +98,23 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     );
   }, []);
 
+  // Small, rarely-changing dataset (a handful of holidays a year) — needed
+  // by both the topbar's Mark Attendance button and the My Attendance page
+  // to know whether today is a holiday, so it's loaded once here rather
+  // than duplicated in each place.
+  const reloadHolidays = useCallback(() => {
+    holidaysApi.list().then(
+      (data: Holiday[]) => setHolidays(data || []),
+      () => setHolidays([])
+    );
+  }, []);
+
   useEffect(() => {
     if (!currentUser) return;
     reloadEmployees();
     reloadLeavesAndWfh();
     reloadNotifications();
+    reloadHolidays();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser?.id]);
 
@@ -117,9 +134,11 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         leaves,
         allWfhRequests,
         notifications,
+        holidays,
         reloadEmployees,
         reloadLeavesAndWfh,
         reloadNotifications,
+        reloadHolidays,
         crmStagesList,
         setCrmStagesList,
       }}

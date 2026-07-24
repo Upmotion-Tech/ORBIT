@@ -502,6 +502,28 @@ html, body {
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  /* The chevron's only job is a hover hint that navigation lives here —
+     there's no hover on a touchscreen, and the whole chip is already
+     tappable, so it's just width the compact mobile topbar can't spare. */
+  .orbit-profile-chevron {
+    display: none;
+  }
+  /* The clock was squeezed into the main icon row next to the hamburger,
+     fighting the flex:1 spacer after it for space and looking cramped/
+     off-balance once search dropped to its own full-width row below (see
+     .orbit-topbar-search above). Giving it the same "own full-width row"
+     treatment — ordered just before search — keeps the icon row itself
+     exactly as compact as it was before the clock existed, and gives the
+     clock enough room to show its full "Friday, Jul 24, 2026 · 2:35:47 PM"
+     centered on its own line instead of truncating to time-only. */
+  .orbit-clock {
+    order: 9 !important;
+    flex: 1 1 100% !important;
+    justify-content: center !important;
+    font-size: 12px !important;
+    gap: 6px !important;
+    padding: 2px 0 !important;
+  }
 
   /* Pill segment controls (Kanban/List/Past Projects, Kanban/List/Past
      Leads, This Month/Last Month, USD/PKR) across dashboard/reports/hr/crm/
@@ -1589,22 +1611,123 @@ body { font-size: 14.5px; }
   outline-offset: 2px;
 }
 
+/* ─── TOP BAR — Mark Attendance button ─── */
+/* Was a flat solid-color pill styled entirely inline (no hover state, no
+   depth) — sitting right next to the gradient-ring avatar and the
+   soft-shadow profile chip, it read as noticeably plainer than the rest of
+   the topbar. Rebuilt with the same gradient + soft-shadow + hover-lift
+   language as .orbit-avatar-ring/.orbit-profile-chip above, plus a small
+   icon badge instead of a bare icon, a gentle breathing glow while
+   attendance is still unmarked (a soft nudge, not a distraction — pauses
+   the moment marking starts), and a spinning icon during the request. */
+.orbit-attendance-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  border-radius: 9999px;
+  padding: 8px 18px 8px 8px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.25s ease;
+}
+.orbit-attendance-btn:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+.orbit-attendance-btn:not(:disabled):active {
+  transform: translateY(0) scale(0.98);
+}
+.orbit-attendance-btn.is-pending {
+  background: linear-gradient(135deg, #FB7185 0%, #EF4444 55%, #DC2626 100%);
+  box-shadow: 0 2px 10px rgba(239,68,68,0.38);
+  animation: orbit-attendance-pulse 2.6s ease-in-out infinite;
+}
+.orbit-attendance-btn.is-pending:hover {
+  box-shadow: 0 4px 18px rgba(239,68,68,0.5);
+}
+.orbit-attendance-btn.is-pending.is-marking {
+  animation: none;
+  box-shadow: 0 2px 10px rgba(239,68,68,0.38);
+}
+/* Covers both reasons marking is unavailable right now — a weekend, or a
+   working day outside the 8:30 AM-7:30 PM window — same muted grey treatment
+   either way, just a different label/tooltip in the JSX. */
+.orbit-attendance-btn.is-unavailable {
+  background: linear-gradient(135deg, #CBD5E1 0%, #94A3B8 100%);
+  box-shadow: none;
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+.orbit-attendance-btn.is-done {
+  background: linear-gradient(135deg, #34D399 0%, #16A34A 55%, #15803D 100%);
+  box-shadow: 0 2px 10px rgba(22,163,74,0.32);
+  cursor: default;
+  animation: orbit-attendance-pop 0.4s ease;
+}
+.orbit-attendance-icon-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.24);
+  flex-shrink: 0;
+}
+.orbit-attendance-btn.is-marking .orbit-attendance-icon-badge {
+  animation: orbit-attendance-spin 0.8s linear infinite;
+}
+@keyframes orbit-attendance-pulse {
+  0%, 100% { box-shadow: 0 2px 10px rgba(239,68,68,0.38); }
+  50% { box-shadow: 0 2px 20px rgba(239,68,68,0.62); }
+}
+@keyframes orbit-attendance-pop {
+  0% { transform: scale(0.9); }
+  50% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+@keyframes orbit-attendance-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 /* ─── TOP BAR — Profile chip ─── */
+/* Now a real link to My Record (see goToMyRecord in Shell.tsx) rather than
+   an inert div, so it needs the usual anchor resets (no underline, inherit
+   text color) on top of its existing chip styling. */
 .orbit-profile-chip {
   display: flex;
   align-items: center;
   gap: 11px;
-  padding: 6px 18px 6px 6px;
+  padding: 6px 14px 6px 6px;
   border-radius: 9999px;
   border: 1px solid var(--border-subtle);
   background: var(--bg-surface);
   box-shadow: 0 1px 3px rgba(17,20,30,0.05);
   transition: background 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
 }
 .orbit-profile-chip:hover {
   border-color: rgba(79,70,229,0.3);
   box-shadow: 0 4px 16px rgba(79,70,229,0.12);
   transform: translateY(-1px);
+}
+.orbit-profile-chip:active {
+  transform: translateY(0) scale(0.98);
+}
+.orbit-profile-chevron {
+  color: var(--text-muted);
+  transition: color 0.15s ease, transform 0.15s ease;
+}
+.orbit-profile-chip:hover .orbit-profile-chevron {
+  color: var(--brand-primary, #4F46E5);
+  transform: translateX(2px);
 }
 .orbit-avatar-ring {
   display: flex;

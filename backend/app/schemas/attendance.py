@@ -14,6 +14,11 @@ class AttendanceResponse(BaseModel):
     date: date
     status: str
     marked_at: Optional[datetime] = None
+    # Populated only when status == "Leave" — who approved the leave that
+    # covers this day, so the employee and Owner/HR can both see it without
+    # a separate lookup.
+    leave_approved_by_name: Optional[str] = None
+    leave_type: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

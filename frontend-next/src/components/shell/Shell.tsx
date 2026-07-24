@@ -28,6 +28,8 @@ import {
   isModifiedClick,
   formatActivityTimestamp,
   todayISO,
+  PKT_TZ,
+  attendanceWindowNow,
 } from "@/lib/orbit-client";
 import { SidebarSection, Icon, Avatar } from "@/design-system/healer-bundle";
 
@@ -46,11 +48,22 @@ function pathToScreenId(pathname: string) {
 
 export default function Shell({ children }: { children: React.ReactNode }) {
   const { currentUser, handleLogout } = useAuth();
-  const { employees, leaves, allWfhRequests, notifications, reloadNotifications } = useAppData();
+  const { employees, leaves, allWfhRequests, notifications, holidays, reloadNotifications } = useAppData();
   const { pushToast } = useToast();
   const router = useRouter();
   const pathname = usePathname();
   const [notifOpen, setNotifOpen] = useState(false);
+
+  // ---- Topbar live clock (PKT, matches the rest of the app's fixed
+  // Asia/Karachi timezone standard, not the visitor's browser/OS clock) ----
+  const [now, setNow] = useState<Date | null>(null);
+  useEffect(() => {
+    setNow(new Date());
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const clockDateStr = now ? now.toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "short", year: "numeric", timeZone: PKT_TZ }) : "";
+  const clockTimeStr = now ? now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true, timeZone: PKT_TZ }) : "";
 
   // ---- Topbar "Mark Attendance" quick action ----
   // Shell stays mounted across client-side navigation (only `children`
@@ -61,25 +74,36 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   // after navigating there.
   const [attendanceMarkedToday, setAttendanceMarkedToday] = useState(false);
   const [marking, setMarking] = useState(false);
-  const isWorkingDayToday = (() => {
-    const day = new Date(todayISO() + "T00:00:00").getDay();
-    return day >= 1 && day <= 5;
-  })();
+  // Recomputed on every render — Shell already re-renders every second for
+  // the live clock (see `now`/setInterval below), so this naturally stays
+  // current without its own ticker.
+  const { isWeekend, isWithinHours, isHoliday, holidayName, canMark } = attendanceWindowNow(holidays);
 
   useEffect(() => {
-    if (!currentUser?.id || !isWorkingDayToday) return;
+    // Still worth fetching even outside the 8:30 AM-7:30 PM window (but not on a
+    // weekend, when there's never anything to find) — if they marked
+    // earlier today, the button needs to keep showing "Attendance marked"
+    // rather than flipping to "Outside Hours" just because the window
+    // later closed. Re-runs whenever `holidays` changes too (e.g. right
+    // after Setup creates one covering today) so a same-day retroactive
+    // holiday's server-side erasure of an existing "Present" row is
+    // reflected here promptly rather than only on next login.
+    if (!currentUser?.id || isWeekend) return;
     const today = new Date();
     attendanceApi.me(today.getFullYear(), today.getMonth() + 1).then(
-      (records: { date: string }[]) => {
-        setAttendanceMarkedToday((records || []).some((r) => r.date === todayISO()));
+      (records: { date: string; status: string }[]) => {
+        // get_my_attendance also synthesizes a "Holiday" row for a holiday
+        // date with no real record — that's not a genuine mark, so exclude
+        // it or a holiday would look like "already marked".
+        setAttendanceMarkedToday((records || []).some((r) => r.date === todayISO() && r.status !== "Holiday"));
       },
       () => {}
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser?.id]);
+  }, [currentUser?.id, holidays]);
 
   const markAttendance = () => {
-    if (marking || attendanceMarkedToday) return;
+    if (marking || attendanceMarkedToday || !canMark) return;
     setMarking(true);
     attendanceApi.mark().then(
       () => {
@@ -215,6 +239,12 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     setSearchOpen(false);
   };
 
+  const goToMyRecord = (e: React.MouseEvent) => {
+    if (isModifiedClick(e)) return;
+    e.preventDefault();
+    router.push("/me-record");
+  };
+
   const dashboardItems: NavItem[] = persona === "owner"
     ? [{ id: "dashboard", label: "Home", icon: "house" }, { id: "reports", label: "Reports", icon: "bar-chart-2" }]
     : [{ id: "dashboard", label: "Home", icon: "house" }];
@@ -229,7 +259,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     { id: "me-policies", label: "Policies", icon: "file-text" },
     { id: "me-record", label: "My Record", icon: "user" },
   ];
-  const adminItems: NavItem[] = [{ id: "setup", label: "Setup", icon: "settings" }];
+  const adminItems: NavItem[] = [{ id: "setup", label: "Settings", icon: "settings" }];
 
   // ---- Manager Hub detection & badge count (script.js:4117-4143) ----
   const myNameNorm = (userName || "").trim().toLowerCase();
@@ -421,7 +451,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
             )}
             <SidebarSection label="Me" items={meItems} activeId={activeScreen} onSelect={setScreen} />
             {access.permissions && (
-              <SidebarSection label="Setup" items={adminItems} activeId={activeScreen} onSelect={setScreen} />
+              <SidebarSection label="Settings" items={adminItems} activeId={activeScreen} onSelect={setScreen} />
             )}
 
             <div className="orbit-logout-wrap">
@@ -529,28 +559,45 @@ export default function Shell({ children }: { children: React.ReactNode }) {
               )}
             </div>
 
+            <div className="orbit-clock" style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 600, color: "var(--text-secondary)", whiteSpace: "nowrap", flexShrink: 0 }}>
+              <Icon name="clock" size={15} color="var(--text-muted)" />
+              <span className="orbit-clock-date">{clockDateStr}</span>
+              <span className="orbit-clock-sep" style={{ color: "var(--text-muted)" }}>&middot;</span>
+              <span className="orbit-clock-time">{clockTimeStr}</span>
+            </div>
+
             <div style={{ flex: 1 }} />
 
-            {isWorkingDayToday && (
-              <button
-                onClick={markAttendance}
-                disabled={marking || attendanceMarkedToday}
-                aria-label={attendanceMarkedToday ? "Attendance marked" : marking ? "Marking attendance" : "Mark attendance"}
-                className="orbit-attendance-btn"
-                style={{
-                  display: "flex", alignItems: "center", gap: 8,
-                  border: "none", borderRadius: 9999, padding: "9px 16px",
-                  fontFamily: "var(--font-sans)", fontSize: 13, fontWeight: 700,
-                  color: "#fff", flexShrink: 0,
-                  background: attendanceMarkedToday ? "#16A34A" : "#EF4444",
-                  cursor: attendanceMarkedToday ? "default" : "pointer",
-                  transition: "background 0.2s ease",
-                }}
-              >
-                <Icon name={attendanceMarkedToday ? "circle-check" : "clock"} size={15} color="#fff" />
-                <span className="orbit-attendance-label">{attendanceMarkedToday ? "Attendance marked" : marking ? "Marking…" : "Mark Attendance"}</span>
-              </button>
-            )}
+            <button
+              onClick={markAttendance}
+              disabled={marking || attendanceMarkedToday || !canMark}
+              aria-label={
+                marking ? "Marking attendance" :
+                isHoliday ? `Holiday — ${holidayName}` :
+                attendanceMarkedToday ? "Attendance marked" :
+                isWeekend ? "Weekend — attendance not required" : !isWithinHours ? "Outside attendance hours" : "Mark attendance"
+              }
+              title={
+                marking ? undefined :
+                isHoliday ? `Holiday — ${holidayName}` :
+                attendanceMarkedToday ? undefined :
+                isWeekend ? "Weekend — no attendance needed today" :
+                !isWithinHours ? "Attendance can only be marked between 8:30 AM and 7:30 PM" : undefined
+              }
+              className={
+                "orbit-attendance-btn" +
+                (isHoliday ? " is-unavailable" : attendanceMarkedToday ? " is-done" : !canMark ? " is-unavailable" : " is-pending") +
+                (marking ? " is-marking" : "")
+              }
+            >
+              <span className="orbit-attendance-icon-badge">
+                <Icon name={isHoliday ? "party-popper" : attendanceMarkedToday ? "circle-check" : isWeekend ? "moon" : "clock"} size={13} color="#fff" />
+              </span>
+              <span className="orbit-attendance-label">
+                {marking ? "Marking…" : isHoliday ? "Holiday" : attendanceMarkedToday ? "Attendance marked" :
+                  isWeekend ? "Weekend" : !isWithinHours ? "Outside Hours" : "Mark Attendance"}
+              </span>
+            </button>
 
             <div className="orbit-notif-wrap" style={{ position: "relative" }}>
               <button
@@ -629,15 +676,21 @@ export default function Shell({ children }: { children: React.ReactNode }) {
               )}
             </div>
 
-            <div className="orbit-profile-chip">
+            <a
+              href="/me-record"
+              onClick={goToMyRecord}
+              className="orbit-profile-chip"
+              aria-label={`${userName} — open My Record`}
+            >
               <div className="orbit-avatar-ring">
-                <Avatar name={userName} size={34} />
+                <Avatar name={userName} size={34} style={{ background: "#fff", color: "#4338CA", fontWeight: 700 }} />
               </div>
               <div>
                 <div className="orbit-profile-name">{userName}</div>
                 <div className="orbit-profile-role">{userRole}</div>
               </div>
-            </div>
+              <Icon name="chevron-right" size={14} color="currentColor" className="orbit-profile-chevron" />
+            </a>
           </div>
 
           <div className="orbit-screen-content" style={{ flex: 1, padding: 24, overflow: "auto" }}>

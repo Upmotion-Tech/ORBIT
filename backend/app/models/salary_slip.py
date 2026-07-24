@@ -1,6 +1,6 @@
 import uuid
 from datetime import date, datetime
-from sqlalchemy import String, Float, Date, DateTime, ForeignKey, Index, Text
+from sqlalchemy import String, Float, Boolean, Date, DateTime, ForeignKey, Index, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 from app.core.time import now_pkt
@@ -17,6 +17,12 @@ class SalarySlip(Base):
     month: Mapped[str] = mapped_column(String(7), nullable=False) # "YYYY-MM"
     gross_salary: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     tax: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    # False (default): tax auto-recomputes from the current gross salary x12
+    # against the active TaxSlab table every time an Unpaid slip is
+    # accessed — same "resync while Unpaid" mechanism gross_salary already
+    # uses. True: an Owner manually overrode this one slip's tax, so it's
+    # pinned and skipped by that auto-recompute (see SalarySlipService).
+    tax_is_manual: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     other_deductions: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     deduction_reason: Mapped[str] = mapped_column(Text, nullable=True)
     bonus: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
