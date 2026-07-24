@@ -10,7 +10,8 @@
 // tab's WFH list) are read-only — Approve/Reject moved to the employee's
 // manager via Manager Hub; the drawer still shows who decided and their note.
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { useAppData } from "@/lib/app-data-context";
 import { useToast } from "@/lib/toast-context";
@@ -67,7 +68,17 @@ type AttendanceRow = { employee_id?: string; employee_name?: string; employee_de
 
 const HIRE_STAGES = ["Applied", "Screening", "Interview", "Offer", "Rejected"];
 
+// useSearchParams() (used below for the ?tab= driven tab pills) requires a
+// Suspense boundary above it per Next.js App Router.
 export default function HrPage() {
+  return (
+    <Suspense fallback={null}>
+      <HrPageContent />
+    </Suspense>
+  );
+}
+
+function HrPageContent() {
   const { currentUser } = useAuth();
   const { employees, reloadEmployees, leaves, allWfhRequests } = useAppData();
   const { pushToast } = useToast();
@@ -78,7 +89,18 @@ export default function HrPage() {
   const isFinanceEditor = accessLevels.includes("owner") || accessLevels.includes("finance");
   const isHrEditor = isHrEditorReal || isFinanceEditor;
 
-  const [tab, setTab] = useState<"employees" | "leave" | "hiring" | "leaveCount" | "attendance">("employees");
+  // Backed by ?tab= instead of local state so the Employees/Leave Requests/
+  // Hiring/Leave Count/Attendance pills are real hrefs — right-click "open
+  // in new tab" / ctrl-click / middle-click now works on them, same as
+  // dev/page.tsx's and finance/page.tsx's tab pills.
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const tab: "employees" | "leave" | "hiring" | "leaveCount" | "attendance" =
+    tabParam === "leave" || tabParam === "hiring" || tabParam === "leaveCount" || tabParam === "attendance" ? tabParam : "employees";
+  const setTab = (t: "employees" | "leave" | "hiring" | "leaveCount" | "attendance") => {
+    router.replace(`/hr?tab=${t}${window.location.hash}`, { scroll: false });
+  };
 
   // ---- Employees tab ----
   const [selEmpId, setSelEmpId] = useState<string | null>(null);
@@ -628,11 +650,11 @@ export default function HrPage() {
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           <h1 style={{ margin: 0, fontSize: 19, fontWeight: 700, color: "var(--text-primary)" }}>HR</h1>
           <div className="orbit-setup-tabs">
-            <button className="orbit-setup-tab" style={{ fontWeight: tab === "employees" ? 600 : 400 }} onClick={() => setTab("employees")}>Employees</button>
-            <button className="orbit-setup-tab" style={{ fontWeight: tab === "leave" ? 600 : 400 }} onClick={() => setTab("leave")}>Leave Requests</button>
-            <button className="orbit-setup-tab" style={{ fontWeight: tab === "hiring" ? 600 : 400 }} onClick={() => setTab("hiring")}>Hiring</button>
-            <button className="orbit-setup-tab" style={{ fontWeight: tab === "leaveCount" ? 600 : 400 }} onClick={() => setTab("leaveCount")}>Leave Count</button>
-            <button className="orbit-setup-tab" style={{ fontWeight: tab === "attendance" ? 600 : 400 }} onClick={() => setTab("attendance")}>Attendance</button>
+            <a href="/hr?tab=employees" className="orbit-setup-tab" style={{ fontWeight: tab === "employees" ? 600 : 400 }} onClick={(e) => { if (isModifiedClick(e)) return; e.preventDefault(); setTab("employees"); }}>Employees</a>
+            <a href="/hr?tab=leave" className="orbit-setup-tab" style={{ fontWeight: tab === "leave" ? 600 : 400 }} onClick={(e) => { if (isModifiedClick(e)) return; e.preventDefault(); setTab("leave"); }}>Leave Requests</a>
+            <a href="/hr?tab=hiring" className="orbit-setup-tab" style={{ fontWeight: tab === "hiring" ? 600 : 400 }} onClick={(e) => { if (isModifiedClick(e)) return; e.preventDefault(); setTab("hiring"); }}>Hiring</a>
+            <a href="/hr?tab=leaveCount" className="orbit-setup-tab" style={{ fontWeight: tab === "leaveCount" ? 600 : 400 }} onClick={(e) => { if (isModifiedClick(e)) return; e.preventDefault(); setTab("leaveCount"); }}>Leave Count</a>
+            <a href="/hr?tab=attendance" className="orbit-setup-tab" style={{ fontWeight: tab === "attendance" ? 600 : 400 }} onClick={(e) => { if (isModifiedClick(e)) return; e.preventDefault(); setTab("attendance"); }}>Attendance</a>
           </div>
         </div>
         {tab === "employees" && isHrEditor && <Button variant="primary" icon="circle-plus" onClick={openNewEmployee}>Add Employee</Button>}

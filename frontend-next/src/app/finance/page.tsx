@@ -8,7 +8,8 @@
 // lighter styling) — the real PDF is still generated server-side via
 // GET /api/finance/invoices/{id}/pdf, unchanged.
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast-context";
 import {
@@ -28,6 +29,7 @@ import {
   MONTH_NAMES,
   DEPARTMENT_OPTIONS,
   normalizeSearchText,
+  isModifiedClick,
 } from "@/lib/orbit-client";
 import { Button, Input, Select, Badge, Icon, Modal } from "@/design-system/healer-bundle";
 import { useClosingTransition } from "@/lib/use-closing-transition";
@@ -61,14 +63,35 @@ function blankLineItem() {
   return { projectId: "", description: "", qty: "1", unitPrice: "" };
 }
 
+// useSearchParams() (used below for the ?tab= driven tab pills) requires a
+// Suspense boundary above it per Next.js App Router.
 export default function FinancePage() {
+  return (
+    <Suspense fallback={null}>
+      <FinancePageContent />
+    </Suspense>
+  );
+}
+
+function FinancePageContent() {
   const { currentUser } = useAuth();
   const { pushToast } = useToast();
   const accessLevels = currentUser?.access_levels || [];
   const isFinanceEditor = accessLevels.includes("owner") || accessLevels.includes("finance");
   const canRunPayroll = isFinanceEditor;
 
-  const [tab, setTab] = useState<"invoices" | "expenses" | "payroll" | "milestones">("invoices");
+  // Backed by ?tab= instead of local state so the Invoices/Expenses/Payroll/
+  // Milestones pills are real hrefs — right-click "open in new tab" /
+  // ctrl-click / middle-click now works on them, same as dev/page.tsx's
+  // Projects/Tasks pills.
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const tab: "invoices" | "expenses" | "payroll" | "milestones" =
+    tabParam === "expenses" || tabParam === "payroll" || tabParam === "milestones" ? tabParam : "invoices";
+  const setTab = (t: "invoices" | "expenses" | "payroll" | "milestones") => {
+    router.replace(`/finance?tab=${t}${window.location.hash}`, { scroll: false });
+  };
 
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -531,10 +554,10 @@ export default function FinancePage() {
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           <h1 style={{ margin: 0, fontSize: 19, fontWeight: 700, color: "var(--text-primary)" }}>Finance</h1>
           <div className="orbit-setup-tabs">
-            <button className="orbit-setup-tab" style={{ fontWeight: tab === "invoices" ? 600 : 400 }} onClick={() => setTab("invoices")}>Invoices</button>
-            <button className="orbit-setup-tab" style={{ fontWeight: tab === "expenses" ? 600 : 400 }} onClick={() => setTab("expenses")}>Expenses</button>
-            <button className="orbit-setup-tab" style={{ fontWeight: tab === "payroll" ? 600 : 400 }} onClick={() => setTab("payroll")}>Payroll</button>
-            <button className="orbit-setup-tab" style={{ fontWeight: tab === "milestones" ? 600 : 400 }} onClick={() => setTab("milestones")}>Milestones</button>
+            <a href="/finance?tab=invoices" className="orbit-setup-tab" style={{ fontWeight: tab === "invoices" ? 600 : 400 }} onClick={(e) => { if (isModifiedClick(e)) return; e.preventDefault(); setTab("invoices"); }}>Invoices</a>
+            <a href="/finance?tab=expenses" className="orbit-setup-tab" style={{ fontWeight: tab === "expenses" ? 600 : 400 }} onClick={(e) => { if (isModifiedClick(e)) return; e.preventDefault(); setTab("expenses"); }}>Expenses</a>
+            <a href="/finance?tab=payroll" className="orbit-setup-tab" style={{ fontWeight: tab === "payroll" ? 600 : 400 }} onClick={(e) => { if (isModifiedClick(e)) return; e.preventDefault(); setTab("payroll"); }}>Payroll</a>
+            <a href="/finance?tab=milestones" className="orbit-setup-tab" style={{ fontWeight: tab === "milestones" ? 600 : 400 }} onClick={(e) => { if (isModifiedClick(e)) return; e.preventDefault(); setTab("milestones"); }}>Milestones</a>
           </div>
         </div>
         {tab === "invoices" && isFinanceEditor && <Button variant="primary" icon="circle-plus" onClick={() => openInvoiceDrawer("new")}>New Invoice</Button>}

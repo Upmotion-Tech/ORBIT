@@ -14,8 +14,9 @@
 // /api/projects or /api/tasks with query params, matching loadProjects/
 // loadTasks's exact behavior in the original.
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { useAppData } from "@/lib/app-data-context";
 import { useToast } from "@/lib/toast-context";
@@ -68,7 +69,18 @@ function Highlight({ parts }: { parts: { before: string; match: string; after: s
   );
 }
 
+// useSearchParams() (used below for the ?tab= driven Projects/Tasks pills)
+// requires a Suspense boundary above it per Next.js App Router — this outer
+// wrapper is the boundary, DevPage itself is unchanged otherwise.
 export default function DevPage() {
+  return (
+    <Suspense fallback={null}>
+      <DevPageContent />
+    </Suspense>
+  );
+}
+
+function DevPageContent() {
   const { currentUser } = useAuth();
   const { employees } = useAppData();
   const { pushToast } = useToast();
@@ -83,7 +95,17 @@ export default function DevPage() {
   const devPageTitle = persona === "devmember" ? "My Projects" : "Projects";
   const isOwnerDept = currentUser?.department === "Owner";
 
-  const [tab, setTab] = useState<"projects" | "tasks">("projects");
+  // Backed by ?tab= instead of local state so the Projects/Tasks pills are
+  // real hrefs — right-click "open in new tab" / ctrl-click / middle-click
+  // now works on them, the same way it already does for individual lead/
+  // project/task/customer cards via deepLinkHref. router.replace (not push)
+  // so clicking between tabs doesn't spam browser history.
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const tab: "projects" | "tasks" = searchParams.get("tab") === "tasks" ? "tasks" : "projects";
+  const setTab = (t: "projects" | "tasks") => {
+    router.replace(`/dev?tab=${t}${window.location.hash}`, { scroll: false });
+  };
   const [projSubView, setProjSubView] = useState<"kanban" | "list" | "past">("kanban");
   const [taskSubView, setTaskSubView] = useState<"kanban" | "list">("kanban");
 
@@ -619,8 +641,8 @@ export default function DevPage() {
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           <h1 style={{ margin: 0, fontSize: 19, fontWeight: 700, color: "var(--text-primary)" }}>{devPageTitle}</h1>
           <div className="orbit-setup-tabs">
-            <button className="orbit-setup-tab" style={{ fontWeight: tab === "projects" ? 600 : 400 }} onClick={() => setTab("projects")}>Projects</button>
-            <button className="orbit-setup-tab" style={{ fontWeight: tab === "tasks" ? 600 : 400 }} onClick={() => setTab("tasks")}>Tasks</button>
+            <a href="/dev?tab=projects" className="orbit-setup-tab" style={{ fontWeight: tab === "projects" ? 600 : 400 }} onClick={(e) => { if (isModifiedClick(e)) return; e.preventDefault(); setTab("projects"); }}>Projects</a>
+            <a href="/dev?tab=tasks" className="orbit-setup-tab" style={{ fontWeight: tab === "tasks" ? 600 : 400 }} onClick={(e) => { if (isModifiedClick(e)) return; e.preventDefault(); setTab("tasks"); }}>Tasks</a>
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
