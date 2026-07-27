@@ -476,13 +476,23 @@ html, body {
   }
   .orbit-topbar-search {
     max-width: none !important;
-    /* Shell.tsx's inline style="flex:1" also sets flex-basis:0% as part of
-       that shorthand — a plain (non-!important) flex-basis override here
-       was silently losing to it, leaving the search box shrunk to a sliver
+    /* Shell.tsx's inline style sets a flex shorthand too (flex:"1 1 220px"
+       on desktop) — a plain (non-!important) flex-basis override here was
+       silently losing to it, leaving the search box shrunk to a sliver
        instead of actually wrapping onto its own row. The `flex` shorthand
-       with !important overrides all three (grow/shrink/basis) at once. */
+       with !important overrides grow/shrink/basis all at once. */
     flex: 1 1 100% !important;
     order: 10 !important;
+  }
+  /* The search pill's own internal padding (9px 16px in Shell.tsx) plus the
+     icon eat real width on a phone — every pixel back here is a pixel more
+     of "Search leads, projects, tasks, customers, people…" that fits
+     without truncating on a narrower phone (~360px and below). Matched by
+     its literal inline padding, not a bare ">div" child selector, since the
+     search-results dropdown is also a direct child of .orbit-topbar-search
+     and must not pick up this padding too. */
+  .orbit-topbar-search > [style*="padding:9px 16px"] {
+    padding: 8px 12px !important;
   }
   /* Full label ("Mark Attendance" / "Attendance marked" / "Marking…") is the
      single widest item in the topbar — icon-only on phones keeps its own
@@ -508,14 +518,12 @@ html, body {
   .orbit-profile-chevron {
     display: none;
   }
-  /* The clock was squeezed into the main icon row next to the hamburger,
-     fighting the flex:1 spacer after it for space and looking cramped/
-     off-balance once search dropped to its own full-width row below (see
-     .orbit-topbar-search above). Giving it the same "own full-width row"
-     treatment — ordered just before search — keeps the icon row itself
-     exactly as compact as it was before the clock existed, and gives the
-     clock enough room to show its full "Friday, Jul 24, 2026 · 2:35:47 PM"
-     centered on its own line instead of truncating to time-only. */
+  /* The clock sits on the main icon row alongside the hamburger and the
+     (now margin-left:auto-pushed) attendance/notif/profile-chip cluster —
+     giving it its own full-width row below that, ordered just before
+     search, keeps the icon row itself compact and gives the clock enough
+     room to show its full "Friday, Jul 24, 2026 · 2:35:47 PM" centered on
+     its own line instead of truncating to time-only. */
   .orbit-clock {
     order: 9 !important;
     flex: 1 1 100% !important;
@@ -559,13 +567,34 @@ html, body {
      are absolutely-positioned flyouts with a fixed 380px width — wider than
      the viewport itself on any phone, so part of the panel was pushed off
      the right edge and clipped by html/body's overflow-x:hidden above
-     (unreachable, not just visually clipped). Anchoring both from the same
-     16px inset with a viewport-relative width keeps the whole panel
-     reachable regardless of which side it originally hung from. */
+     (unreachable, not just visually clipped). Widening both to a
+     viewport-relative width fixes the search results panel, whose
+     `position:relative` anchor (.orbit-topbar-search) itself stretches to
+     the full viewport width on mobile (flex:1 1 100% below) — so `left`/
+     `right` insets here end up close enough to the real viewport edges. */
   [style*="width:380px"][style*="position:absolute"] {
     width: calc(100vw - 32px) !important;
     left: 16px !important;
     right: 16px !important;
+  }
+  /* The Notifications panel's own anchor (.orbit-notif-wrap, wrapping just
+     the small bell button) does NOT get that same full-width treatment —
+     it stays a ~38px box pinned near the topbar's right edge, so the
+     `left`/`right` insets above are actually relative to THAT tiny box, not
+     the viewport, and the panel rendered almost entirely off-screen to the
+     right instead of getting pulled back on-screen. Distinguished from the
+     search panel by `right:0px` (only the notif panel sets `right`; search
+     sets `left` instead) and switched to `position:fixed`, whose `top`/
+     `left`/`right` genuinely are viewport-relative regardless of any small
+     positioned ancestor. `top` is a fixed estimate of the icon row's own
+     height (not --topbar-height, which covers the whole wrapped 3-row
+     mobile topbar) — a few px off either way is a minor cosmetic gap, not
+     the "unreachable off-screen" failure this replaces. max-height keeps it
+     from also overflowing off the bottom of a short phone screen. */
+  [style*="width:380px"][style*="position:absolute"][style*="right:0px"] {
+    position: fixed !important;
+    top: 60px !important;
+    max-height: calc(100vh - 76px) !important;
   }
 }
 .orbit-sidebar-backdrop {
@@ -1566,15 +1595,39 @@ body { font-size: 14.5px; }
   background: #EAECF3 !important;
   --text-body-size: 13.5px;
   --text-eyebrow-size: 10.5px;
-  --sidebar-section-gap: 14px;
-  --sidebar-item-gap: 3px;
+  --sidebar-section-gap: 10px;
+  --sidebar-item-gap: 2px;
 }
 /* The nav-item <a>'s own vertical padding (9px top/bottom) is hardcoded in
    the compiled component, not a CSS var, so it needs a direct override —
    same "match the literal inline style string" technique used throughout
-   this file. Shaves another ~6px off every single nav item. */
+   this file. Shaves another ~6px off every single nav item, on top of the
+   tighter --sidebar-section-gap/--sidebar-item-gap above.
+   Also carries the hover/press feedback and transition for these items —
+   the file's other "sidebar transition" rule (further down) targets
+   [style*="cursor:pointer"], which only ever matches the logo/brand row
+   (the sole element in the sidebar panel that actually sets `cursor`
+   inline); the nav item <a>s never set that property, so every click/hover
+   state change on them was an instant, jarring snap with nothing smoothing
+   it — this is what actually fixes that. */
 [data-brand="orbit"] [style*="width:var(--sidebar-width)"] a[style*="padding:9px 12px"] {
   padding: 6px 12px !important;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.12s ease !important;
+}
+/* Hover feedback for inactive items only — the active item already gets its
+   own permanent dark-pill treatment (see the background:var(--status-info-bg)
+   override above) and shouldn't visually "un-select" itself just because
+   the pointer happens to be resting on it. */
+[data-brand="orbit"] [style*="width:var(--sidebar-width)"] a[style*="padding:9px 12px"]:not([style*="background:var(--status-info-bg)"]):hover {
+  background: rgba(17,20,30,0.06) !important;
+  color: var(--text-primary) !important;
+  transform: translateX(2px);
+}
+[data-brand="orbit"] [style*="width:var(--sidebar-width)"] a[style*="padding:9px 12px"]:not([style*="background:var(--status-info-bg)"]):hover span {
+  background-color: var(--text-primary) !important;
+}
+[data-brand="orbit"] [style*="width:var(--sidebar-width)"] a[style*="padding:9px 12px"]:active {
+  transform: scale(0.97);
 }
 .sidebar-logout-btn {
   position: relative;
@@ -1864,7 +1917,12 @@ sc-raw-thead sc-raw-tr {
 [style*="background:var(--status-warning-bg)"]:not(mark) { background: #FEF3C7 !important; color: #D97706 !important; }
 [style*="background:var(--status-info-bg)"]:not(mark)    { background: #EEF2FF !important; color: #4338CA !important; }
 
-/* ─── Sidebar nav item transitions ─── */
+/* ─── Sidebar logo/brand row transition ─── */
+/* Despite the generic-looking selector, this only ever matches the ORBIT
+   logo row in Shell.tsx (the one element inside the sidebar panel that
+   actually sets `cursor: "pointer"` inline) — the nav items themselves
+   never set that property, so they get their own transition/hover rules
+   right where their spacing is tuned, near the top of this file. */
 [data-brand="orbit"] [style*="width:var(--sidebar-width)"] [style*="cursor:pointer"] {
   transition: background 0.15s ease, color 0.15s ease !important;
 }

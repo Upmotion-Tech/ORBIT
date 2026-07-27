@@ -508,7 +508,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
               </svg>
             </button>
 
-            <div ref={searchBoxRef} className="orbit-topbar-search" style={{ position: "relative", flex: 1, minWidth: 0, maxWidth: 360 }}>
+            <div ref={searchBoxRef} className="orbit-topbar-search" style={{ position: "relative", flex: "1 1 220px", minWidth: 160, maxWidth: 360 }}>
               <div
                 style={{
                   display: "flex",
@@ -566,11 +566,10 @@ export default function Shell({ children }: { children: React.ReactNode }) {
               <span className="orbit-clock-time">{clockTimeStr}</span>
             </div>
 
-            <div style={{ flex: 1 }} />
-
             <button
               onClick={markAttendance}
               disabled={marking || attendanceMarkedToday || !canMark}
+              style={{ marginLeft: "auto" }}
               aria-label={
                 marking ? "Marking attendance" :
                 isHoliday ? `Holiday — ${holidayName}` :
