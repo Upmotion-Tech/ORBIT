@@ -216,7 +216,7 @@ function FinancePageContent() {
   const [linePickerQuery, setLinePickerQuery] = useState("");
   type LinkableItem = { type: "project" | "lead"; id: string; label: string; sublabel: string };
   const linkableItems: LinkableItem[] = [
-    ...projects.filter((p) => p.client !== "Internal").map((p) => ({ type: "project" as const, id: p.id, label: p.name, sublabel: p.client })),
+    ...projects.map((p) => ({ type: "project" as const, id: p.id, label: p.name, sublabel: p.client })),
     ...leads.map((l) => ({ type: "lead" as const, id: l.id, label: l.name, sublabel: l.stage })),
   ];
   const [invForm, setInvForm] = useState({
