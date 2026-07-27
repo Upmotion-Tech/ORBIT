@@ -22,6 +22,20 @@
 
 ---
 
+## 💰 How Payroll Tax Works (Plain-Language Guide)
+
+This section is written for anyone using ORBIT day-to-day — no technical background needed.
+
+**What are Tax Slabs?** Pakistan's income tax uses a bracket system: as your income goes up, only the portion *above* each threshold is taxed at that bracket's higher rate — never your whole salary at one flat rate. An Owner enters the official government brackets once, under **Setup → Tax Slabs** (e.g. "0% up to Rs. 600,000", "1% on the amount above Rs. 600,000 up to Rs. 1,200,000", and so on), and every employee's salary slip is calculated against them automatically every month.
+
+**How long do tax slabs stay in effect?** Indefinitely, exactly as entered, until someone with Owner access manually changes or deletes them — there's no yearly expiry and nothing resets on its own. When the government publishes new brackets for a new tax year, an Owner just updates the numbers on that same Setup page.
+
+**Does changing tax slabs affect past salary slips?** No. A change only affects the current month and any month after it. Every past month's salary slip stays exactly as it was actually calculated and paid at the time — editing this year's brackets can never quietly rewrite what someone was paid last year.
+
+**The Salary Slip document**: every employee's downloadable Salary Slip PDF matches Upmotion Tech's official salary slip format — same layout, company logo and address, the Partner's signature and stamp — with Basic Pay, Incentive Pay, House Rent Allowance, Income Tax, and Net Pay each broken out clearly, plus the net amount spelled out in words.
+
+---
+
 ## 🛠️ Tech Stack & Deployment
 
 | Layer | Technology |
