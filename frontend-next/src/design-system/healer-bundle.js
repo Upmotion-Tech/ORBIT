@@ -1526,6 +1526,7 @@ function Modal({
     }
   }, /*#__PURE__*/React.createElement(motion.div, {
     onClick: e => e.stopPropagation(),
+    "data-lenis-prevent": "",
     initial: { opacity: 0, scale: 0.96, y: 10 },
     animate: { opacity: 1, scale: 1, y: 0 },
     exit: { opacity: 0, scale: 0.96, y: 10 },

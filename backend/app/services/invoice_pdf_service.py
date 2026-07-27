@@ -81,7 +81,7 @@ def amount_in_words(amount: float, currency: str) -> str:
     currency_name = CURRENCY_WORDS.get(currency, currency)
     text = f"{_int_to_words(whole)} {currency_name}"
     if cents:
-        text += f" and {_int_to_words(cents)} Cents"
+        text += f" and {_int_to_words(cents)} {'Cent' if cents == 1 else 'Cents'}"
     return text + " Only"
 
 

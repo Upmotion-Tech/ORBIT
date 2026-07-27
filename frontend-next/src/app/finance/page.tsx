@@ -679,6 +679,7 @@ function FinancePageContent() {
             {invFiltersActive && <a href="#" onClick={(e) => { e.preventDefault(); setInvSearch(""); setInvStatus(""); setInvCurrency(""); setInvProject(""); }} style={{ fontSize: 13, fontWeight: 500, color: "var(--text-link)", textDecoration: "none", whiteSpace: "nowrap" }}>Clear filters</a>}
           </div>
           <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
+            <SmoothScroll horizontal>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead><tr style={{ borderBottom: "1px solid var(--border-subtle)" }}>
                 <th style={thStyle}></th><th style={thStyle}>Client</th><th style={thStyle}>Project</th><th style={thStyle}>Amount</th><th style={thStyle}>Type</th><th style={thStyle}>Due</th><th style={thStyle}>Status</th><th style={thStyle}></th>
@@ -704,6 +705,7 @@ function FinancePageContent() {
                 ))}
               </tbody>
             </table>
+            </SmoothScroll>
           </div>
         </>
       )}
@@ -718,6 +720,7 @@ function FinancePageContent() {
             {expFiltersActive && <a href="#" onClick={(e) => { e.preventDefault(); setExpSearch(""); setExpCategory(""); setExpStatus(""); setExpDept(""); }} style={{ fontSize: 13, fontWeight: 500, color: "var(--text-link)", textDecoration: "none", whiteSpace: "nowrap" }}>Clear filters</a>}
           </div>
           <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
+            <SmoothScroll horizontal>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead><tr style={{ borderBottom: "1px solid var(--border-subtle)" }}>
                 <th style={thStyle}></th><th style={thStyle}>Category</th><th style={thStyle}>Amount</th><th style={thStyle}>Type</th><th style={thStyle}>Submitted by</th><th style={thStyle}>Status</th><th style={thStyle}></th>
@@ -746,6 +749,7 @@ function FinancePageContent() {
                 ))}
               </tbody>
             </table>
+            </SmoothScroll>
           </div>
         </>
       )}
@@ -765,6 +769,7 @@ function FinancePageContent() {
             )}
           </div>
           <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
+            <SmoothScroll horizontal>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead><tr style={{ borderBottom: "1px solid var(--border-subtle)" }}>
                 <th style={thStyle}>Employee</th><th style={thStyle}>Role</th><th style={thStyle}>Department</th><th style={thStyle}>Gross (monthly)</th><th style={thStyle}>Net (monthly)</th><th style={thStyle}>Paid ({payrollMonthLabel})</th><th></th>
@@ -789,6 +794,7 @@ function FinancePageContent() {
                 ))}
               </tbody>
             </table>
+            </SmoothScroll>
           </div>
         </>
       )}
@@ -813,6 +819,7 @@ function FinancePageContent() {
             </div>
           </div>
           <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
+            <SmoothScroll horizontal>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead><tr style={{ borderBottom: "1px solid var(--border-subtle)" }}>
                 <th style={thStyle}>Project</th><th style={thStyle}>Milestone</th><th style={thStyle}>Amount</th><th style={thStyle}>Expected date</th><th style={thStyle}>Status</th><th style={{ ...thStyle, textAlign: "right" }}></th>
@@ -838,6 +845,7 @@ function FinancePageContent() {
                 ))}
               </tbody>
             </table>
+            </SmoothScroll>
           </div>
         </>
       )}
