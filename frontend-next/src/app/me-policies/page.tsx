@@ -13,6 +13,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast-context";
 import { policiesApi, getEmployeeName, PKT_TZ } from "@/lib/orbit-client";
 import { Button, Input, Modal, Icon } from "@/design-system/healer-bundle";
+import SmoothScroll from "@/components/shell/SmoothScroll";
 
 // Compact element overrides so the assistant's markdown (bold, numbered/
 // bulleted lists, the occasional table) fits a narrow chat bubble instead of
@@ -25,9 +26,9 @@ const markdownComponents = {
   li: ({ children }: { children?: React.ReactNode }) => <li style={{ marginBottom: 3 }}>{children}</li>,
   strong: ({ children }: { children?: React.ReactNode }) => <strong style={{ fontWeight: 700 }}>{children}</strong>,
   table: ({ children }: { children?: React.ReactNode }) => (
-    <div style={{ overflowX: "auto", marginBottom: 8 }}>
+    <SmoothScroll horizontal style={{ marginBottom: 8 }}>
       <table style={{ borderCollapse: "collapse", fontSize: 13 }}>{children}</table>
-    </div>
+    </SmoothScroll>
   ),
   th: ({ children }: { children?: React.ReactNode }) => <th style={{ border: "1px solid var(--border-subtle)", padding: "4px 8px", textAlign: "left" }}>{children}</th>,
   td: ({ children }: { children?: React.ReactNode }) => <td style={{ border: "1px solid var(--border-subtle)", padding: "4px 8px" }}>{children}</td>,
@@ -231,7 +232,7 @@ export default function MePoliciesPage() {
         </div>
 
         {chat.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 340, overflowY: "auto", padding: "4px 2px" }}>
+          <SmoothScroll style={{ maxHeight: 340, padding: "4px 2px" }} contentStyle={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {chat.map((m, i) => (
               <div key={i} style={{
                 alignSelf: m.role === "user" ? "flex-end" : "flex-start",
@@ -253,7 +254,7 @@ export default function MePoliciesPage() {
             {asking && (
               <div style={{ alignSelf: "flex-start", color: "var(--text-muted)", fontSize: 13, fontStyle: "italic" }}>Thinking…</div>
             )}
-          </div>
+          </SmoothScroll>
         )}
 
         <div style={{ display: "flex", gap: 8 }}>
@@ -279,9 +280,9 @@ export default function MePoliciesPage() {
               {viewPolicy.created_by_id && <span>By: <strong style={{ color: "var(--text-primary)" }}>{getEmployeeName(viewPolicy.created_by_id) || "—"}</strong></span>}
             </div>
             {viewPolicy.content && (
-              <div style={{ whiteSpace: "pre-wrap", fontSize: 14, lineHeight: 1.6, color: "var(--text-primary)", background: "var(--bg-page)", borderRadius: 10, padding: 16, maxHeight: 420, overflowY: "auto" }}>
+              <SmoothScroll style={{ whiteSpace: "pre-wrap", fontSize: 14, lineHeight: 1.6, color: "var(--text-primary)", background: "var(--bg-page)", borderRadius: 10, padding: 16, maxHeight: 420 }}>
                 {viewPolicy.content}
-              </div>
+              </SmoothScroll>
             )}
             {viewPolicy.file_url && (
               <a href="#" onClick={(e) => { e.preventDefault(); openPolicyFile(viewPolicy); }} style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 600, color: "var(--text-link)", textDecoration: "none" }}>

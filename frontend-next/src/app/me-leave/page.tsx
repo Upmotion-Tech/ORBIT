@@ -20,6 +20,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast-context";
 import { Button, Input, Select, StatCard, Badge, Icon } from "@/design-system/healer-bundle";
 import { useClosingTransition } from "@/lib/use-closing-transition";
+import SmoothScroll from "@/components/shell/SmoothScroll";
 
 type LeaveBalance = { casual_remaining: number; sick_remaining: number; annual_remaining: number };
 type RawLeave = {
@@ -268,7 +269,7 @@ export default function MeLeavePage() {
                 <Icon name="x" size={20} color="var(--text-muted)" />
               </button>
             </div>
-            <div style={{ flex: 1, overflowY: "auto", padding: 24, display: "flex", flexDirection: "column", gap: 14, fontSize: 14 }}>
+            <SmoothScroll style={{ flex: 1, padding: 24, fontSize: 14 }} contentStyle={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span style={{ color: "var(--text-secondary)" }}>Dates</span>
                 <span style={{ color: "var(--text-primary)", fontWeight: 500 }}>{drawer.dates}</span>
@@ -290,7 +291,7 @@ export default function MeLeavePage() {
                   <div style={{ fontSize: 14, color: "var(--text-primary)", lineHeight: 1.5 }}>{drawer.decisionNoteStr}</div>
                 </div>
               )}
-            </div>
+            </SmoothScroll>
             <div style={{ padding: "16px 24px", borderTop: "1px solid var(--border-subtle)", display: "flex", justifyContent: "flex-end", flexShrink: 0 }}>
               <Button variant="secondary" onClick={closeDrawerAnimated}>Close</Button>
             </div>

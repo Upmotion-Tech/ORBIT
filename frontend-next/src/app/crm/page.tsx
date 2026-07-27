@@ -17,6 +17,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useAppData } from "@/lib/app-data-context";
 import { useToast } from "@/lib/toast-context";
 import { useClosingTransition } from "@/lib/use-closing-transition";
+import SmoothScroll from "@/components/shell/SmoothScroll";
 import {
   leadsApi,
   customersApi,
@@ -557,7 +558,8 @@ export default function CrmPage() {
 
       <AnimatePresence>
       {view === "kanban" && (
-        <motion.div key="crm-kanban" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }} style={{ display: "flex", gap: 16, overflowX: "auto", paddingBottom: 8, alignItems: "flex-start" }}>
+        <motion.div key="crm-kanban" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }} style={{ minWidth: 0 }}>
+        <SmoothScroll horizontal contentStyle={{ display: "flex", gap: 16, paddingBottom: 8, alignItems: "flex-start" }}>
           {crmStages.map((stage) => (
             <div
               key={stage.title}
@@ -620,6 +622,7 @@ export default function CrmPage() {
               </div>
             </div>
           ))}
+        </SmoothScroll>
         </motion.div>
       )}
       </AnimatePresence>
@@ -635,7 +638,7 @@ export default function CrmPage() {
       <AnimatePresence>
       {view === "list" && filteredLeads.length > 0 && (
         <motion.div key="crm-list" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }} style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
-          <div style={{ overflowX: "auto" }}>
+          <SmoothScroll horizontal>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead><tr style={{ borderBottom: "1px solid var(--border-subtle)" }}>
                 <th style={thStyle}>Company</th><th style={thStyle}>POC</th><th style={thStyle}>Lead POC (rep)</th>
@@ -670,7 +673,7 @@ export default function CrmPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </SmoothScroll>
         </motion.div>
       )}
       </AnimatePresence>
@@ -682,7 +685,7 @@ export default function CrmPage() {
           <div style={{ background: "var(--bg-page)", borderRadius: 12, padding: "48px 24px", textAlign: "center", color: "var(--text-muted)", fontSize: 13.5 }}>No Won or Lost leads yet.</div>
         ) : (
           <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
-            <div style={{ overflowX: "auto" }}>
+            <SmoothScroll horizontal>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead><tr style={{ borderBottom: "1px solid var(--border-subtle)" }}>
                   <th style={thStyle}>Company</th><th style={thStyle}>POC</th><th style={thStyle}>Rep</th>
@@ -704,7 +707,7 @@ export default function CrmPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </SmoothScroll>
           </div>
         )}
         </motion.div>
@@ -722,7 +725,7 @@ export default function CrmPage() {
                 <button onClick={closeLeadModalAnimated} aria-label="Close" style={{ background: "none", border: "none", cursor: "pointer", padding: 4, lineHeight: 0 }}><Icon name="x" size={20} color="var(--text-muted)" /></button>
               </div>
             </div>
-            <div style={{ flex: 1, overflowY: "auto", padding: 24, display: "flex", flexDirection: "column", gap: 14, fontSize: 14 }}>
+            <SmoothScroll style={{ flex: 1, padding: 24, fontSize: 14 }} contentStyle={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <Input label="Company name" value={selectedLead.name} disabled={!isCrmOwner} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setLeadField(selectedLead.id, "name", e.target.value)} />
               <Input label="Point of contact (client)" value={selectedLead.poc} disabled={!isCrmOwner} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setLeadField(selectedLead.id, "poc", e.target.value)} />
               <Select label="Lead POC (our rep working this lead)" options={repOptions} value={selectedLead.assignedRep} disabled={!isCrmOwner} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setLeadField(selectedLead.id, "assignedRep", e.target.value)} />
@@ -800,32 +803,32 @@ export default function CrmPage() {
               <div style={{ marginTop: 4, paddingTop: 12, borderTop: "1px solid var(--border-subtle)" }}>
                 <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Activity log</div>
                 {activitiesLoadingId === selectedLead.id && <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Loading…</div>}
-                <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 140, overflow: "auto" }}>
+                <SmoothScroll style={{ maxHeight: 140 }} contentStyle={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   {activityLog.map((a, i) => (
                     <div key={i} style={{ display: "flex", gap: 10, fontSize: 13 }}>
                       <span style={{ color: "var(--text-muted)", flexShrink: 0, width: 78 }}>{a.ts}</span>
                       <span style={{ color: "var(--text-primary)" }}><b>{a.user}</b> — {a.text}</span>
                     </div>
                   ))}
-                </div>
+                </SmoothScroll>
               </div>
 
               <div style={{ marginTop: 4, paddingTop: 12, borderTop: "1px solid var(--border-subtle)" }}>
                 <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>Comments</div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 12, maxHeight: 160, overflow: "auto" }}>
+                <SmoothScroll style={{ marginBottom: 12, maxHeight: 160 }} contentStyle={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   {comments.map((c, i) => (
                     <div key={i} style={{ display: "flex", gap: 10, fontSize: 13 }}>
                       <span style={{ color: "var(--text-muted)", flexShrink: 0, width: 78 }}>{c.ts}</span>
                       <span style={{ color: "var(--text-primary)" }}><b>{c.user}</b> — {c.text}</span>
                     </div>
                   ))}
-                </div>
+                </SmoothScroll>
                 <div style={{ display: "flex", gap: 8 }}>
                   <input type="text" placeholder="Add a comment…" value={commentDraft} onChange={(e) => setCommentDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && commentDraft.trim()) postComment(selectedLead.id); }} style={{ flex: 1, fontFamily: "var(--font-sans)", fontSize: 13.5, padding: "9px 12px", borderRadius: 8, border: "1px solid var(--border-strong)", outline: "none" }} />
                   <Button variant="secondary" disabled={commentPosting} onClick={() => postComment(selectedLead.id)}>Post</Button>
                 </div>
               </div>
-            </div>
+            </SmoothScroll>
             {isCrmOwner && (
               <div style={{ padding: "16px 24px", borderTop: "1px solid var(--border-subtle)", display: "flex", justifyContent: "flex-end", flexShrink: 0 }}>
                 <Button variant="danger" onClick={() => askDeleteLead(selectedLead.id)}>Delete Lead</Button>
@@ -857,7 +860,7 @@ export default function CrmPage() {
               <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--text-primary)" }}>New Lead</h2>
               <button onClick={closeNewLeadAnimated} aria-label="Close" style={{ background: "none", border: "none", cursor: "pointer", padding: 4, lineHeight: 0 }}><Icon name="x" size={20} color="var(--text-muted)" /></button>
             </div>
-            <div style={{ flex: 1, overflowY: "auto", padding: 24, display: "flex", flexDirection: "column", gap: 14 }}>
+            <SmoothScroll style={{ flex: 1, padding: 24 }} contentStyle={{ display: "flex", flexDirection: "column", gap: 14 }}>
               {dupWarning && <div style={{ background: "var(--status-warning-bg)", color: "var(--status-warning-text)", borderRadius: 8, padding: "10px 14px", fontSize: 13 }}>Possible duplicate — a lead with this company name already exists. You can still create it.</div>}
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" }}>Customer</span>
@@ -870,11 +873,11 @@ export default function CrmPage() {
                   <>
                     <input type="text" placeholder="Search existing customers, or leave blank to create a new one…" value={customerQuery} onChange={(e) => setCustomerQuery(e.target.value)} style={{ fontFamily: "var(--font-sans)", fontSize: 13.5, padding: "9px 12px", borderRadius: 8, border: "1px solid var(--border-strong)", outline: "none" }} />
                     {customerResults.length > 0 && (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 2, border: "1px solid var(--border-subtle)", borderRadius: 8, maxHeight: 150, overflow: "auto" }}>
+                      <SmoothScroll style={{ border: "1px solid var(--border-subtle)", borderRadius: 8, maxHeight: 150 }} contentStyle={{ display: "flex", flexDirection: "column", gap: 2 }}>
                         {customerResults.map((cc) => (
                           <div key={cc.id} onClick={() => { setForm((f) => ({ ...f, customerId: cc.id, name: cc.company_name })); setCustomerQuery(""); setFormErrors((cur) => ({ ...cur, name: null })); }} style={{ padding: "8px 12px", cursor: "pointer", borderBottom: "1px solid var(--border-subtle)", fontSize: 13.5, color: "var(--text-primary)" }}>{cc.company_name}</div>
                         ))}
-                      </div>
+                      </SmoothScroll>
                     )}
                   </>
                 )}
@@ -911,7 +914,7 @@ export default function CrmPage() {
                 {formErrors.expectedClose && <span style={{ fontSize: 11.5, color: "var(--status-danger-text)" }}>{formErrors.expectedClose}</span>}
               </div>
               <Input label="Description" multiline rows={3} value={form.description} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCrmField("description", e.target.value)} />
-            </div>
+            </SmoothScroll>
             <div style={{ padding: "16px 24px", borderTop: "1px solid var(--border-subtle)", display: "flex", justifyContent: "flex-end", gap: 12, flexShrink: 0 }}>
               <Button variant="ghost" disabled={creatingLead} onClick={closeNewLeadAnimated}>Cancel</Button>
               <Button variant="primary" disabled={creatingLead} onClick={submitNewLead}>{creatingLead ? "Creating…" : "Create Lead"}</Button>

@@ -970,8 +970,16 @@ sc-raw-tr[style*="cursor:pointer"]:hover span[style*="text-muted"] {
 /* ─── Scrollbar styling ─── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 999px; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 999px; transition: background 0.15s ease; }
 ::-webkit-scrollbar-thumb:hover { background: var(--color-neutral-300); }
+/* Firefox doesn't support ::-webkit-scrollbar at all — it was silently
+   falling back to the OS's default (usually much chunkier) scrollbar on
+   every scroll region in the app. `scrollbar-width`/`scrollbar-color` are
+   Firefox's own equivalent, giving it the same thin, subtle look. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
 
 /* ─── Selection ─── */
 ::selection { background: rgba(79,70,229,0.18); color: var(--text-primary); }
@@ -1953,12 +1961,38 @@ html { scroll-behavior: smooth; }
    overscroll-behavior stops scrolling past the end of one of these from
    "leaking" into scrolling whatever's behind it — that rubber-band/
    scroll-chaining handoff is what reads as janky on a trackpad or mouse
-   wheel too, not just touch, so this isn't gated to a mobile media query. */
+   wheel too, not just touch, so this isn't gated to a mobile media query.
+   IMPORTANT: this must stay scoped to actual scroll containers, NOT `*` —
+   `-webkit-overflow-scrolling: touch` creates a new stacking/compositing
+   context on WebKit wherever it's set, so applying it to every element
+   breaks `position: fixed`/`sticky` descendants (e.g. the topbar's fixed
+   dropdown flyouts) by changing their containing block. Tried the
+   universal version once; it broke scrolling app-wide and was reverted. */
 [style*="overflow:auto"],
 [style*="overflow-y:auto"],
 [style*="overflow-x:auto"] {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
+}
+
+/* ─── Lenis (SmoothScroll component) companion CSS ───
+   Main content, the sidebar nav, the topbar flyouts, and (progressively)
+   Kanban boards/drawers/tables each run their own Lenis instance via
+   <SmoothScroll> so wheel/trackpad scrolling eases to a stop instead of
+   snapping dead the instant the wheel stops (see SmoothScroll.tsx for why
+   CSS alone — scroll-behavior:smooth — can't do this for wheel input).
+   Lenis toggles these classes directly on each instance's own wrapper
+   element via real classList calls, not something guessed from inline
+   styles, so — unlike this file's [style*="..."] rules — targeting them
+   is fully reliable. */
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+.lenis.lenis-stopped {
+  overflow: hidden;
+}
+.lenis.lenis-scrolling iframe {
+  pointer-events: none;
 }
 
 /* ─── Native checkboxes (Employee access-level tick-boxes) were plain

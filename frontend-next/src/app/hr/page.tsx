@@ -16,6 +16,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useAppData } from "@/lib/app-data-context";
 import { useToast } from "@/lib/toast-context";
 import { useClosingTransition } from "@/lib/use-closing-transition";
+import SmoothScroll from "@/components/shell/SmoothScroll";
 import {
   employeesApi,
   leavesApi,
@@ -879,7 +880,7 @@ function HrPageContent() {
 
             {isNewEmployee ? (
               <>
-                <div style={{ flex: 1, overflowY: "auto", padding: 24, display: "flex", flexDirection: "column", gap: 14, fontSize: 14 }}>
+                <SmoothScroll style={{ flex: 1, padding: 24, fontSize: 14 }} contentStyle={{ display: "flex", flexDirection: "column", gap: 14 }}>
                   <Input label="Full name" value={empForm.name} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmployeeFormField("name", e.target.value)} />
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                     <Input label="Role / title" value={empForm.role} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmployeeFormField("role", e.target.value)} />
@@ -921,7 +922,7 @@ function HrPageContent() {
                   </div>
                   <Input label="Relation with emergency contact (optional)" value={empForm.emergencyContactRelation} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmployeeFormField("emergencyContactRelation", e.target.value)} />
                   <Input label="CNIC (optional)" placeholder="35201-5746852-5" value={empForm.cnic} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmployeeFormField("cnic", formatCnicInput(e.target.value))} />
-                </div>
+                </SmoothScroll>
                 <div style={{ padding: "16px 24px", borderTop: "1px solid var(--border-subtle)", display: "flex", justifyContent: "flex-end", gap: 12, flexShrink: 0 }}>
                   <Button variant="ghost" onClick={closeEmployeeModalAnimated}>Cancel</Button>
                   {isHrEditor && <Button variant="primary" onClick={submitNewEmployee}>Add Employee</Button>}
@@ -929,7 +930,7 @@ function HrPageContent() {
               </>
             ) : selEmployee ? (
               <>
-                <div style={{ flex: 1, overflowY: "auto", padding: 24, display: "flex", flexDirection: "column", gap: 14, fontSize: 14 }}>
+                <SmoothScroll style={{ flex: 1, padding: 24, fontSize: 14 }} contentStyle={{ display: "flex", flexDirection: "column", gap: 14 }}>
                   <Input label="Full name" value={selEmployee.name} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmployeeFieldLive(selEmployee.id, "name", e.target.value)} />
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                     <Input label="Role / title" value={selEmployee.role} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmployeeFieldLive(selEmployee.id, "role", e.target.value)} />
@@ -1022,7 +1023,7 @@ function HrPageContent() {
                       <Button variant="secondary" onClick={() => submitChangePassword(selEmployee.id)}>Change password</Button>
                     </div>
                   </div>
-                </div>
+                </SmoothScroll>
                 <div style={{ padding: "16px 24px", borderTop: "1px solid var(--border-subtle)", display: "flex", justifyContent: "flex-end", flexShrink: 0 }}>
                   <Button variant="secondary" onClick={closeEmployeeModalAnimated}>Close</Button>
                 </div>
@@ -1040,7 +1041,7 @@ function HrPageContent() {
               <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--text-primary)" }}>{leaveDrawer.employee}</h2>
               <button onClick={closeLeaveDrawerAnimated} aria-label="Close" style={{ background: "none", border: "none", cursor: "pointer", padding: 4, lineHeight: 0 }}><Icon name="x" size={20} color="var(--text-muted)" /></button>
             </div>
-            <div style={{ flex: 1, overflowY: "auto", padding: 24, display: "flex", flexDirection: "column", gap: 14, fontSize: 14 }}>
+            <SmoothScroll style={{ flex: 1, padding: 24, fontSize: 14 }} contentStyle={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: "var(--text-secondary)" }}>Type</span><span style={{ color: "var(--text-primary)", fontWeight: 500 }}>{leaveDrawer.type}</span></div>
               <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: "var(--text-secondary)" }}>Dates</span><span style={{ color: "var(--text-primary)", fontWeight: 500 }}>{leaveDrawer.dates}</span></div>
               <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: "var(--text-secondary)" }}>Status</span><Badge tone={leaveDrawer.statusTone}>{leaveDrawer.status}</Badge></div>
@@ -1057,7 +1058,7 @@ function HrPageContent() {
                   <div style={{ fontSize: 14, color: "var(--text-primary)", lineHeight: 1.5 }}>{leaveDrawer.decisionNoteStr}</div>
                 </div>
               )}
-            </div>
+            </SmoothScroll>
             <div style={{ padding: "16px 24px", borderTop: "1px solid var(--border-subtle)", display: "flex", justifyContent: "flex-end", gap: 12, flexShrink: 0 }}>
               <Button variant="ghost" onClick={closeLeaveDrawerAnimated}>Close</Button>
             </div>
@@ -1076,7 +1077,7 @@ function HrPageContent() {
 
             {isNewOpening ? (
               <>
-                <div style={{ flex: 1, overflowY: "auto", padding: 24, display: "flex", flexDirection: "column", gap: 14, fontSize: 14 }}>
+                <SmoothScroll style={{ flex: 1, padding: 24, fontSize: 14 }} contentStyle={{ display: "flex", flexDirection: "column", gap: 14 }}>
                   <Input label="Position title" value={openingForm.title} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setOpeningForm((f) => ({ ...f, title: e.target.value }))} />
                   <Select label="Department" options={DEPARTMENT_OPTIONS} value={openingForm.dept} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setOpeningForm((f) => ({ ...f, dept: e.target.value }))} />
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
@@ -1087,7 +1088,7 @@ function HrPageContent() {
                     <span style={{ fontFamily: "var(--font-sans)", fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" }}>Job description</span>
                     <textarea rows={6} value={openingForm.jd} onChange={(e) => setOpeningForm((f) => ({ ...f, jd: e.target.value }))} style={{ fontFamily: "var(--font-sans)", fontSize: 14, padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border-strong)", background: "var(--bg-surface)", color: "var(--text-primary)", resize: "vertical" }} />
                   </div>
-                </div>
+                </SmoothScroll>
                 <div style={{ padding: "16px 24px", borderTop: "1px solid var(--border-subtle)", display: "flex", justifyContent: "flex-end", gap: 12, flexShrink: 0 }}>
                   <Button variant="ghost" onClick={closeOpeningDrawerAnimated}>Cancel</Button>
                   <Button variant="primary" onClick={submitNewOpening}>Create Opening</Button>
@@ -1095,7 +1096,7 @@ function HrPageContent() {
               </>
             ) : selOpeningRaw ? (
               <>
-                <div style={{ flex: 1, overflowY: "auto", padding: 24, display: "flex", flexDirection: "column", gap: 18, fontSize: 14 }}>
+                <SmoothScroll style={{ flex: 1, padding: 24, fontSize: 14 }} contentStyle={{ display: "flex", flexDirection: "column", gap: 18 }}>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                     <div style={{ fontSize: 13, color: "var(--text-muted)" }}>{selOpeningRaw.department} · Opened {selOpeningRaw.opened_at?.slice(0, 10)}</div>
                     <Select label="Status" options={[{ value: "Open", label: "Open" }, { value: "Filled", label: "Filled" }, { value: "Closed", label: "Closed" }]} value={selOpeningRaw.status} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setOpeningFieldLive(selOpeningRaw.id, "status", e.target.value)} />
@@ -1145,7 +1146,7 @@ function HrPageContent() {
                       <Button variant="secondary" onClick={() => addCandidate(selOpeningRaw.id)}>Add Candidate</Button>
                     </div>
                   </div>
-                </div>
+                </SmoothScroll>
                 <div style={{ padding: "16px 24px", borderTop: "1px solid var(--border-subtle)", display: "flex", justifyContent: "space-between", flexShrink: 0 }}>
                   {isFinanceEditor && <Button variant="danger" onClick={() => askDeleteOpening(selOpeningRaw.id, selOpeningRaw.title)}>Delete Opening</Button>}
                   <Button variant="secondary" onClick={closeOpeningDrawerAnimated}>Close</Button>

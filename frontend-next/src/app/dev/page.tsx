@@ -21,6 +21,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useAppData } from "@/lib/app-data-context";
 import { useToast } from "@/lib/toast-context";
 import { useClosingTransition } from "@/lib/use-closing-transition";
+import SmoothScroll from "@/components/shell/SmoothScroll";
 import {
   projectsApi,
   tasksApi,
@@ -693,7 +694,8 @@ function DevPageContent() {
 
           <AnimatePresence mode="wait">
           {projSubView === "kanban" && (
-            <motion.div key="proj-kanban" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }} style={{ display: "flex", gap: 16, overflowX: "auto", paddingBottom: 8, alignItems: "flex-start" }}>
+            <motion.div key="proj-kanban" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }} style={{ minWidth: 0 }}>
+            <SmoothScroll horizontal contentStyle={{ display: "flex", gap: 16, paddingBottom: 8, alignItems: "flex-start" }}>
               {projectKanbanCols.map((col) => (
                 <div
                   key={col.status}
@@ -748,12 +750,13 @@ function DevPageContent() {
                   </div>
                 </div>
               ))}
+            </SmoothScroll>
             </motion.div>
           )}
 
           {projSubView === "list" && (
             <motion.div key="proj-list" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }} style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
-              <div style={{ overflowX: "auto" }}>
+              <SmoothScroll horizontal>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead><tr style={{ borderBottom: "1px solid var(--border-subtle)" }}>
                     <th style={thStyle}>Project</th><th style={thStyle}>Client</th><th style={thStyle}>Team</th>
@@ -780,7 +783,7 @@ function DevPageContent() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </SmoothScroll>
             </motion.div>
           )}
 
@@ -790,7 +793,7 @@ function DevPageContent() {
               <div style={{ background: "var(--bg-page)", borderRadius: 12, padding: "48px 24px", textAlign: "center", color: "var(--text-muted)", fontSize: 13.5 }}>No projects have aged out of the board yet — Completed projects move here {PROJECT_STALE_DAYS} days after completion.</div>
             ) : (
               <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
-                <div style={{ overflowX: "auto" }}>
+                <SmoothScroll horizontal>
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
                     <thead><tr style={{ borderBottom: "1px solid var(--border-subtle)" }}>
                       <th style={thStyle}>Project</th><th style={thStyle}>Client</th><th style={thStyle}>Team</th>
@@ -812,7 +815,7 @@ function DevPageContent() {
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </SmoothScroll>
               </div>
             )}
             </motion.div>
@@ -835,7 +838,8 @@ function DevPageContent() {
 
           <AnimatePresence mode="wait">
           {taskSubView === "kanban" && (
-            <motion.div key="task-kanban" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }} style={{ display: "flex", gap: 16, overflowX: "auto", paddingBottom: 8, alignItems: "flex-start" }}>
+            <motion.div key="task-kanban" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }} style={{ minWidth: 0 }}>
+            <SmoothScroll horizontal contentStyle={{ display: "flex", gap: 16, paddingBottom: 8, alignItems: "flex-start" }}>
               {taskKanbanCols.map((col) => (
                 <div
                   key={col.status}
@@ -888,12 +892,13 @@ function DevPageContent() {
                   </div>
                 </div>
               ))}
+            </SmoothScroll>
             </motion.div>
           )}
 
           {taskSubView === "list" && (
             <motion.div key="task-list" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }} style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
-              <div style={{ overflowX: "auto" }}>
+              <SmoothScroll horizontal>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead><tr style={{ borderBottom: "1px solid var(--border-subtle)" }}>
                     <th style={thStyle}>Task</th><th style={thStyle}>Tags</th><th style={thStyle}>Project</th>
@@ -919,7 +924,7 @@ function DevPageContent() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </SmoothScroll>
             </motion.div>
           )}
           </AnimatePresence>
@@ -935,7 +940,7 @@ function DevPageContent() {
               <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--text-primary)" }}>Project</h2>
               <button onClick={closeProjectDrawerAnimated} aria-label="Close" style={{ background: "none", border: "none", cursor: "pointer", padding: 4, lineHeight: 0 }}><Icon name="x" size={20} color="var(--text-muted)" /></button>
             </div>
-            <div style={{ flex: 1, overflowY: "auto", padding: 24, display: "flex", flexDirection: "column", gap: 14, fontSize: 14 }}>
+            <SmoothScroll style={{ flex: 1, padding: 24, fontSize: 14 }} contentStyle={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <Input label="Project name" value={selProject.name} disabled={!isDevOwner} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setProjectFieldLive(selProject.id, "name", e.target.value)} />
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                 <Input label="Client" value={selProject.client} disabled={!isDevOwner} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setProjectFieldLive(selProject.id, "client", e.target.value)} />
@@ -972,14 +977,14 @@ function DevPageContent() {
                       const q = projTeamQuery.trim().toLowerCase();
                       const results = activeEmployees.filter((e) => !selProject.team_ids.includes(e.id) && (!q || e.name.toLowerCase().includes(q))).slice(0, 8);
                       return results.length > 0 ? (
-                        <div style={{ display: "flex", flexDirection: "column", gap: 2, border: "1px solid var(--border-subtle)", borderRadius: 8, maxHeight: 170, overflow: "auto" }}>
+                        <SmoothScroll style={{ border: "1px solid var(--border-subtle)", borderRadius: 8, maxHeight: 170 }} contentStyle={{ display: "flex", flexDirection: "column", gap: 2 }}>
                           {results.map((r) => (
                             <div key={r.id} onClick={() => toggleProjTeamMember(r.id)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", cursor: "pointer", borderBottom: "1px solid var(--border-subtle)" }}>
                               <span style={{ fontSize: 13.5, color: "var(--text-primary)" }}>{r.name}</span>
                               <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{r.role}</span>
                             </div>
                           ))}
-                        </div>
+                        </SmoothScroll>
                       ) : null;
                     })()}
                   </>
@@ -1034,7 +1039,7 @@ function DevPageContent() {
               />
 
               <AuditLogSection logs={projAuditLogs[selProject.id] || []} />
-            </div>
+            </SmoothScroll>
             {showProjectFinance && (
               <div style={{ padding: "16px 24px", borderTop: "1px solid var(--border-subtle)", display: "flex", justifyContent: "flex-end", flexShrink: 0 }}>
                 <Button variant="danger" onClick={deleteSelectedProject}>Delete Project</Button>
@@ -1052,7 +1057,7 @@ function DevPageContent() {
               <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--text-primary)" }}>New Project</h2>
               <button onClick={closeNewProjectAnimated} aria-label="Close" style={{ background: "none", border: "none", cursor: "pointer", padding: 4, lineHeight: 0 }}><Icon name="x" size={20} color="var(--text-muted)" /></button>
             </div>
-            <div style={{ flex: 1, overflowY: "auto", padding: 24, display: "flex", flexDirection: "column", gap: 14 }}>
+            <SmoothScroll style={{ flex: 1, padding: 24 }} contentStyle={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <Input label="Project name" value={pForm.name} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPForm((f) => ({ ...f, name: e.target.value }))} />
               <Input label="Client" placeholder="e.g. Internal" value={pForm.client} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPForm((f) => ({ ...f, client: e.target.value }))} />
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
@@ -1079,19 +1084,19 @@ function DevPageContent() {
                   const q = pfTeamQuery.trim().toLowerCase();
                   const results = activeEmployees.filter((e) => !pForm.team_ids.includes(e.id) && (!q || e.name.toLowerCase().includes(q))).slice(0, 8);
                   return (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 2, border: "1px solid var(--border-subtle)", borderRadius: 8, maxHeight: 170, overflow: "auto" }}>
+                    <SmoothScroll style={{ border: "1px solid var(--border-subtle)", borderRadius: 8, maxHeight: 170 }} contentStyle={{ display: "flex", flexDirection: "column", gap: 2 }}>
                       {results.map((r) => (
                         <div key={r.id} onClick={() => togglePfTeamMember(r.id)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", cursor: "pointer", borderBottom: "1px solid var(--border-subtle)" }}>
                           <span style={{ fontSize: 13.5, color: "var(--text-primary)" }}>{r.name}</span>
                           <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{r.role}</span>
                         </div>
                       ))}
-                    </div>
+                    </SmoothScroll>
                   );
                 })()}
               </div>
               <Input label="Description" multiline rows={3} value={pForm.description} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPForm((f) => ({ ...f, description: e.target.value }))} />
-            </div>
+            </SmoothScroll>
             <div style={{ padding: "16px 24px", borderTop: "1px solid var(--border-subtle)", display: "flex", justifyContent: "flex-end", gap: 12, flexShrink: 0 }}>
               <Button variant="ghost" onClick={closeNewProjectAnimated}>Cancel</Button>
               <Button variant="primary" onClick={submitNewProject}>Create Project</Button>
@@ -1108,7 +1113,7 @@ function DevPageContent() {
               <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--text-primary)" }}>Subtask</h2>
               <button onClick={closeTaskDrawerAnimated} aria-label="Close" style={{ background: "none", border: "none", cursor: "pointer", padding: 4, lineHeight: 0 }}><Icon name="x" size={20} color="var(--text-muted)" /></button>
             </div>
-            <div style={{ flex: 1, overflowY: "auto", padding: 24, display: "flex", flexDirection: "column", gap: 14, fontSize: 14 }}>
+            <SmoothScroll style={{ flex: 1, padding: 24, fontSize: 14 }} contentStyle={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Project: <b style={{ color: "var(--text-primary)" }}>{selTask.projectName}</b></div>
               <Input label="Title" value={selTask.title} disabled={disabledDetails} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTaskFieldLive(selTask.id, "title", e.target.value)} />
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
@@ -1158,7 +1163,7 @@ function DevPageContent() {
               />
 
               <AuditLogSection logs={taskAuditLogs[selTask.id] || []} />
-            </div>
+            </SmoothScroll>
             {isOwnerReal && (
               <div style={{ padding: "16px 24px", borderTop: "1px solid var(--border-subtle)", display: "flex", justifyContent: "flex-end", flexShrink: 0 }}>
                 <Button variant="danger" onClick={deleteSelectedTask}>Delete Subtask</Button>
@@ -1176,7 +1181,7 @@ function DevPageContent() {
               <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--text-primary)" }}>New Task</h2>
               <button onClick={closeNewTaskAnimated} aria-label="Close" style={{ background: "none", border: "none", cursor: "pointer", padding: 4, lineHeight: 0 }}><Icon name="x" size={20} color="var(--text-muted)" /></button>
             </div>
-            <div style={{ flex: 1, overflowY: "auto", padding: 24, display: "flex", flexDirection: "column", gap: 14 }}>
+            <SmoothScroll style={{ flex: 1, padding: 24 }} contentStyle={{ display: "flex", flexDirection: "column", gap: 14 }}>
               {!taskIsSubtask && <Select label="Project" options={allProjects.map((p) => ({ value: p.id, label: p.name }))} value={tForm.projectId} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setTForm((f) => ({ ...f, projectId: e.target.value, assignee_id: "" }))} />}
               <Select label="Assignee" options={tfProjectMemberOptions} value={tForm.assignee_id} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setTForm((f) => ({ ...f, assignee_id: e.target.value }))} />
               <Input label="Title" value={tForm.title} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTForm((f) => ({ ...f, title: e.target.value }))} />
@@ -1202,7 +1207,7 @@ function DevPageContent() {
                   </div>
                 )}
               </div>
-            </div>
+            </SmoothScroll>
             <div style={{ padding: "16px 24px", borderTop: "1px solid var(--border-subtle)", display: "flex", justifyContent: "flex-end", gap: 12, flexShrink: 0 }}>
               <Button variant="ghost" onClick={closeNewTaskAnimated}>Cancel</Button>
               <Button variant="primary" onClick={submitNewTask}>Create Task</Button>
@@ -1228,7 +1233,7 @@ function CommentsSection({
   return (
     <div style={{ marginTop: 4, paddingTop: 12, borderTop: "1px solid var(--border-subtle)" }}>
       <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>Comments</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 12, maxHeight: 160, overflow: "auto" }}>
+      <SmoothScroll style={{ marginBottom: 12, maxHeight: 160 }} contentStyle={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {comments.map((c) => (
           <div key={c.id} style={{ display: "flex", gap: 10, fontSize: 13 }}>
             <span style={{ color: "var(--text-muted)", flexShrink: 0, width: 78 }}>{c.ts}</span>
@@ -1238,7 +1243,7 @@ function CommentsSection({
             </span>
           </div>
         ))}
-      </div>
+      </SmoothScroll>
       {replyingTo && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", marginBottom: 8, background: "rgba(99,102,241,0.06)", borderRadius: 6, fontSize: 13, color: "var(--text-secondary)" }}>
           <span style={{ flex: 1 }}>Replying to <b style={{ color: "var(--text-primary)" }}>@{replyingTo.author}</b>: &ldquo;{replyingTo.snippet}&rdquo;</span>
@@ -1258,7 +1263,7 @@ function AuditLogSection({ logs }: { logs: { id: string; user: string; ts: strin
     <div style={{ marginTop: 4, paddingTop: 12, borderTop: "1px solid var(--border-subtle)" }}>
       <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>Audit Log</div>
       {logs.length > 0 ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 160, overflowY: "auto" }}>
+        <SmoothScroll style={{ maxHeight: 160 }} contentStyle={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {logs.map((log) => (
             <div key={log.id} style={{ padding: "8px 10px", background: "var(--bg-page)", border: "1px solid var(--border-subtle)", borderRadius: 6, fontSize: 12.5 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
@@ -1271,7 +1276,7 @@ function AuditLogSection({ logs }: { logs: { id: string; user: string; ts: strin
               </div>
             </div>
           ))}
-        </div>
+        </SmoothScroll>
       ) : (
         <div style={{ fontSize: 12, color: "var(--text-muted)" }}>No audit log records yet.</div>
       )}

@@ -38,6 +38,7 @@ import {
 } from "@/lib/orbit-client";
 import { Button, Badge, Input } from "@/design-system/healer-bundle";
 import { useClosingTransition } from "@/lib/use-closing-transition";
+import SmoothScroll from "@/components/shell/SmoothScroll";
 
 type CrmSource = { id: string; name: string };
 type ExpenseCategory = { id: string; name: string };
@@ -635,7 +636,7 @@ export default function SetupPage() {
         {setupTab === "employees" && isOwnerReal && (
           <>
             <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
-              <div style={{ overflowX: "auto" }}>
+              <SmoothScroll horizontal>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
                     <tr style={{ borderBottom: "1px solid var(--border-subtle)" }}>
@@ -677,7 +678,7 @@ export default function SetupPage() {
                     })}
                   </tbody>
                 </table>
-              </div>
+              </SmoothScroll>
             </div>
             <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Deactivating an account signs that employee out immediately (or on their next action) and blocks them from logging back in until reactivated. Deleting an account is permanent — it removes their login and all of their personal records (leave requests, salary slips, expenses, notifications) and cannot be undone.</div>
           </>
@@ -754,7 +755,7 @@ export default function SetupPage() {
                 </div>
               )}
 
-              <div style={{ overflowX: "auto" }}>
+              <SmoothScroll horizontal>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead><tr style={{ borderBottom: "1px solid var(--border-subtle)" }}>
                     <th style={thStyle}>Title</th><th style={thStyle}>Dates</th><th style={thStyle}>Days</th><th></th>
@@ -774,7 +775,7 @@ export default function SetupPage() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </SmoothScroll>
               {holidaysInYear.length === 0 && (
                 <div style={{ padding: 32, textAlign: "center", color: "var(--text-muted)", fontSize: 13.5 }}>No holidays in {holidayYear}.</div>
               )}
@@ -859,7 +860,7 @@ export default function SetupPage() {
 
         {setupTab === "audit" && (
           <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
-            <div style={{ overflowX: "auto" }}>
+            <SmoothScroll horizontal>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ borderBottom: "1px solid var(--border-subtle)" }}>
@@ -885,7 +886,7 @@ export default function SetupPage() {
               {auditRows.length === 0 && (
                 <div style={{ padding: 32, textAlign: "center", color: "var(--text-muted)", fontSize: 13.5 }}>No audit trail records yet.</div>
               )}
-            </div>
+            </SmoothScroll>
           </div>
         )}
 
@@ -916,7 +917,7 @@ export default function SetupPage() {
             )}
 
             <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
-              <div style={{ overflowX: "auto" }}>
+              <SmoothScroll horizontal>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead><tr style={{ borderBottom: "1px solid var(--border-subtle)" }}>
                     <th style={thStyle}>Salary Range (annual)</th><th style={thStyle}>Tax %</th><th style={thStyle}>Fixed Tax</th><th style={thStyle}>Active</th><th></th>
@@ -940,7 +941,7 @@ export default function SetupPage() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </SmoothScroll>
               {taxSlabs.length === 0 && (
                 <div style={{ padding: 32, textAlign: "center", color: "var(--text-muted)", fontSize: 13.5 }}>No tax slabs configured yet — Income Tax will calculate as Rs. 0 until at least one is added.</div>
               )}
@@ -962,7 +963,7 @@ export default function SetupPage() {
               </div>
 
               {monthlySummary && (
-                <div style={{ overflowX: "auto" }}>
+                <SmoothScroll horizontal>
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
                     <thead><tr style={{ borderBottom: "1px solid var(--border-subtle)" }}>
                       <th style={thStyle}>Month</th><th style={thStyle}>Employees Paid</th><th style={thStyle}>Total Gross Payroll</th><th style={thStyle}>Total Tax Withheld</th>
@@ -984,7 +985,7 @@ export default function SetupPage() {
                       </tr>
                     </tbody>
                   </table>
-                </div>
+                </SmoothScroll>
               )}
             </div>
 

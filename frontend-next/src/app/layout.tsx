@@ -32,7 +32,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" data-brand="orbit" className={inter.variable}>
+    <html lang="en" data-brand="orbit" data-scroll-behavior="smooth" className={inter.variable}>
       <body>
         {/* reducedMotion="user" makes every motion.* animation in the app
             (Modal, sidebar, Button press feedback, ...) automatically

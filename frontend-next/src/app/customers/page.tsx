@@ -9,6 +9,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast-context";
 import { customersApi, deepLinkHref, isModifiedClick, parseDeepLinkHash, clearDeepLinkHash } from "@/lib/orbit-client";
 import { useClosingTransition } from "@/lib/use-closing-transition";
+import SmoothScroll from "@/components/shell/SmoothScroll";
 import { Button, Input, Icon } from "@/design-system/healer-bundle";
 
 type Customer = {
@@ -124,7 +125,7 @@ export default function CustomersPage() {
       </div>
 
       <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
-        <div style={{ overflowX: "auto" }}>
+        <SmoothScroll horizontal>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead><tr style={{ borderBottom: "1px solid var(--border-subtle)" }}>
               <th style={thStyle}>Company</th><th style={thStyle}>Primary Contact</th><th style={thStyle}>Email</th>
@@ -145,7 +146,7 @@ export default function CustomersPage() {
               ))}
             </tbody>
           </table>
-        </div>
+        </SmoothScroll>
         {rows.length === 0 && (
           <div style={{ padding: 32, textAlign: "center", color: "var(--text-muted)", fontSize: 13.5 }}>No customers yet — they&apos;re created automatically from new leads, or you can add one directly.</div>
         )}
@@ -179,7 +180,7 @@ export default function CustomersPage() {
               <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--text-primary)" }}>Customer</h2>
               <button onClick={closeCustomerDrawerAnimated} aria-label="Close" style={{ background: "none", border: "none", cursor: "pointer", padding: 4, lineHeight: 0 }}><Icon name="x" size={20} color="var(--text-muted)" /></button>
             </div>
-            <div style={{ flex: 1, overflowY: "auto", padding: 24, display: "flex", flexDirection: "column", gap: 14, fontSize: 14 }}>
+            <SmoothScroll style={{ flex: 1, padding: 24, fontSize: 14 }} contentStyle={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <Input label="Company name" value={selected.company_name} disabled={!isCustomersEditor} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFieldLive(selected.id, "company_name", e.target.value)} />
               <Input label="Primary contact name (optional)" value={selected.primary_contact_name || ""} disabled={!isCustomersEditor} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFieldLive(selected.id, "primary_contact_name", e.target.value)} />
               <Input label="Primary contact email (optional)" value={selected.primary_contact_email || ""} disabled={!isCustomersEditor} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFieldLive(selected.id, "primary_contact_email", e.target.value)} />
@@ -189,7 +190,7 @@ export default function CustomersPage() {
               <Input label="Address (optional)" multiline rows={2} value={selected.address || ""} disabled={!isCustomersEditor} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFieldLive(selected.id, "address", e.target.value)} />
               <Input label="Notes (optional)" multiline rows={3} value={selected.notes || ""} disabled={!isCustomersEditor} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFieldLive(selected.id, "notes", e.target.value)} />
               <div style={{ fontSize: 13, color: "var(--text-muted)", paddingTop: 6, borderTop: "1px solid var(--border-subtle)" }}>{selected.lead_count} lead(s) linked to this customer</div>
-            </div>
+            </SmoothScroll>
             {isCustomersEditor && (
               <div style={{ padding: "16px 24px", borderTop: "1px solid var(--border-subtle)", display: "flex", justifyContent: "flex-end", flexShrink: 0 }}>
                 <Button variant="danger" onClick={deleteSelectedCustomer}>Delete Customer</Button>

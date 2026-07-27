@@ -33,6 +33,7 @@ import {
 } from "@/lib/orbit-client";
 import { Button, Input, Select, Badge, Icon, Modal } from "@/design-system/healer-bundle";
 import { useClosingTransition } from "@/lib/use-closing-transition";
+import SmoothScroll from "@/components/shell/SmoothScroll";
 
 type Invoice = {
   id: string; invoice_number?: string; client: string; project_name?: string; amount: number; currency: string;
@@ -849,7 +850,7 @@ function FinancePageContent() {
               <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--text-primary)" }}>Invoice</h2>
               <button onClick={closeInvoiceDrawerAnimated} aria-label="Close" style={{ background: "none", border: "none", cursor: "pointer", padding: 4, lineHeight: 0 }}><Icon name="x" size={20} color="var(--text-muted)" /></button>
             </div>
-            <div style={{ flex: 1, overflowY: "auto", padding: 24, display: "grid", gridTemplateColumns: "280px 1fr", gap: 24, fontSize: 14 }}>
+            <SmoothScroll style={{ flex: 1, padding: 24, fontSize: 14 }} contentStyle={{ display: "grid", gridTemplateColumns: "280px 1fr", gap: 24 }}>
               <div>
                 <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>View in PDF</div>
                 <div style={{ border: "1px solid var(--border-subtle)", borderRadius: 8, padding: 22, fontFamily: "var(--font-sans)" }}>
@@ -934,7 +935,7 @@ function FinancePageContent() {
                             style={{ width: "100%", boxSizing: "border-box", fontFamily: "var(--font-sans)", fontSize: 12.5, padding: "6px 8px", borderRadius: 6, border: "1px solid var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-primary)" }}
                           />
                           {linePickerOpen === idx && (
-                            <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 20, maxHeight: 220, overflowY: "auto", background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 8, boxShadow: "var(--shadow-popover)", marginTop: 4 }}>
+                            <SmoothScroll style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 20, maxHeight: 220, background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 8, boxShadow: "var(--shadow-popover)", marginTop: 4 }}>
                               <div onMouseDown={(e) => { e.preventDefault(); setLineItemLink(idx, null); }} style={{ padding: "8px 10px", fontSize: 12, color: "var(--text-muted)", cursor: "pointer", borderBottom: "1px solid var(--border-subtle)" }}>No linked project</div>
                               {(() => {
                                 const q = normalizeSearchText(linePickerQuery);
@@ -947,7 +948,7 @@ function FinancePageContent() {
                                   </div>
                                 ));
                               })()}
-                            </div>
+                            </SmoothScroll>
                           )}
                         </div>
                         {invForm.lineItems.length > 1 && isFinanceEditor && <a href="#" onClick={(e) => { e.preventDefault(); removeInvoiceLineItem(idx); }} style={{ fontSize: 12, fontWeight: 600, color: "var(--status-danger-text)", textDecoration: "none", whiteSpace: "nowrap" }}>Remove</a>}
@@ -989,7 +990,7 @@ function FinancePageContent() {
                   </div>
                 </div>
               </div>
-            </div>
+            </SmoothScroll>
             <div style={{ padding: "16px 24px", borderTop: "1px solid var(--border-subtle)", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 12, flexShrink: 0 }}>
               {!isNewInvoice ? <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{invoiceSaving ? "Saving…" : "All changes saved."}</span> : isFinanceEditor && <Button variant="primary" onClick={submitNewInvoice}>Create Invoice</Button>}
             </div>
@@ -1005,7 +1006,7 @@ function FinancePageContent() {
               <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--text-primary)" }}>{isNewExpense ? "Log Expense" : "Expense"}</h2>
               <button onClick={closeExpenseDrawerAnimated} aria-label="Close" style={{ background: "none", border: "none", cursor: "pointer", padding: 4, lineHeight: 0 }}><Icon name="x" size={20} color="var(--text-muted)" /></button>
             </div>
-            <div style={{ flex: 1, overflowY: "auto", padding: 24, display: "flex", flexDirection: "column", gap: 14, fontSize: 14 }}>
+            <SmoothScroll style={{ flex: 1, padding: 24, fontSize: 14 }} contentStyle={{ display: "flex", flexDirection: "column", gap: 14 }}>
               {isNewExpense ? (
                 <>
                   <Select label="Category" options={[{ value: "", label: "Select category…" }, ...categories.map((c) => ({ value: c.name, label: c.name }))]} value={expForm.category} disabled={!isFinanceEditor} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setExpForm((f) => ({ ...f, category: e.target.value }))} />
@@ -1042,7 +1043,7 @@ function FinancePageContent() {
                   </div>
                 </>
               ) : null}
-            </div>
+            </SmoothScroll>
             <div style={{ padding: "16px 24px", borderTop: "1px solid var(--border-subtle)", display: "flex", justifyContent: "flex-end", gap: 12, flexShrink: 0 }}>
               {!isNewExpense && isFinanceEditor && expDrawerId && <Button variant="danger" onClick={() => deleteExpense(expDrawerId)}>Delete Expense</Button>}
               <Button variant="ghost" onClick={closeExpenseDrawerAnimated}>Close</Button>
@@ -1060,7 +1061,7 @@ function FinancePageContent() {
               <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--text-primary)" }}>Add Payment Milestone</h2>
               <button onClick={closeMilestoneFormAnimated} aria-label="Close" style={{ background: "none", border: "none", cursor: "pointer", padding: 4, lineHeight: 0 }}><Icon name="x" size={20} color="var(--text-muted)" /></button>
             </div>
-            <div style={{ flex: 1, overflowY: "auto", padding: 24, display: "flex", flexDirection: "column", gap: 14, fontSize: 14 }}>
+            <SmoothScroll style={{ flex: 1, padding: 24, fontSize: 14 }} contentStyle={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <Select label="Project" options={[{ value: "", label: "Select project…" }, ...milestoneProjectOptions]} value={msForm.projectId} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setMsForm((f) => ({ ...f, projectId: e.target.value }))} />
               <Input label="Milestone description" value={msForm.description} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setMsForm((f) => ({ ...f, description: e.target.value }))} />
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
@@ -1071,7 +1072,7 @@ function FinancePageContent() {
                 <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 6 }}>Expected date</label>
                 <input type="date" value={msForm.expectedDate} onChange={(e) => setMsForm((f) => ({ ...f, expectedDate: e.target.value }))} style={{ width: "100%", boxSizing: "border-box", ...dateInputStyle }} />
               </div>
-            </div>
+            </SmoothScroll>
             <div style={{ padding: "16px 24px", borderTop: "1px solid var(--border-subtle)", display: "flex", justifyContent: "flex-end", gap: 12, flexShrink: 0 }}>
               <Button variant="ghost" onClick={closeMilestoneFormAnimated}>Cancel</Button>
               <Button variant="primary" onClick={submitMilestone}>Add Milestone</Button>

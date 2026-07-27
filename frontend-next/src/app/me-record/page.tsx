@@ -17,6 +17,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useAppData } from "@/lib/app-data-context";
 import { useToast } from "@/lib/toast-context";
 import { Icon, Button } from "@/design-system/healer-bundle";
+import SmoothScroll from "@/components/shell/SmoothScroll";
 
 type FiscalYearOption = { label: string; start_month: string; end_month: string };
 
@@ -209,7 +210,7 @@ export default function MeRecordPage() {
         {mySlips.length === 0 ? (
           <div style={{ fontSize: 13.5, color: "var(--text-muted)" }}>No salary slips on file yet.</div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
+          <SmoothScroll horizontal>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead><tr style={{ borderBottom: "1px solid var(--border-subtle)" }}>
                 <th style={boardThStyle}>Month</th>
@@ -234,7 +235,7 @@ export default function MeRecordPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </SmoothScroll>
         )}
       </div>
 

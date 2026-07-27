@@ -17,6 +17,7 @@ import { useToast } from "@/lib/toast-context";
 import { leavesApi, wfhApi, attendanceApi, getEmployeeName, todayISO, formatCommentTimestamp, fromISO, parseDeepLinkHash, clearDeepLinkHash } from "@/lib/orbit-client";
 import { Badge, Icon } from "@/design-system/healer-bundle";
 import { useClosingTransition } from "@/lib/use-closing-transition";
+import SmoothScroll from "@/components/shell/SmoothScroll";
 
 type Leave = {
   id: string; employee_id: string; employee_name?: string; leave_type: string; status: string;
@@ -319,7 +320,7 @@ export default function ManagerLeavePage() {
                 <Icon name="x" size={20} color="var(--text-muted)" />
               </button>
             </div>
-            <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>
+            <SmoothScroll style={{ flex: 1, padding: 24 }}>
               {modalLogs.length === 0 ? (
                 <div style={{ padding: 32, textAlign: "center", color: "var(--text-muted)", fontSize: 13.5 }}>No attendance records this month.</div>
               ) : (
@@ -340,7 +341,7 @@ export default function ManagerLeavePage() {
                   </tbody>
                 </table>
               )}
-            </div>
+            </SmoothScroll>
           </div>
         </div>
       )}

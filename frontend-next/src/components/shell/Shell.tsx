@@ -32,6 +32,7 @@ import {
   attendanceWindowNow,
 } from "@/lib/orbit-client";
 import { SidebarSection, Icon, Avatar } from "@/design-system/healer-bundle";
+import SmoothScroll from "./SmoothScroll";
 
 const MOBILE_BREAKPOINT = "(max-width: 768px)";
 
@@ -424,46 +425,49 @@ export default function Shell({ children }: { children: React.ReactNode }) {
               flexShrink: 0,
               background: "var(--bg-sidebar)",
               borderRight: "1px solid var(--border-subtle)",
-              padding: "24px 12px",
-              overflowY: "auto",
+              display: "flex",
+              flexDirection: "column",
+              minHeight: 0,
             }}
           >
-            <div
-              onClick={goHome}
-              style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 12px", marginBottom: 32, cursor: "pointer" }}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/orbit-logo.png" alt="" style={{ width: 32, height: 32, flexShrink: 0, display: "block" }} />
-              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                <span style={{ fontWeight: 700, fontSize: 18, letterSpacing: "0.04em", color: "var(--text-primary)", lineHeight: 1.1 }}>ORBIT</span>
-                <span style={{ fontSize: 10, fontWeight: 500, letterSpacing: "0.01em", color: "var(--text-muted)", lineHeight: 1.1 }}>Powered by Upmotion Tech</span>
+            <SmoothScroll style={{ flex: 1, minHeight: 0, padding: "24px 12px" }}>
+              <div
+                onClick={goHome}
+                style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 12px", marginBottom: 32, cursor: "pointer" }}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/orbit-logo.png" alt="" style={{ width: 32, height: 32, flexShrink: 0, display: "block" }} />
+                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  <span style={{ fontWeight: 700, fontSize: 18, letterSpacing: "0.04em", color: "var(--text-primary)", lineHeight: 1.1 }}>ORBIT</span>
+                  <span style={{ fontSize: 10, fontWeight: 500, letterSpacing: "0.01em", color: "var(--text-muted)", lineHeight: 1.1 }}>Powered by Upmotion Tech</span>
+                </div>
               </div>
-            </div>
 
-            {sections.map((s) =>
-              s.show ? (
-                <SidebarSection key={s.label} label={s.label} items={s.items} activeId={activeScreen} onSelect={setScreen} />
-              ) : null
-            )}
+              {sections.map((s) =>
+                s.show ? (
+                  <SidebarSection key={s.label} label={s.label} items={s.items} activeId={activeScreen} onSelect={setScreen} />
+                ) : null
+              )}
 
-            {showManagerSection && (
-              <SidebarSection label="Manager Hub" items={managerItems} activeId={activeScreen} onSelect={setScreen} />
-            )}
-            <SidebarSection label="Me" items={meItems} activeId={activeScreen} onSelect={setScreen} />
-            {access.permissions && (
-              <SidebarSection label="Settings" items={adminItems} activeId={activeScreen} onSelect={setScreen} />
-            )}
+              {showManagerSection && (
+                <SidebarSection label="Manager Hub" items={managerItems} activeId={activeScreen} onSelect={setScreen} />
+              )}
+              <SidebarSection label="Me" items={meItems} activeId={activeScreen} onSelect={setScreen} />
+              {access.permissions && (
+                <SidebarSection label="Settings" items={adminItems} activeId={activeScreen} onSelect={setScreen} />
+              )}
 
-            <div className="orbit-logout-wrap">
-              <button className="sidebar-logout-btn" onClick={handleLogout}>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                  <polyline points="16 17 21 12 16 7" />
-                  <line x1="21" y1="12" x2="9" y2="12" />
-                </svg>
-                Sign Out
-              </button>
-            </div>
+              <div className="orbit-logout-wrap">
+                <button className="sidebar-logout-btn" onClick={handleLogout}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                    <polyline points="16 17 21 12 16 7" />
+                    <line x1="21" y1="12" x2="9" y2="12" />
+                  </svg>
+                  Sign Out
+                </button>
+              </div>
+            </SmoothScroll>
           </motion.div>
         )}
         </AnimatePresence>
@@ -531,9 +535,9 @@ export default function Shell({ children }: { children: React.ReactNode }) {
                 />
               </div>
               {searchOpen && debouncedQuery.length >= 2 && (
-                <div
+                <SmoothScroll
                   className="crm-pop orbit-topbar-flyout"
-                  style={{ position: "absolute", top: 44, left: 0, width: 380, maxHeight: 440, overflow: "auto", background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-popover)", zIndex: 2000 }}
+                  style={{ position: "absolute", top: 44, left: 0, width: 380, maxHeight: 440, background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-popover)", zIndex: 2000 }}
                 >
                   {searchLoading && (
                     <div style={{ padding: "16px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>Searching…</div>
@@ -555,7 +559,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
                       {r.subtitle && <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{r.subtitle}</div>}
                     </a>
                   ))}
-                </div>
+                </SmoothScroll>
               )}
             </div>
 
@@ -625,9 +629,9 @@ export default function Shell({ children }: { children: React.ReactNode }) {
                 )}
               </button>
               {notifOpen && (
-                <div
+                <SmoothScroll
                   className="crm-pop orbit-topbar-flyout orbit-notif-flyout"
-                  style={{ position: "absolute", top: 44, right: 0, width: 380, maxHeight: 440, overflow: "auto", background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-popover)", zIndex: 2000 }}
+                  style={{ position: "absolute", top: 44, right: 0, width: 380, maxHeight: 440, background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-popover)", zIndex: 2000 }}
                 >
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", borderBottom: "1px solid var(--border-subtle)" }}>
                     <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>Notifications</span>
@@ -671,7 +675,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
                       </div>
                     );
                   })}
-                </div>
+                </SmoothScroll>
               )}
             </div>
 
@@ -692,9 +696,9 @@ export default function Shell({ children }: { children: React.ReactNode }) {
             </a>
           </div>
 
-          <div className="orbit-screen-content" style={{ flex: 1, padding: 24, overflow: "auto" }}>
+          <SmoothScroll className="orbit-screen-content" style={{ flex: 1, padding: 24 }}>
             {isScreenAllowed(activeScreen) ? children : null}
-          </div>
+          </SmoothScroll>
         </div>
       </div>
     </div>
