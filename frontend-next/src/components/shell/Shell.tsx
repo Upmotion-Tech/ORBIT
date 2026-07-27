@@ -532,7 +532,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
               </div>
               {searchOpen && debouncedQuery.length >= 2 && (
                 <div
-                  className="crm-pop"
+                  className="crm-pop orbit-topbar-flyout"
                   style={{ position: "absolute", top: 44, left: 0, width: 380, maxHeight: 440, overflow: "auto", background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-popover)", zIndex: 2000 }}
                 >
                   {searchLoading && (
@@ -626,7 +626,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
               </button>
               {notifOpen && (
                 <div
-                  className="crm-pop"
+                  className="crm-pop orbit-topbar-flyout orbit-notif-flyout"
                   style={{ position: "absolute", top: 44, right: 0, width: 380, maxHeight: 440, overflow: "auto", background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-popover)", zIndex: 2000 }}
                 >
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", borderBottom: "1px solid var(--border-subtle)" }}>

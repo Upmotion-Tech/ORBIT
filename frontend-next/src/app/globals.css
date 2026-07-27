@@ -563,38 +563,34 @@ html, body {
     padding: 14px !important;
   }
 
-  /* Topbar Universal Search results and the Notifications panel (Shell.tsx)
-     are absolutely-positioned flyouts with a fixed 380px width — wider than
-     the viewport itself on any phone, so part of the panel was pushed off
-     the right edge and clipped by html/body's overflow-x:hidden above
-     (unreachable, not just visually clipped). Widening both to a
-     viewport-relative width fixes the search results panel, whose
-     `position:relative` anchor (.orbit-topbar-search) itself stretches to
-     the full viewport width on mobile (flex:1 1 100% below) — so `left`/
-     `right` insets here end up close enough to the real viewport edges. */
-  [style*="width:380px"][style*="position:absolute"] {
-    width: calc(100vw - 32px) !important;
-    left: 16px !important;
-    right: 16px !important;
-  }
-  /* The Notifications panel's own anchor (.orbit-notif-wrap, wrapping just
-     the small bell button) does NOT get that same full-width treatment —
-     it stays a ~38px box pinned near the topbar's right edge, so the
-     `left`/`right` insets above are actually relative to THAT tiny box, not
-     the viewport, and the panel rendered almost entirely off-screen to the
-     right instead of getting pulled back on-screen. Distinguished from the
-     search panel by `right:0px` (only the notif panel sets `right`; search
-     sets `left` instead) and switched to `position:fixed`, whose `top`/
-     `left`/`right` genuinely are viewport-relative regardless of any small
-     positioned ancestor. `top` is a fixed estimate of the icon row's own
-     height (not --topbar-height, which covers the whole wrapped 3-row
-     mobile topbar) — a few px off either way is a minor cosmetic gap, not
-     the "unreachable off-screen" failure this replaces. max-height keeps it
-     from also overflowing off the bottom of a short phone screen. */
-  [style*="width:380px"][style*="position:absolute"][style*="right:0px"] {
+  /* Topbar Universal Search results and the Notifications panel (Shell.tsx,
+     both marked with .orbit-topbar-flyout — see Shell.tsx) are
+     absolutely-positioned flyouts sized/anchored for desktop (fixed 380px
+     wide, hanging off a small trigger element). On a phone that's wider
+     than the viewport itself, AND each trigger's own on-screen position
+     varies (the notif bell's anchor especially — a ~38px box pinned near
+     the topbar's right edge, versus the search box's anchor which happens
+     to stretch full-width on mobile) — two earlier attempts at pixel-exact
+     `top`/`left`/`right` insets keyed off the literal inline style text
+     both proved fragile in practice (worked for search by coincidence,
+     never reliably for notifications, and depended on guessing the exact
+     rendered height of the topbar's wrapped icon/clock/search rows).
+     Anchoring both to the *bottom* of the viewport instead sidesteps all of
+     that — a real class selector (not a fragile inline-style-substring
+     match) forcing a fixed position that's completely independent of the
+     trigger's own location or the topbar's wrapped height, which can never
+     be pushed off-screen regardless of exactly how tall the topbar ends up
+     being. This is the same "dropdown becomes a bottom sheet on mobile"
+     pattern most production apps already use for exactly this reason. */
+  .orbit-topbar-flyout {
     position: fixed !important;
-    top: 60px !important;
-    max-height: calc(100vh - 76px) !important;
+    top: auto !important;
+    bottom: 16px !important;
+    left: 12px !important;
+    right: 12px !important;
+    width: auto !important;
+    max-width: none !important;
+    max-height: 70vh !important;
   }
 }
 .orbit-sidebar-backdrop {
@@ -884,25 +880,25 @@ select {
 }
 /* The design-system Select component (HealerDesignSystem_11773a.Select)
    renders its own chevron too — a real Icon("chevron-down") absolutely
-   positioned as a sibling element (style: position absolute, right 12,
-   pointer-events none) right after its select — so every dropdown built
-   from that component was showing BOTH that icon AND our own
-   background-image chevron on top of each other. This used to be handled
-   with a `select:has(+ div[...])` selector that suppressed our chevron
-   wherever that sibling existed — but :has() is a fairly recent CSS feature
-   (Chrome 105+/2022, Firefox 121+/Dec 2023, Safari 15.4+/2022) that quietly
-   no-ops wherever it isn't supported rather than erroring, so in any older
-   browser or embedded webview this suppression never actually took effect,
-   and the two overlapping chevrons is very plausibly what read as "a
-   floating arrow in its own little box" on every dropdown app-wide.
-   Fixed the other way around instead, with no :has() involved: hide the
-   component's own icon div directly via a plain attribute-selector match on
-   its distinctive inline style (verified unique in the compiled bundle —
-   nothing else combines position:absolute + pointer-events:none +
-   translateY(-50%)), so our single background-image chevron from the base
-   `select {}` rule above is unconditionally the only one that ever renders,
-   on every dropdown, in every browser. */
-div[style*="position:absolute"][style*="pointer-events:none"][style*="translateY(-50%)"] {
+   positioned as a sibling element right after its select — so every
+   dropdown built from that component was showing BOTH that icon AND our
+   own background-image chevron on top of each other (the doubled/
+   overlapping arrow on every dropdown app-wide, not just one field).
+   Two earlier attempts at suppressing the component's own icon both turned
+   out unreliable in practice: a `select:has(+ div[...])` selector (quietly
+   no-ops on any browser/webview without :has() support instead of
+   erroring), then a `div[style*="position:absolute"][style*="pointer-
+   events:none"][style*="translateY(-50%)"]` attribute-selector match on
+   its inline style text — which reportedly still didn't suppress it
+   everywhere either, most likely because it depends on guessing exactly
+   how the inline style object serializes to the DOM's style attribute text
+   (spacing/ordering that isn't actually guaranteed). Targeting the icon by
+   its real, fixed `aria-label` instead sidesteps that guesswork entirely —
+   every Icon renders as <span role="img" aria-label={name}>, so this reads
+   the DOM the same reliable way screen readers do, regardless of any
+   inline-style serialization detail. Verified unique to this one icon (see
+   Icon in healer-bundle.js) — nothing else in the app uses "chevron-down". */
+span[aria-label="chevron-down"] {
   display: none !important;
 }
 select:hover {
