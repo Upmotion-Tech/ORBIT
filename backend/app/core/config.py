@@ -15,7 +15,7 @@ class Settings(BaseSettings):
 
     secret_key: str = "dev-secret-key-change-in-production"
     algorithm: str = "HS256"
-    access_token_expire_minutes: int = 1440
+    access_token_expire_minutes: int = 10080  # 7 days
 
     # Hostinger SMTP — used to email new employees their auto-generated
     # temporary password. Left blank until real credentials are put in .env;
