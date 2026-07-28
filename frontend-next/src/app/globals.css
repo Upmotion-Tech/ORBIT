@@ -669,6 +669,19 @@ html, body {
     flex-wrap: wrap !important;
     gap: 8px !important;
   }
+
+  /* All Modals (Salary Slip, Edit Employee, Add Milestone, etc.) on mobile */
+  [style*="position: fixed"][style*="z-index"] > div[style*="background"],
+  div[role="dialog"] {
+    width: 94vw !important;
+    max-width: 94vw !important;
+    max-height: 88vh !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    margin: auto !important;
+    padding: 16px !important;
+    box-sizing: border-box !important;
+  }
 }
 
 @media (max-width: 480px) {
@@ -686,6 +699,24 @@ html, body {
   [style*="gridTemplateColumns"],
   [style*="grid-template-columns"] {
     grid-template-columns: 1fr !important;
+  }
+
+  /* Input + Button inline rows on mobile stack cleanly */
+  .orbit-input-btn-row,
+  [style*="display: flex"][style*="gap: 8"],
+  [style*="display:flex"][style*="gap:8"] {
+    flex-wrap: wrap !important;
+  }
+  .orbit-input-btn-row > input,
+  [style*="display: flex"][style*="gap: 8"] > input,
+  [style*="display:flex"][style*="gap:8"] > input {
+    min-width: 100% !important;
+    flex: 1 1 100% !important;
+  }
+  .orbit-input-btn-row > button,
+  [style*="display: flex"][style*="gap: 8"] > button,
+  [style*="display:flex"][style*="gap:8"] > button {
+    width: 100% !important;
   }
 }
 .orbit-sidebar-backdrop {

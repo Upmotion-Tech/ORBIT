@@ -1126,7 +1126,7 @@ function FinancePageContent() {
               </div>
             </div>
             <Input label="Notes" value={salarySlipRaw.notes || ""} multiline rows={3} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSalarySlipFieldLive(salarySlipRaw.employee_id, "notes", e.target.value)} />
-            <div style={{ marginTop: 4, display: "flex", justifyContent: "flex-end", gap: 10 }}>
+            <div style={{ marginTop: 4, display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
               <Button variant="ghost" icon="send" disabled={generatingOneSlip} onClick={() => generateOneSalarySlip(salarySlipRaw.id)}>{generatingOneSlip ? "Generating…" : "Generate Salary Slip"}</Button>
               <Button variant="ghost" icon="file-text" onClick={() => downloadSalarySlipPdf(salarySlipRaw.id, salarySlipRaw.employee_name)}>Download PDF</Button>
               <Button variant="primary" onClick={() => setSalarySlipEmpId(null)}>Close</Button>
@@ -1143,7 +1143,7 @@ function FinancePageContent() {
             <Row label="Other deductions" value={"−" + moneyPKR(salarySlipRaw.other_deductions)} />
             {salarySlipRaw.deduction_reason && <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginBottom: 10, marginTop: -6 }}>Reason: {salarySlipRaw.deduction_reason}</div>}
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 15, paddingTop: 10, borderTop: "1px solid var(--border-subtle)" }}><span style={{ fontWeight: 700, color: "var(--text-primary)" }}>Net pay</span><span style={{ fontWeight: 700, color: "var(--text-primary)" }}>{moneyPKR(salarySlipRaw.net_salary)}</span></div>
-            <div style={{ marginTop: 20, display: "flex", justifyContent: "flex-end", gap: 10 }}>
+            <div style={{ marginTop: 20, display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
               <Button variant="ghost" icon="file-text" onClick={() => downloadSalarySlipPdf(salarySlipRaw.id, salarySlipRaw.employee_name)}>Download PDF</Button>
               <Button variant="primary" onClick={() => setSalarySlipEmpId(null)}>Close</Button>
             </div>

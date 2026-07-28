@@ -802,9 +802,9 @@ export default function SetupPage() {
                   ))}
                 </div>
                 {isOwnerReal && (
-                  <div style={{ display: "flex", gap: 8 }}>
+                  <div className="orbit-input-btn-row" style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                     <input type="text" placeholder="New stage name" value={crmNewStageInput} onChange={(e) => setCrmNewStageInput(e.target.value)}
-                      style={{ flex: 1, fontFamily: "var(--font-sans)", fontSize: 13.5, padding: "9px 12px", borderRadius: 8, border: "1px solid var(--border-strong)", outline: "none" }} />
+                      style={{ flex: 1, minWidth: 160, fontFamily: "var(--font-sans)", fontSize: 13.5, padding: "9px 12px", borderRadius: 8, border: "1px solid var(--border-strong)", outline: "none" }} />
                     <Button variant="secondary" onClick={addCrmStage}>Add Stage</Button>
                   </div>
                 )}
@@ -826,9 +826,9 @@ export default function SetupPage() {
                   ))}
                 </div>
                 {isOwnerReal && (
-                  <div style={{ display: "flex", gap: 8 }}>
+                  <div className="orbit-input-btn-row" style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                     <input type="text" placeholder="New source name" value={crmNewSourceInput} onChange={(e) => setCrmNewSourceInput(e.target.value)}
-                      style={{ flex: 1, fontFamily: "var(--font-sans)", fontSize: 13.5, padding: "9px 12px", borderRadius: 8, border: "1px solid var(--border-strong)", outline: "none" }} />
+                      style={{ flex: 1, minWidth: 160, fontFamily: "var(--font-sans)", fontSize: 13.5, padding: "9px 12px", borderRadius: 8, border: "1px solid var(--border-strong)", outline: "none" }} />
                     <Button variant="secondary" onClick={addCrmSource}>Add Source</Button>
                   </div>
                 )}
@@ -848,9 +848,9 @@ export default function SetupPage() {
                 ))}
               </div>
               {isOwnerReal && (
-                <div style={{ display: "flex", gap: 8, maxWidth: 420 }}>
+                <div className="orbit-input-btn-row" style={{ display: "flex", flexWrap: "wrap", gap: 8, maxWidth: 420 }}>
                   <input type="text" placeholder="New category name" value={crmNewExpenseCategoryInput} onChange={(e) => setCrmNewExpenseCategoryInput(e.target.value)}
-                    style={{ flex: 1, fontFamily: "var(--font-sans)", fontSize: 13.5, padding: "9px 12px", borderRadius: 8, border: "1px solid var(--border-strong)", outline: "none" }} />
+                    style={{ flex: 1, minWidth: 160, fontFamily: "var(--font-sans)", fontSize: 13.5, padding: "9px 12px", borderRadius: 8, border: "1px solid var(--border-strong)", outline: "none" }} />
                   <Button variant="secondary" onClick={addExpenseCategory}>Add Category</Button>
                 </div>
               )}
