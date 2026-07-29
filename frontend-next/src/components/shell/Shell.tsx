@@ -573,7 +573,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
 
             <div className="orbit-topbar-mobile-logo" onClick={goHome} style={{ cursor: "pointer" }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/orbit-logo.png" alt="" style={{ width: 34, height: 34, display: "block" }} />
+              <img src="/orbit-logo.png" alt="" style={{ width: 40, height: 40, display: "block" }} />
               <span>ORBIT</span>
             </div>
 

@@ -124,6 +124,11 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # CORS hides every response header from client-side JS by default except
+    # a small built-in safe list — without this, the browser still receives
+    # X-Refreshed-Token (get_current_user, dependencies.py) on the wire, but
+    # fetch()'s response.headers.get(...) would silently return null for it.
+    expose_headers=["X-Refreshed-Token"],
 )
 
 

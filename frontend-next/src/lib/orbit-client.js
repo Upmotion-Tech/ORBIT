@@ -543,6 +543,16 @@ async function apiFetch(path, options = {}) {
   } catch (e) {
     throw new Error('Network error — check your connection and try again.');
   }
+  // Sliding session: get_current_user (backend/app/core/dependencies.py)
+  // silently reissues a fresh full-length token once the current one is
+  // within 2 days of expiring, on ANY authenticated call, and hands it back
+  // via this header — swapping it in here means anyone actively using the
+  // app never sees a forced logout; only several days of real inactivity
+  // lets the old token actually expire.
+  const refreshedToken = res.headers.get('X-Refreshed-Token');
+  if (refreshedToken) {
+    localStorage.setItem('orbit_token', refreshedToken);
+  }
   // A 401 from the login endpoint itself means "wrong email/password" —
   // there's no session to have expired yet, since this *is* the attempt to
   // start one. Only treat a 401 as an expired session for every other

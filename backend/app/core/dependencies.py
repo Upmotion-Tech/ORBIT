@@ -1,18 +1,31 @@
+from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Response, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.permissions import is_project_editor
-from app.core.security import decode_access_token
+from app.core.security import create_access_token, decode_access_token
 from app.repositories.employee_repository import EmployeeRepository
 
 security_scheme = HTTPBearer(auto_error=False)
 
+# A token gets silently reissued (same claims, fresh full-length expiry from
+# right now) once less than this much of its life remains, via the
+# X-Refreshed-Token response header below — as long as someone opens the
+# app at least this often, they're never forced to log back in; only
+# genuine multi-day inactivity actually lets the session expire. A response
+# header rather than each route's own JSON body, since this dependency runs
+# ahead of every route regardless of what that route's own response shape
+# is — see orbit-client.js for the frontend half (reads this header on every
+# response, swaps the stored token if present).
+REFRESH_THRESHOLD_SECONDS = 2 * 24 * 60 * 60  # 2 days
+
 
 async def get_current_user(
+    response: Response,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
@@ -46,6 +59,10 @@ async def get_current_user(
     # changes take effect immediately without requiring a re-login.
     payload["roles"] = employee.access_levels or ["employee"]
     payload["department"] = employee.department
+
+    exp = payload.get("exp")
+    if exp is not None and (exp - datetime.now(timezone.utc).timestamp()) < REFRESH_THRESHOLD_SECONDS:
+        response.headers["X-Refreshed-Token"] = create_access_token(payload)
 
     return payload
 
