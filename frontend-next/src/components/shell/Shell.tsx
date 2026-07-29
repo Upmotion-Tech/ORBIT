@@ -593,7 +593,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
                 <Icon name="search" size={18} color="var(--text-muted)" />
                 <input
                   type="text"
-                  placeholder="Search leads, projects, tasks, customers, people…"
+                  placeholder="Search Anything"
                   value={searchQuery}
                   onChange={(e) => { setSearchQuery(e.target.value); setSearchOpen(true); }}
                   onFocus={() => setSearchOpen(true)}
