@@ -54,6 +54,17 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [notifOpen, setNotifOpen] = useState(false);
+  // On mobile the notification flyout is position:fixed (see globals.css —
+  // position:absolute relative to the small bell-button anchor used to clip/
+  // cut off there), so it needs its own on-screen coordinates instead of an
+  // ancestor to anchor against. Measured fresh each time it opens (not on a
+  // resize listener — the topbar's wrapped height only actually changes on
+  // orientation change/rotation, which remounts the page anyway) and handed
+  // to the CSS via custom properties (see .orbit-notif-flyout) rather than
+  // plain inline top/right, since inline styles can never win against the
+  // shared .orbit-topbar-flyout rule's own `!important` bottom-sheet values.
+  const notifWrapRef = useRef<HTMLDivElement | null>(null);
+  const [notifPanelPos, setNotifPanelPos] = useState<{ top: number; right: number } | null>(null);
 
   // ---- Topbar live clock (PKT, matches the rest of the app's fixed
   // Asia/Karachi timezone standard, not the visitor's browser/OS clock) ----
@@ -624,12 +635,18 @@ export default function Shell({ children }: { children: React.ReactNode }) {
               </span>
             </button>
 
-            <div className="orbit-notif-wrap" style={{ position: "relative" }}>
+            <div ref={notifWrapRef} className="orbit-notif-wrap" style={{ position: "relative" }}>
               <button
                 onClick={() => {
                   const next = !notifOpen;
                   setNotifOpen(next);
-                  if (next) reloadNotifications();
+                  if (next) {
+                    reloadNotifications();
+                    const rect = notifWrapRef.current?.getBoundingClientRect();
+                    if (rect) {
+                      setNotifPanelPos({ top: rect.bottom + 8, right: Math.max(12, window.innerWidth - rect.right) });
+                    }
+                  }
                 }}
                 aria-label="Notifications"
                 style={{ position: "relative", background: "#fff", border: "1px solid var(--border-subtle)", borderRadius: 9999, cursor: "pointer", padding: 8, lineHeight: 0 }}
@@ -653,7 +670,12 @@ export default function Shell({ children }: { children: React.ReactNode }) {
               {notifOpen && (
                 <SmoothScroll
                   className="crm-pop orbit-topbar-flyout orbit-notif-flyout"
-                  style={{ position: "absolute", top: 44, right: 0, width: 380, maxHeight: 440, background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-popover)", zIndex: 2000 }}
+                  style={{
+                    position: "absolute", top: 44, right: 0, width: 380, maxHeight: 440, background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-popover)", zIndex: 2000,
+                    ...(notifPanelPos
+                      ? ({ "--notif-top": `${notifPanelPos.top}px`, "--notif-right": `${notifPanelPos.right}px` } as React.CSSProperties)
+                      : {}),
+                  }}
                 >
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", borderBottom: "1px solid var(--border-subtle)" }}>
                     <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>Notifications</span>

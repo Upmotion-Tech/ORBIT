@@ -449,10 +449,16 @@ html, body {
 /* Mobile-only topbar logo + mobile-only sidebar profile chip (Shell.tsx) —
    hidden by default (desktop keeps the topbar's own profile chip and the
    sidebar's plain logo+wordmark exactly as before); the mobile media query
-   below is what actually reveals each one. */
+   below is what actually reveals each one. `!important` is required here,
+   not just belt-and-suspenders: `.orbit-profile-chip { display: flex; }`
+   lives much later in this file, and at equal specificity (both are
+   single-class selectors) the LATER rule wins a tie regardless of which
+   one sounds more specific to the situation — without `!important` here,
+   that later rule silently overrode this one and leaked the sidebar's
+   profile chip onto desktop too. */
 .orbit-topbar-mobile-logo,
 .orbit-sidebar-mobile-profile {
-  display: none;
+  display: none !important;
 }
 
 @media (max-width: 768px) {
@@ -627,25 +633,20 @@ html, body {
     padding: 14px !important;
   }
 
-  /* Topbar Universal Search results and the Notifications panel (Shell.tsx,
-     both marked with .orbit-topbar-flyout — see Shell.tsx) are
-     absolutely-positioned flyouts sized/anchored for desktop (fixed 380px
-     wide, hanging off a small trigger element). On a phone that's wider
-     than the viewport itself, AND each trigger's own on-screen position
-     varies (the notif bell's anchor especially — a ~38px box pinned near
-     the topbar's right edge, versus the search box's anchor which happens
-     to stretch full-width on mobile) — two earlier attempts at pixel-exact
-     `top`/`left`/`right` insets keyed off the literal inline style text
-     both proved fragile in practice (worked for search by coincidence,
-     never reliably for notifications, and depended on guessing the exact
-     rendered height of the topbar's wrapped icon/clock/search rows).
-     Anchoring both to the *bottom* of the viewport instead sidesteps all of
-     that — a real class selector (not a fragile inline-style-substring
-     match) forcing a fixed position that's completely independent of the
-     trigger's own location or the topbar's wrapped height, which can never
-     be pushed off-screen regardless of exactly how tall the topbar ends up
-     being. This is the same "dropdown becomes a bottom sheet on mobile"
-     pattern most production apps already use for exactly this reason. */
+  /* Topbar Universal Search results (Shell.tsx, marked .orbit-topbar-flyout)
+     is an absolutely-positioned flyout sized/anchored for desktop (fixed
+     380px wide, hanging off a small trigger element) — on a phone that's
+     wider than the viewport itself. Two earlier attempts at pixel-exact
+     `top`/`left`/`right` insets keyed off the literal inline style text both
+     proved fragile in practice (guessing the exact rendered height of the
+     topbar's wrapped icon/clock/search rows). Anchoring to the *bottom* of
+     the viewport instead sidesteps all of that — a real class selector (not
+     a fragile inline-style-substring match) forcing a fixed position
+     completely independent of the topbar's wrapped height. This is the same
+     "dropdown becomes a bottom sheet on mobile" pattern most production
+     apps already use for exactly this reason. The Notifications panel used
+     to share this same treatment, but got its own override below instead —
+     see that rule for why. */
   .orbit-topbar-flyout {
     position: fixed !important;
     top: auto !important;
@@ -655,6 +656,26 @@ html, body {
     width: auto !important;
     max-width: none !important;
     max-height: 70vh !important;
+  }
+  /* ...but a bottom sheet doesn't read as "anchored to the bell" the way a
+     dropdown normally would, so Notifications specifically gets measured
+     JS coordinates instead (Shell.tsx: getBoundingClientRect() on the bell
+     wrapper, fed in as --notif-top/--notif-right custom properties when the
+     panel opens) rather than a fixed viewport corner. Still position:fixed
+     (not absolute relative to the ~38px bell wrapper — that's the earlier,
+     genuinely-fragile approach that clipped/cut off) — just fixed at
+     coordinates computed from where the button actually is, which sidesteps
+     the "trigger position varies, topbar height varies" problem search's
+     bottom-sheet exists to avoid, without losing the "opens below the
+     button" feel. Must come after .orbit-topbar-flyout above: same
+     specificity (single class, both !important), so source order is what
+     lets this win the tie for top/bottom/left/right specifically. */
+  .orbit-notif-flyout {
+    top: var(--notif-top, 60px) !important;
+    bottom: auto !important;
+    left: auto !important;
+    right: var(--notif-right, 12px) !important;
+    width: min(380px, calc(100vw - 24px)) !important;
   }
 
   /* ─── Mobile Responsiveness & Alignment: Finance, HR, Setup ─── */
