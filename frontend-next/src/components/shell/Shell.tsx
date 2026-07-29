@@ -66,6 +66,38 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const notifWrapRef = useRef<HTMLDivElement | null>(null);
   const [notifPanelPos, setNotifPanelPos] = useState<{ top: number; right: number } | null>(null);
 
+  // ---- Auto-refresh when the app is reopened after being backgrounded ----
+  // Installed as a standalone PWA, there's no browser chrome to pull down
+  // against, so the native "pull to refresh" gesture simply doesn't exist in
+  // that mode (true of any installed PWA, not specific to this app) — the
+  // only thing that reliably showed fresh data was force-closing and
+  // reopening, which is really just a full reload happening to occur. This
+  // reproduces that same full reload automatically instead of requiring the
+  // manual force-close: a `visibilitychange` to "hidden" starts a clock, and
+  // coming back "visible" after a meaningful gap reloads the page. The
+  // threshold (2 minutes) exists so a brief app-switch — glancing at a
+  // notification, then straight back — doesn't cost someone their scroll
+  // position or an unsaved form field for a reload that wouldn't have found
+  // anything new anyway; only a background long enough for data to actually
+  // go stale triggers it.
+  useEffect(() => {
+    let hiddenAt: number | null = null;
+    const REFRESH_AFTER_HIDDEN_MS = 2 * 60 * 1000;
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        hiddenAt = Date.now();
+      } else if (document.visibilityState === "visible" && hiddenAt !== null) {
+        const hiddenForMs = Date.now() - hiddenAt;
+        hiddenAt = null;
+        if (hiddenForMs > REFRESH_AFTER_HIDDEN_MS) {
+          window.location.reload();
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, []);
+
   // ---- Topbar live clock (PKT, matches the rest of the app's fixed
   // Asia/Karachi timezone standard, not the visitor's browser/OS clock) ----
   const [now, setNow] = useState<Date | null>(null);
@@ -549,6 +581,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
               <div
                 style={{
                   display: "flex",
+                  flexWrap: "nowrap",
                   alignItems: "center",
                   gap: 8,
                   background: "#fff",
@@ -564,7 +597,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
                   value={searchQuery}
                   onChange={(e) => { setSearchQuery(e.target.value); setSearchOpen(true); }}
                   onFocus={() => setSearchOpen(true)}
-                  style={{ border: "none", outline: "none", background: "transparent", width: "100%", fontFamily: "var(--font-sans)", fontSize: 14, color: "var(--text-primary)" }}
+                  style={{ border: "none", outline: "none", background: "transparent", flex: 1, minWidth: 0, fontFamily: "var(--font-sans)", fontSize: 14, color: "var(--text-primary)" }}
                 />
               </div>
               {searchOpen && debouncedQuery.length >= 2 && (
