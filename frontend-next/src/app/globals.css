@@ -506,15 +506,14 @@ html, body {
   }
   /* Full label ("Mark Attendance" / "Attendance marked" / "Marking…") is the
      single widest item in the topbar — icon-only on phones keeps its own
-     pill compact enough that the rest of the row (notif bell, logo) still
-     fits before anything needs to wrap onto its own row. The desktop
-     margin-left:auto (Shell.tsx inline style) that pushes attendance/notif
-     to the right is reset here — on mobile that job now belongs to the
-     centered logo block below claiming the space in between instead, so
-     both rules pulling on the same free space would otherwise fight. */
+     pill compact enough that the rest of the row (notif bell) still fits
+     before anything needs to wrap onto its own row. Desktop's
+     margin-left:auto (Shell.tsx inline style) still applies unchanged here —
+     it's what pushes attendance+notif to the right edge; the logo below is
+     taken out of this flex flow entirely (position:absolute), so there's no
+     competition over the same space to reset. */
   .orbit-attendance-btn {
     padding: 9px !important;
-    margin-left: 0 !important;
   }
   .orbit-attendance-label {
     display: none;
@@ -536,17 +535,44 @@ html, body {
     justify-content: space-between;
     margin-bottom: 20px;
   }
-  /* Centered logo + "ORBIT" wordmark, filling the space between the
-     hamburger and the attendance/notification cluster — flex:1 is what
-     actually centers it (the fixed-width items on either side eat the
-     rest), replacing the old margin-left:auto approach now that there's a
-     third item in the row needing space of its own. */
+  /* The name/role text column has no explicit width of its own — with
+     justify-content:space-between and nothing to make it shrink, a long
+     role ("Junior Software Developer") just overflowed past its own pill
+     background instead of truncating. min-width:0 is the actual fix (flex
+     children default to min-width:auto, which blocks shrinking below
+     content size); the ellipsis on the name/role themselves is what makes
+     truncating look intentional instead of an abrupt hard clip. */
+  .orbit-sidebar-mobile-profile .orbit-profile-text {
+    min-width: 0;
+    flex: 1;
+  }
+  .orbit-sidebar-mobile-profile .orbit-profile-name,
+  .orbit-sidebar-mobile-profile .orbit-profile-role {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  /* Centered logo + "ORBIT" wordmark. Deliberately NOT flex-centered (tried
+     that first): centering via flex:1 in the leftover space between two
+     unequal-width neighbors (a narrow hamburger vs. the wider
+     attendance+notif cluster) visibly skews toward whichever side is
+     narrower, not the true middle of the bar. Absolute positioning against
+     .orbit-topbar (already position:relative) centers it against the bar
+     instead, independent of what's on either side — and removes it from
+     the flex flow entirely, so hamburger/attendance/notif lay out as if it
+     weren't there. `top` is pinned to half of --topbar-height (the icon
+     row's own height, via its min-height) rather than 50% — .orbit-topbar
+     itself wraps to 3 tall rows here (icons, clock, search), so 50% of
+     *that* would center against the whole wrapped block, landing the logo
+     down in the clock/search area instead of level with the hamburger. */
   .orbit-topbar-mobile-logo {
     display: flex !important;
-    flex: 1 1 auto;
+    position: absolute;
+    left: 50%;
+    top: calc(var(--topbar-height) / 2);
+    transform: translate(-50%, -50%);
     flex-direction: column;
     align-items: center;
-    justify-content: center;
     gap: 2px;
   }
   .orbit-topbar-mobile-logo span {

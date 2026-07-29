@@ -452,7 +452,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
                 <div className="orbit-avatar-ring">
                   <Avatar name={userName} size={34} style={{ background: "#fff", color: "#4338CA", fontWeight: 700 }} />
                 </div>
-                <div>
+                <div className="orbit-profile-text">
                   <div className="orbit-profile-name">{userName}</div>
                   <div className="orbit-profile-role">{userRole}</div>
                 </div>
