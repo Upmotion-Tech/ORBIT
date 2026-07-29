@@ -577,12 +577,12 @@ html, body {
     left: 50%;
     top: calc(var(--topbar-height) / 2);
     transform: translate(-50%, -50%);
-    flex-direction: column;
+    flex-direction: row;
     align-items: center;
-    gap: 2px;
+    gap: 8px;
   }
   .orbit-topbar-mobile-logo span {
-    font-size: 10px;
+    font-size: 15px;
     font-weight: 700;
     letter-spacing: 0.06em;
     color: var(--text-primary);
