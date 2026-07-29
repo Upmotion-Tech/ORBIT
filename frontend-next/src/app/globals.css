@@ -575,8 +575,18 @@ html, body {
     display: flex !important;
     position: absolute;
     left: 50%;
-    top: calc(var(--topbar-height) / 2);
-    transform: translate(-50%, -50%);
+    /* Matches .orbit-topbar's own "padding: 8px 12px" above exactly, rather
+       than guessing at the icon row's vertical center via a fraction of
+       --topbar-height (tried that first — it doesn't actually correspond to
+       where the row's real content sits once that padding is applied, so
+       the logo landed a few pixels low relative to the notif/attendance
+       buttons beside it). The 40px height matches the icon buttons on
+       either side exactly (22px icon + padding/border on each), so
+       top-aligning the two by the same offset the row itself starts at is
+       equivalent to centering them together. */
+    top: 8px;
+    height: 40px;
+    transform: translateX(-50%);
     flex-direction: row;
     align-items: center;
     gap: 8px;
