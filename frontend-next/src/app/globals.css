@@ -786,21 +786,33 @@ html, body {
     grid-template-columns: 1fr !important;
   }
 
-  /* Input + Button inline rows on mobile stack cleanly */
+  /* Input + Button inline rows on mobile stack cleanly. The
+     [style*="..."] substring selectors are the same fragile
+     inline-style-matching technique that's repeatedly proven unreliable
+     elsewhere in this file (see the Select-chevron history further down) —
+     here the unreliability cuts the other way: it's too *broad*, not too
+     narrow. It also happens to match the topbar's own icon+input search
+     box (same display:flex + gap:8 combination on that row), which has
+     nothing to do with "input next to a button" and shouldn't stack at
+     all — forcing the search icon onto its own line above the input
+     regardless of how short the placeholder text was, which is why
+     shortening it earlier didn't help. `:not(.orbit-topbar-search-inner)`
+     opts that one row back out rather than trying to out-specificity three
+     duplicated selectors. */
   .orbit-input-btn-row,
-  [style*="display: flex"][style*="gap: 8"],
-  [style*="display:flex"][style*="gap:8"] {
+  [style*="display: flex"][style*="gap: 8"]:not(.orbit-topbar-search-inner),
+  [style*="display:flex"][style*="gap:8"]:not(.orbit-topbar-search-inner) {
     flex-wrap: wrap !important;
   }
   .orbit-input-btn-row > input,
-  [style*="display: flex"][style*="gap: 8"] > input,
-  [style*="display:flex"][style*="gap:8"] > input {
+  [style*="display: flex"][style*="gap: 8"]:not(.orbit-topbar-search-inner) > input,
+  [style*="display:flex"][style*="gap:8"]:not(.orbit-topbar-search-inner) > input {
     min-width: 100% !important;
     flex: 1 1 100% !important;
   }
   .orbit-input-btn-row > button,
-  [style*="display: flex"][style*="gap: 8"] > button,
-  [style*="display:flex"][style*="gap:8"] > button {
+  [style*="display: flex"][style*="gap: 8"]:not(.orbit-topbar-search-inner) > button,
+  [style*="display:flex"][style*="gap:8"]:not(.orbit-topbar-search-inner) > button {
     width: 100% !important;
   }
 }

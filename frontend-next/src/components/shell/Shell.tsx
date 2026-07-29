@@ -579,6 +579,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
 
             <div ref={searchBoxRef} className="orbit-topbar-search" style={{ position: "relative", flex: "1 1 220px", minWidth: 160, maxWidth: 360 }}>
               <div
+                className="orbit-topbar-search-inner"
                 style={{
                   display: "flex",
                   flexWrap: "nowrap",
