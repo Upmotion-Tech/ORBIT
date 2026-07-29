@@ -445,6 +445,16 @@ html, body {
   overflow-x: hidden;
   max-width: 100%;
 }
+
+/* Mobile-only topbar logo + mobile-only sidebar profile chip (Shell.tsx) —
+   hidden by default (desktop keeps the topbar's own profile chip and the
+   sidebar's plain logo+wordmark exactly as before); the mobile media query
+   below is what actually reveals each one. */
+.orbit-topbar-mobile-logo,
+.orbit-sidebar-mobile-profile {
+  display: none;
+}
+
 @media (max-width: 768px) {
   .orbit-sidebar {
     position: fixed !important;
@@ -496,27 +506,55 @@ html, body {
   }
   /* Full label ("Mark Attendance" / "Attendance marked" / "Marking…") is the
      single widest item in the topbar — icon-only on phones keeps its own
-     pill compact enough that the rest of the row (notif bell, profile chip)
-     still fits before anything needs to wrap onto its own row. */
+     pill compact enough that the rest of the row (notif bell, logo) still
+     fits before anything needs to wrap onto its own row. The desktop
+     margin-left:auto (Shell.tsx inline style) that pushes attendance/notif
+     to the right is reset here — on mobile that job now belongs to the
+     centered logo block below claiming the space in between instead, so
+     both rules pulling on the same free space would otherwise fight. */
   .orbit-attendance-btn {
     padding: 9px !important;
+    margin-left: 0 !important;
   }
   .orbit-attendance-label {
     display: none;
   }
-  .orbit-profile-chip .orbit-profile-role {
-    display: none;
+  /* The topbar's own profile chip (avatar/name/role/chevron) moves into the
+     sidebar drawer on mobile instead (see .orbit-sidebar-mobile-profile) —
+     there's no room for it in the compact mobile icon row, and it's
+     rendered twice in the DOM (once for each context) purely so each copy
+     can be shown/hidden independently by breakpoint. The extra
+     `.orbit-sidebar-mobile-profile` class raises specificity just enough to
+     win back over the blanket hide directly below it. */
+  .orbit-profile-chip {
+    display: none !important;
   }
-  .orbit-profile-chip .orbit-profile-name {
-    max-width: 72px;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  .orbit-profile-chip.orbit-sidebar-mobile-profile {
+    display: flex !important;
+    width: 100%;
+    box-sizing: border-box;
+    justify-content: space-between;
+    margin-bottom: 20px;
   }
-  /* The chevron's only job is a hover hint that navigation lives here —
-     there's no hover on a touchscreen, and the whole chip is already
-     tappable, so it's just width the compact mobile topbar can't spare. */
-  .orbit-profile-chevron {
-    display: none;
+  /* Centered logo + "ORBIT" wordmark, filling the space between the
+     hamburger and the attendance/notification cluster — flex:1 is what
+     actually centers it (the fixed-width items on either side eat the
+     rest), replacing the old margin-left:auto approach now that there's a
+     third item in the row needing space of its own. */
+  .orbit-topbar-mobile-logo {
+    display: flex !important;
+    flex: 1 1 auto;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+  }
+  .orbit-topbar-mobile-logo span {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--text-primary);
+    line-height: 1;
   }
   /* The clock sits on the main icon row alongside the hamburger and the
      (now margin-left:auto-pushed) attendance/notif/profile-chip cluster —

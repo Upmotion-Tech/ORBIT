@@ -443,6 +443,22 @@ export default function Shell({ children }: { children: React.ReactNode }) {
                 </div>
               </div>
 
+              <a
+                href="/me-record"
+                onClick={goToMyRecord}
+                className="orbit-profile-chip orbit-sidebar-mobile-profile"
+                aria-label={`${userName} — open My Record`}
+              >
+                <div className="orbit-avatar-ring">
+                  <Avatar name={userName} size={34} style={{ background: "#fff", color: "#4338CA", fontWeight: 700 }} />
+                </div>
+                <div>
+                  <div className="orbit-profile-name">{userName}</div>
+                  <div className="orbit-profile-role">{userRole}</div>
+                </div>
+                <Icon name="chevron-right" size={14} color="currentColor" className="orbit-profile-chevron" />
+              </a>
+
               {sections.map((s) =>
                 s.show ? (
                   <SidebarSection key={s.label} label={s.label} items={s.items} activeId={activeScreen} onSelect={setScreen} />
@@ -511,6 +527,12 @@ export default function Shell({ children }: { children: React.ReactNode }) {
                 <line x1="3" y1="18" x2="21" y2="18" />
               </svg>
             </button>
+
+            <div className="orbit-topbar-mobile-logo" onClick={goHome} style={{ cursor: "pointer" }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/orbit-logo.png" alt="" style={{ width: 26, height: 26, display: "block" }} />
+              <span>ORBIT</span>
+            </div>
 
             <div ref={searchBoxRef} className="orbit-topbar-search" style={{ position: "relative", flex: "1 1 220px", minWidth: 160, maxWidth: 360 }}>
               <div
