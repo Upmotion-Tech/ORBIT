@@ -10,7 +10,7 @@
 // tab's WFH list) are read-only — Approve/Reject moved to the employee's
 // manager via Manager Hub; the drawer still shows who decided and their note.
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { useAppData } from "@/lib/app-data-context";
@@ -129,10 +129,21 @@ function HrPageContent() {
   const [phoneDraft, setPhoneDraft] = useState("+92");
   const [emergencyContactDraft, setEmergencyContactDraft] = useState("+92");
   const [cnicDraft, setCnicDraft] = useState("");
+  // Salary has the same server-state-driven-input problem, but no fixed
+  // "complete" length to wait for like phone/CNIC — so instead of firing
+  // setEmployeeFieldLive per valid keystroke (an update + toast on every
+  // digit typed) or blocking/reverting the field the instant a backspace
+  // passes through an empty/invalid intermediate value, this draft absorbs
+  // every keystroke unconditionally and debounces the actual live update
+  // until typing pauses.
+  const [salaryDraft, setSalaryDraft] = useState("");
+  const salaryDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     setPhoneDraft(selEmpRaw?.phone || "+92");
     setEmergencyContactDraft(selEmpRaw?.emergency_contact || "+92");
     setCnicDraft(selEmpRaw?.cnic || "");
+    setSalaryDraft(selEmpRaw?.salary != null ? String(selEmpRaw.salary) : "");
+    if (salaryDebounceRef.current) clearTimeout(salaryDebounceRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selEmpId]);
 
@@ -959,7 +970,13 @@ function HrPageContent() {
                       <span style={{ fontFamily: "var(--font-sans)", fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" }}>Start date</span>
                       <input type="date" value={selEmployee.start_date || ""} max={todayISO()} onChange={(e) => { if (e.target.value > todayISO()) { pushToast("Start date cannot be in the future.", "error"); return; } setEmployeeFieldLive(selEmployee.id, "start_date", e.target.value); }} style={dateInputStyle} />
                     </div>
-                    <Input label="Monthly salary (PKR)" value={selEmployee.salary ?? ""} onChange={(e: React.ChangeEvent<HTMLInputElement>) => { if (!isValidNumber(e.target.value)) { pushToast("Salary must be a number.", "error"); return; } setEmployeeFieldLive(selEmployee.id, "salary", numVal(e.target.value)); }} />
+                    <Input label="Monthly salary (PKR)" value={salaryDraft} onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                      const v = e.target.value;
+                      setSalaryDraft(v);
+                      if (salaryDebounceRef.current) clearTimeout(salaryDebounceRef.current);
+                      if (v !== "" && !isValidNumber(v)) return;
+                      salaryDebounceRef.current = setTimeout(() => setEmployeeFieldLive(selEmployee.id, "salary", numVal(v)), 600);
+                    }} />
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <Badge tone={selEmployee.probationTone}>{selEmployee.probationStr}</Badge>
