@@ -27,7 +27,11 @@ class ExpenseService:
         expense = await self.expense_repo.create(data)
 
         if self.notification_repo:
-            message = f"Expense of {expense.currency} {expense.amount:,.2f} for category '{expense.category}' submitted by {user}."
+            # `user` here is the raw actor id (used for created_by/audit) — the
+            # notification is human-facing, so it needs the employee's name.
+            # expense.submitted_by is eager-loaded by expense_repo.create().
+            submitter_name = expense.submitted_by.name if expense.submitted_by else user
+            message = f"Expense of {expense.currency} {expense.amount:,.2f} for category '{expense.category}' submitted by {submitter_name}."
             await self.notification_repo.create(
                 user_id="finance",
                 notif_type="Expense Submitted",
