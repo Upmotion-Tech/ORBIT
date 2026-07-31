@@ -92,10 +92,16 @@ class AttendanceService:
                 date=existing.date, status=existing.status, marked_at=existing.marked_at,
             )
 
+        # An approved WFH day should read as "WFH", not a plain "Present",
+        # even when the employee proactively marks attendance instead of
+        # being picked up by run_end_of_day_sweep's own WFH check below —
+        # same rule, just enforced at the earlier of the two points it can
+        # apply.
+        wfh = await self.wfh_repo.find_approved_for_employee_and_date(employee_id, today) if self.wfh_repo else None
         record = await self.attendance_repo.create({
             "employee_id": employee_id,
             "date": today,
-            "status": "Present",
+            "status": "WFH" if wfh else "Present",
             "marked_at": now_pkt(),
         })
         return AttendanceResponse(

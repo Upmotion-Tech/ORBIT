@@ -11,6 +11,7 @@ from app.repositories.employee_repository import EmployeeRepository
 from app.repositories.notification_repository import NotificationRepository
 from app.repositories.leave_repository import LeaveRepository
 from app.repositories.holiday_repository import HolidayRepository
+from app.repositories.wfh_request_repository import WfhRequestRepository
 from app.services.attendance_service import AttendanceService
 from app.schemas.attendance import AttendanceResponse, TodayAttendanceRow
 
@@ -24,6 +25,7 @@ def get_attendance_service(db: AsyncSession = Depends(get_db)) -> AttendanceServ
         NotificationRepository(db),
         leave_repo=LeaveRepository(db),
         holiday_repo=HolidayRepository(db),
+        wfh_repo=WfhRequestRepository(db),
     )
 
 
