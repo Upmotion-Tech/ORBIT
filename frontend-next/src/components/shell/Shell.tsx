@@ -125,10 +125,11 @@ export default function Shell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     // Still worth fetching even outside the 8:30 AM-7:30 PM window (but not on a
-    // weekend, when there's never anything to find) — if they marked
-    // earlier today, the button needs to keep showing "Attendance marked"
-    // rather than flipping to "Outside Hours" just because the window
-    // later closed. Re-runs whenever `holidays` changes too (e.g. right
+    // weekend, when there's never anything to find) — the label itself
+    // switches to "Outside Hours" once the window closes regardless of
+    // whether they already marked (see the button below), but this is
+    // still what keeps the button correctly disabled so it can't be
+    // clicked again. Re-runs whenever `holidays` changes too (e.g. right
     // after Setup creates one covering today) so a same-day retroactive
     // holiday's server-side erasure of an existing "Present" row is
     // reflected here promptly rather than only on next login.
@@ -644,28 +645,29 @@ export default function Shell({ children }: { children: React.ReactNode }) {
               aria-label={
                 marking ? "Marking attendance" :
                 isHoliday ? `Holiday — ${holidayName}` :
-                attendanceMarkedToday ? "Attendance marked" :
-                isWeekend ? "Weekend — attendance not required" : !isWithinHours ? "Outside attendance hours" : "Mark attendance"
+                isWeekend ? "Weekend — attendance not required" :
+                !isWithinHours ? "Outside attendance hours" :
+                attendanceMarkedToday ? "Attendance marked" : "Mark attendance"
               }
               title={
                 marking ? undefined :
                 isHoliday ? `Holiday — ${holidayName}` :
-                attendanceMarkedToday ? undefined :
                 isWeekend ? "Weekend — no attendance needed today" :
                 !isWithinHours ? "Attendance can only be marked between 8:30 AM and 7:30 PM" : undefined
               }
               className={
                 "orbit-attendance-btn" +
-                (isHoliday ? " is-unavailable" : attendanceMarkedToday ? " is-done" : !canMark ? " is-unavailable" : " is-pending") +
+                (isHoliday ? " is-unavailable" : !canMark ? " is-unavailable" : attendanceMarkedToday ? " is-done" : " is-pending") +
                 (marking ? " is-marking" : "")
               }
             >
               <span className="orbit-attendance-icon-badge">
-                <Icon name={isHoliday ? "party-popper" : attendanceMarkedToday ? "circle-check" : isWeekend ? "moon" : "clock"} size={13} color="#fff" />
+                <Icon name={isHoliday ? "party-popper" : isWeekend ? "moon" : !isWithinHours ? "clock" : attendanceMarkedToday ? "circle-check" : "clock"} size={13} color="#fff" />
               </span>
               <span className="orbit-attendance-label">
-                {marking ? "Marking…" : isHoliday ? "Holiday" : attendanceMarkedToday ? "Attendance marked" :
-                  isWeekend ? "Weekend" : !isWithinHours ? "Outside Hours" : "Mark Attendance"}
+                {marking ? "Marking…" : isHoliday ? "Holiday" :
+                  isWeekend ? "Weekend" : !isWithinHours ? "Outside Hours" :
+                  attendanceMarkedToday ? "Attendance marked" : "Mark Attendance"}
               </span>
             </button>
 
