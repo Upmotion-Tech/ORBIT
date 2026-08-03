@@ -450,17 +450,25 @@ function HrPageContent() {
   // employee's manager (Manager Hub), not HR. HR still sees the full list
   // and can open a request to see its status, reason, and (once decided)
   // who approved/rejected it and their note.
-  const timeOffRows = (leaves as Leave[]).map((lr) => ({
-    id: lr.id, isWfh: false as const, employee: lr.employee_name || "Unknown", type: lr.leave_type,
-    dates: lr.end_date ? lr.start_date + " — " + lr.end_date : lr.start_date, status: lr.status,
-    statusTone: lr.status === "Approved" ? "success" : lr.status === "Rejected" ? "danger" : "warning",
-    createdAt: lr.created_at || lr.start_date,
-  }));
-  const wfhHrRows = (allWfhRequests as Wfh[]).map((w) => ({
-    id: w.id, isWfh: true as const, employee: w.employee_name || "Unknown", type: "Work From Home", dates: w.date, status: w.status,
-    statusTone: w.status === "Approved" ? "success" : w.status === "Rejected" ? "danger" : "warning",
-    createdAt: w.created_at || w.date,
-  }));
+  // Defaults to the current month and is filtered client-side, same pattern
+  // as me-leave/page.tsx's own Request History month picker — this list is
+  // otherwise every leave/WFH request ever filed, which only gets longer.
+  const [leaveRequestsMonth, setLeaveRequestsMonth] = useState(() => todayISO().slice(0, 7));
+  const timeOffRows = (leaves as Leave[])
+    .filter((lr) => (lr.start_date || "").slice(0, 7) === leaveRequestsMonth)
+    .map((lr) => ({
+      id: lr.id, isWfh: false as const, employee: lr.employee_name || "Unknown", type: lr.leave_type,
+      dates: lr.end_date ? lr.start_date + " — " + lr.end_date : lr.start_date, status: lr.status,
+      statusTone: lr.status === "Approved" ? "success" : lr.status === "Rejected" ? "danger" : "warning",
+      createdAt: lr.created_at || lr.start_date,
+    }));
+  const wfhHrRows = (allWfhRequests as Wfh[])
+    .filter((w) => (w.date || "").slice(0, 7) === leaveRequestsMonth)
+    .map((w) => ({
+      id: w.id, isWfh: true as const, employee: w.employee_name || "Unknown", type: "Work From Home", dates: w.date, status: w.status,
+      statusTone: w.status === "Approved" ? "success" : w.status === "Rejected" ? "danger" : "warning",
+      createdAt: w.created_at || w.date,
+    }));
   const hrLeaveRows = [...timeOffRows, ...wfhHrRows].sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
 
   const [leaveDrawerId, setLeaveDrawerId] = useState<string | null>(null);
@@ -683,6 +691,9 @@ function HrPageContent() {
   };
   const attendanceDayRows = attendanceHistory.filter((ah) => ah.date === attendanceSelectedDate);
   const attendanceSelectedDateLabel = new Date(attendanceSelectedDate + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+  // Shares the This Month/Last Month toggle above rather than adding a
+  // second, separate month control on the same tab.
+  const attendanceWfhRows = (allWfhRequests as Wfh[]).filter((w) => (w.date || "").slice(0, 7) === attendanceMonth);
 
   return (
     <div className="orbit-subtab-content" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -699,6 +710,15 @@ function HrPageContent() {
         </div>
         {tab === "employees" && isHrEditor && <Button variant="primary" icon="circle-plus" onClick={openNewEmployee}>Add Employee</Button>}
         {tab === "hiring" && <Button variant="primary" icon="circle-plus" onClick={openNewOpening}>Add Opening</Button>}
+        {tab === "leave" && (
+          <input
+            type="month"
+            value={leaveRequestsMonth}
+            onChange={(e) => setLeaveRequestsMonth(e.target.value)}
+            aria-label="Filter leave requests by month"
+            style={{ fontFamily: "var(--font-sans)", fontSize: 13, padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border-subtle)", background: "var(--bg-surface)", color: "var(--text-primary)", cursor: "pointer" }}
+          />
+        )}
         {tab === "leaveCount" && (
           <select value={leaveCountRange} onChange={(e) => setLeaveCountRange(e.target.value)} aria-label="Leave count date range" style={selectStyle}>
             {LEAVE_COUNT_RANGE_OPTIONS.map((o: { value: string; label: string }) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -749,6 +769,7 @@ function HrPageContent() {
               ))}
             </tbody>
           </table>
+          {hrLeaveRows.length === 0 && <div style={{ padding: 32, textAlign: "center", color: "var(--text-muted)", fontSize: 13.5 }}>No leave or work-from-home requests for this month.</div>}
         </div>
       )}
 
@@ -864,7 +885,7 @@ function HrPageContent() {
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead><tr style={{ borderBottom: "1px solid var(--border-subtle)" }}><th style={thStyle}>Employee</th><th style={thStyle}>Date</th><th style={thStyle}>Description</th><th style={thStyle}>Status</th></tr></thead>
                 <tbody>
-                  {(allWfhRequests as Wfh[]).map((wfh) => (
+                  {attendanceWfhRows.map((wfh) => (
                     <tr key={wfh.id} onClick={() => openLeaveDrawer(wfh.id)} style={{ borderBottom: "1px solid var(--border-subtle)", cursor: "pointer" }}>
                       <td style={{ padding: "12px 16px", fontSize: 13.5, color: "var(--text-primary)", fontWeight: 500 }}>{wfh.employee_name}</td>
                       <td style={{ padding: "12px 16px", fontSize: 13.5, color: "var(--text-primary)" }}>{wfh.date}</td>
@@ -874,7 +895,7 @@ function HrPageContent() {
                   ))}
                 </tbody>
               </table>
-              {allWfhRequests.length === 0 && <div style={{ padding: 32, textAlign: "center", color: "var(--text-muted)", fontSize: 13.5 }}>No work-from-home requests.</div>}
+              {attendanceWfhRows.length === 0 && <div style={{ padding: 32, textAlign: "center", color: "var(--text-muted)", fontSize: 13.5 }}>No work-from-home requests for this month.</div>}
             </div>
           </div>
         </div>
