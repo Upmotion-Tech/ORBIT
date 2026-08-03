@@ -104,11 +104,23 @@ class SalarySlipService:
         if not slip:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Salary slip not found.")
 
-        # Gross salary is never directly editable here — it always tracks
-        # the employee's actual set salary (see get_or_create_slip, which
-        # keeps it in sync for as long as the slip is Unpaid). Silently drop
-        # it rather than let a client-supplied value override that.
-        data.pop("gross_salary", None)
+        # Gross salary normally always tracks the employee's actual set
+        # salary (see get_or_create_slip, which keeps it in sync for as long
+        # as the slip is Unpaid AND its month is current/future) — editing it
+        # here would either be redundant (current/future month: still
+        # auto-synced on every view) or a retroactive rewrite of history
+        # (get_or_create_slip must never reach back into a past month). The
+        # one safe exception: a slip whose month has already passed is never
+        # touched by that resync again regardless of what happens later, so
+        # an Owner correcting it here can't collide with anything — this is
+        # the only way to enter an accurate historical figure for a month
+        # this system never had a real salary recorded for (e.g. a
+        # pre-launch month HR meant to fill in later). Anyone who isn't an
+        # Owner still can't touch it, current/future or past.
+        current_month = now_pkt().date().strftime("%Y-%m")
+        is_past_month = slip.month < current_month
+        if not (is_owner and is_past_month):
+            data.pop("gross_salary", None)
 
         # Income Tax is auto-calculated for everyone by default (same
         # get_or_create_slip resync). Only an Owner may manually pin an

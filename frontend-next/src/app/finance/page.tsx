@@ -109,7 +109,18 @@ function FinancePageContent() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [payrollMonth, setPayrollMonth] = useState(todayISO().slice(0, 7));
+  const [payrollMonth, setPayrollMonth] = useState(() => {
+    // For the first 10 days of a new month, HR is realistically still
+    // finishing last month's payroll (slips are typically generated/paid
+    // within the first ~5 days of the following month) — default to
+    // showing that month instead of making HR flip the picker back a
+    // month every single time for no reason. From the 11th onward,
+    // defaults to the real current month as normal.
+    const [y, m, d] = todayISO().split("-").map(Number);
+    if (d > 10) return y + "-" + String(m).padStart(2, "0");
+    const [py, pm] = m === 1 ? [y - 1, 12] : [y, m - 1];
+    return py + "-" + String(pm).padStart(2, "0");
+  });
   const [generatingSlips, setGeneratingSlips] = useState(false);
   const [markingAllPaid, setMarkingAllPaid] = useState(false);
   const [generatingOneSlip, setGeneratingOneSlip] = useState(false);
@@ -1098,7 +1109,12 @@ function FinancePageContent() {
               <div style={{ fontSize: 15, color: "rgba(255,255,255,0.85)" }}>{salarySlipRaw.employee_role || "Unknown"} &mdash; {salarySlipRaw.month}</div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-              <Input label="Gross salary (PKR) — set in Employee record" value={salarySlipRaw.gross_salary} disabled />
+              <Input
+                label={"Gross salary (PKR)" + (isOwnerDept && salarySlipRaw.month < todayISO().slice(0, 7) ? " — historical correction" : " — set in Employee record")}
+                value={salarySlipRaw.gross_salary}
+                disabled={!(isOwnerDept && salarySlipRaw.month < todayISO().slice(0, 7))}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSalarySlipFieldLive(salarySlipRaw.employee_id, "gross_salary", e.target.value)}
+              />
               <div>
                 <Input
                   label={"Income Tax (PKR)" + (isOwnerDept ? "" : " — auto-calculated")}
