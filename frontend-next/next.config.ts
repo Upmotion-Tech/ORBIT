@@ -14,6 +14,20 @@ import type { NextConfig } from "next";
 const BACKEND_ORIGIN = process.env.ORBIT_BACKEND_ORIGIN || "http://localhost:8000";
 
 const nextConfig: NextConfig = {
+  // Version-skew protection. Without an identifier here, a tab that was
+  // loaded before a deploy keeps running the OLD build's JS, and its
+  // client-side router then asks for RSC payloads from a deployment that
+  // no longer exists. That request fails, Next.js abandons the navigation,
+  // and — since a client-side navigation only updates the URL once the
+  // new route commits — the address bar never changes either. The visible
+  // result is that every in-app nav (sidebar links, the Finance/HR/Dev tab
+  // pills) silently stops working a couple of minutes after a deploy, with
+  // no error and no crash, until a full page load picks up the new build.
+  // With an id set, Next.js sends it as `x-deployment-id`, notices the
+  // mismatch against the server's, and does a hard navigation instead of
+  // failing silently. Undefined locally (dev never has this env var), which
+  // simply leaves the feature off — it only matters for real deployments.
+  deploymentId: process.env.VERCEL_DEPLOYMENT_ID || process.env.VERCEL_GIT_COMMIT_SHA,
   // The round bottom-left "N" badge is Next.js's dev-only route indicator
   // (see devIndicators docs) — harmless in dev, but distracting, and not
   // worth anyone mistaking for a real product affordance.
