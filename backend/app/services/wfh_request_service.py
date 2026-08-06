@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from typing import Optional
 
 from fastapi import HTTPException, status
@@ -23,31 +23,66 @@ class WfhRequestService:
         self.notification_repo = notification_repo
         self.attendance_repo = attendance_repo
 
+    @staticmethod
+    def _range_label(req) -> str:
+        """"03 Aug 2026" for a single day, "03 Aug 2026 - 05 Aug 2026" for a
+        range — shared by every notification below so an approved multi-day
+        request never reads as if only its first day were covered."""
+        if req.end_date is None or req.end_date == req.date:
+            return req.date.strftime("%d %b %Y")
+        return f"{req.date.strftime('%d %b %Y')} - {req.end_date.strftime('%d %b %Y')}"
+
     def _to_response(self, req, employee) -> WfhRequestResponse:
+        # end_date stays None for a single-day request rather than being
+        # echoed back as a copy of `date` — the frontend keys off exactly
+        # that to decide whether to render "3 Aug" or "3 Aug — 5 Aug".
+        last_day = req.end_date or req.date
         return WfhRequestResponse(
             id=req.id, employee_id=req.employee_id,
             employee_name=employee.name if employee else None,
             employee_department=employee.department if employee else None,
-            date=req.date, description=req.description, status=req.status,
+            date=req.date, end_date=req.end_date,
+            days=(last_day - req.date).days + 1,
+            description=req.description, status=req.status,
             decision_note=req.decision_note, decided_by=req.decided_by, decided_at=req.decided_at,
             created_at=req.created_at,
         )
 
-    async def create_request(self, employee_id: str, day: date, description: Optional[str], user: str = "anonymous") -> WfhRequestResponse:
+    async def create_request(self, employee_id: str, day: date, description: Optional[str], user: str = "anonymous", end_day: Optional[date] = None) -> WfhRequestResponse:
         employee = await self.employee_repo.find_by_id(employee_id)
         if not employee:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found.")
 
-        existing = await self.wfh_repo.find_by_employee_and_date(employee_id, day)
+        # A range that ends before it starts is nonsense, and one that ends
+        # on its own start day is just a single-day request written the long
+        # way — normalize that back to None so there's exactly one stored
+        # representation of "one day" (see WfhRequest.end_date's comment).
+        if end_day is not None:
+            if end_day < day:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="End date cannot be before the start date.",
+                )
+            if end_day == day:
+                end_day = None
+
+        last_day = end_day or day
+        existing = await self.wfh_repo.find_overlapping_for_employee(employee_id, day, last_day)
         if existing:
+            existing_last = existing.end_date or existing.date
+            existing_range = (
+                existing.date.isoformat() if existing.end_date is None
+                else f"{existing.date.isoformat()} to {existing_last.isoformat()}"
+            )
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"A work-from-home request already exists for {day.isoformat()}.",
+                detail=f"A work-from-home request already exists for {existing_range}.",
             )
 
         req = await self.wfh_repo.create({
             "employee_id": employee_id,
             "date": day,
+            "end_date": end_day,
             "description": description,
             "status": "Pending",
         })
@@ -62,7 +97,7 @@ class WfhRequestService:
                 user_id=manager.id if manager else "owner",
                 notif_type="WFH Requested",
                 title="Work-from-home request submitted",
-                message=f"{employee.name} requested to work from home on {day.strftime('%d %b %Y')}.",
+                message=f"{employee.name} requested to work from home on {self._range_label(req)}.",
                 related_type="wfh",
                 related_id=req.id,
             )
@@ -77,18 +112,83 @@ class WfhRequestService:
         rows = await self.wfh_repo.find_all_with_name(status_filter)
         return [self._to_response(r, e) for r, e in rows]
 
+    async def _own_pending_request(self, request_id: str, user_id: str):
+        """Mirror of LeaveService._own_pending_leave — a request is only the
+        applicant's to change while it's still Pending. Once decided it's a
+        record (and an approved one may already have driven attendance rows
+        to WFH via _apply_attendance_effect), so changing it belongs to
+        whoever decided it."""
+        req = await self.wfh_repo.find_by_id(request_id)
+        if not req:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Work-from-home request not found.")
+        if req.employee_id != user_id:
+            # 404 rather than 403, so this can't be used to probe whether
+            # someone else's request with this id exists.
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Work-from-home request not found.")
+        if req.status != "Pending":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"This request has already been {req.status.lower()} and can no longer be changed.",
+            )
+        return req
+
+    async def update_own_request(self, request_id: str, data: dict, user_id: str) -> WfhRequestResponse:
+        req = await self._own_pending_request(request_id, user_id)
+
+        day = data.get("date") or req.date
+        end_day = data.get("end_date") if "end_date" in data else req.end_date
+        if end_day is not None:
+            if end_day < day:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="End date cannot be before the start date.",
+                )
+            if end_day == day:
+                end_day = None
+
+        # Same overlap rule as create_request, but this request's own row
+        # must not count as a conflict with itself.
+        clash = await self.wfh_repo.find_overlapping_for_employee(user_id, day, end_day or day)
+        if clash and clash.id != req.id:
+            clash_last = clash.end_date or clash.date
+            clash_range = (
+                clash.date.isoformat() if clash.end_date is None
+                else f"{clash.date.isoformat()} to {clash_last.isoformat()}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"A work-from-home request already exists for {clash_range}.",
+            )
+
+        data["date"] = day
+        data["end_date"] = end_day
+        req = await self.wfh_repo.update(req, data)
+        employee = await self.employee_repo.find_by_id(req.employee_id)
+        return self._to_response(req, employee)
+
+    async def delete_own_request(self, request_id: str, user_id: str) -> None:
+        req = await self._own_pending_request(request_id, user_id)
+        await self.wfh_repo.delete(req)
+
     async def _apply_attendance_effect(self, req) -> None:
-        # Retroactively fix an existing attendance row for that date (e.g.
-        # one the end-of-day sweep already marked Absent before this request
-        # was approved) — going forward, the sweep itself also checks for an
-        # approved WFH request before ever marking someone Absent, so this
-        # only matters for a request approved after its own date already
-        # passed the sweep.
+        # Retroactively fix existing attendance rows across the request's
+        # whole range (e.g. ones the end-of-day sweep already marked Absent,
+        # or a day the employee marked Present while this was still Pending,
+        # before it was approved) — going forward, the sweep and
+        # mark_attendance both check for an approved WFH request covering
+        # the day, so this only matters for days already passed by the time
+        # approval lands. Walks day by day rather than issuing one bulk
+        # UPDATE, since a range is a handful of days at most and this reuses
+        # the same per-day repo calls the single-day version already used.
         if not self.attendance_repo:
             return
-        existing = await self.attendance_repo.find_by_employee_and_date(req.employee_id, req.date)
-        if existing and existing.status != "WFH":
-            await self.attendance_repo.update_status(existing, "WFH")
+        day = req.date
+        last_day = req.end_date or req.date
+        while day <= last_day:
+            existing = await self.attendance_repo.find_by_employee_and_date(req.employee_id, day)
+            if existing and existing.status != "WFH":
+                await self.attendance_repo.update_status(existing, "WFH")
+            day += timedelta(days=1)
 
     async def approve_request(self, request_id: str, note: Optional[str], decided_by: str, persona=None) -> WfhRequestResponse:
         req = await self.wfh_repo.find_by_id(request_id)
@@ -121,7 +221,7 @@ class WfhRequestService:
                 user_id=req.employee_id,
                 notif_type="WFH Approved",
                 title="Work-from-home request approved",
-                message=f"Your work-from-home request for {req.date.strftime('%d %b %Y')} was approved{by_suffix}.{note_suffix}",
+                message=f"Your work-from-home request for {self._range_label(req)} was approved{by_suffix}.{note_suffix}",
                 related_type="wfh",
                 related_id=req.id,
             )
@@ -158,7 +258,7 @@ class WfhRequestService:
                 user_id=req.employee_id,
                 notif_type="WFH Rejected",
                 title="Work-from-home request rejected",
-                message=f"Your work-from-home request for {req.date.strftime('%d %b %Y')} was rejected{by_suffix}.{note_suffix}",
+                message=f"Your work-from-home request for {self._range_label(req)} was rejected{by_suffix}.{note_suffix}",
                 related_type="wfh",
                 related_id=req.id,
             )

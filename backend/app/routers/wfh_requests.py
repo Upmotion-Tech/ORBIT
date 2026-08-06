@@ -1,6 +1,6 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -10,7 +10,7 @@ from app.repositories.employee_repository import EmployeeRepository
 from app.repositories.notification_repository import NotificationRepository
 from app.repositories.attendance_repository import AttendanceRepository
 from app.services.wfh_request_service import WfhRequestService
-from app.schemas.wfh_request import WfhRequestCreate, WfhDecision, WfhRequestResponse
+from app.schemas.wfh_request import WfhRequestCreate, WfhRequestUpdate, WfhDecision, WfhRequestResponse
 
 router = APIRouter(prefix="/api/wfh", tags=["Work From Home"])
 
@@ -33,6 +33,7 @@ async def create_wfh_request(
     return await service.create_request(
         current_user.get("user_id"), body.date, body.description,
         user=current_user.get("user_id", "anonymous"),
+        end_day=body.end_date,
     )
 
 
@@ -51,6 +52,33 @@ async def get_all_wfh_requests(
     service: WfhRequestService = Depends(get_wfh_service),
 ):
     return await service.list_all_requests(status_filter)
+
+
+@router.put("/{request_id}", response_model=WfhRequestResponse)
+async def update_own_wfh_request(
+    request_id: str,
+    body: WfhRequestUpdate,
+    current_user: dict = Depends(get_current_user),
+    service: WfhRequestService = Depends(get_wfh_service),
+):
+    # Applicant's own self-service edit — no approver dependency, since the
+    # service scopes it to requests they own that are still Pending.
+    # exclude_unset so an omitted field stays as-is, while an explicit
+    # end_date: null really does clear it back to a single-day request.
+    return await service.update_own_request(
+        request_id,
+        body.model_dump(exclude_unset=True),
+        current_user.get("user_id", ""),
+    )
+
+
+@router.delete("/{request_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_own_wfh_request(
+    request_id: str,
+    current_user: dict = Depends(get_current_user),
+    service: WfhRequestService = Depends(get_wfh_service),
+):
+    await service.delete_own_request(request_id, current_user.get("user_id", ""))
 
 
 @router.post("/{request_id}/approve", response_model=WfhRequestResponse)

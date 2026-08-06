@@ -128,3 +128,12 @@ class LeaveRepository:
         await self.db.flush()
         await self.db.refresh(leave)
         return leave
+
+    async def delete(self, leave: LeaveRequest) -> None:
+        # Hard delete, not a soft one — this is only ever reached for a
+        # request the applicant withdrew while it was still Pending, which
+        # was never approved/rejected and so has no decision history worth
+        # keeping (LeaveRequest has no deleted_at column at all). An
+        # already-decided request can't reach here; the service refuses it.
+        await self.db.delete(leave)
+        await self.db.flush()

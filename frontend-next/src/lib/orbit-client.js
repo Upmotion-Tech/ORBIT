@@ -986,10 +986,15 @@ const attendanceApi = {
   },
 };
 const wfhApi = {
-  create(dateIso, description) {
-    return apiFetch('/api/wfh/mine', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date: dateIso, description: description || null }) });
+  // endDateIso is optional — omitted/empty means a single-day request, the
+  // same shape leavesApi.create already uses for its own optional end date.
+  create(dateIso, description, endDateIso) {
+    return apiFetch('/api/wfh/mine', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date: dateIso, end_date: endDateIso || null, description: description || null }) });
   },
   mine() { return apiFetch('/api/wfh/mine'); },
+  // Same self-service semantics as leavesApi.update/remove above.
+  update(id, payload) { return apiFetch('/api/wfh/' + id, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); },
+  remove(id) { return apiFetch('/api/wfh/' + id, { method: 'DELETE' }); },
   all(statusFilter) {
     let q = '';
     if (statusFilter) q = '?status_filter=' + encodeURIComponent(statusFilter);
@@ -1014,6 +1019,11 @@ const leavesApi = {
   },
   get(id) { return apiFetch('/api/leaves/' + id); },
   create(payload) { return apiFetch('/api/leaves', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); },
+  // Self-service edit/withdraw of one's OWN still-Pending request — the
+  // backend scopes both to the caller's own id and refuses anything already
+  // approved/rejected, so there's no employee_id to pass here.
+  update(id, payload) { return apiFetch('/api/leaves/' + id, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); },
+  remove(id) { return apiFetch('/api/leaves/' + id, { method: 'DELETE' }); },
   approve(id, note) { return apiFetch('/api/leaves/' + id + '/approve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ note }) }); },
   reject(id, reason) { return apiFetch('/api/leaves/' + id + '/reject', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rejection_reason: reason }) }); },
   balance(employeeId) { return apiFetch('/api/leaves/balance/' + employeeId); },

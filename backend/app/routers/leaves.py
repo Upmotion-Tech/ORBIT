@@ -11,7 +11,7 @@ from app.repositories.leave_policy_repository import LeavePolicyRepository
 from app.repositories.notification_repository import NotificationRepository
 from app.repositories.audit_log_repository import AuditLogRepository
 from app.services.leave_service import LeaveService
-from app.schemas.leave import LeaveCreate, LeaveApproval, LeaveResponse, LeaveBalanceResponse
+from app.schemas.leave import LeaveCreate, LeaveUpdate, LeaveApproval, LeaveResponse, LeaveBalanceResponse
 
 router = APIRouter(prefix="/api/leaves", tags=["Leaves"])
 
@@ -78,6 +78,34 @@ async def create_leave(
         user=current_user.get("user_id", "anonymous"),
         persona=persona,
     )
+
+
+@router.put("/{leave_id}", response_model=LeaveResponse)
+async def update_own_leave(
+    leave_id: str,
+    body: LeaveUpdate,
+    current_user: dict = Depends(get_current_user),
+    service: LeaveService = Depends(get_leave_service),
+):
+    # No HR/Owner/manager dependency here on purpose — this is the
+    # applicant's own self-service edit, and the service scopes it to
+    # requests they own that are still Pending. exclude_unset so omitting a
+    # field leaves it as-is, while explicitly sending end_date: null really
+    # does clear it back to a single-day request.
+    return await service.update_own_leave(
+        leave_id,
+        body.model_dump(exclude_unset=True),
+        current_user.get("user_id", ""),
+    )
+
+
+@router.delete("/{leave_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_own_leave(
+    leave_id: str,
+    current_user: dict = Depends(get_current_user),
+    service: LeaveService = Depends(get_leave_service),
+):
+    await service.delete_own_leave(leave_id, current_user.get("user_id", ""))
 
 
 @router.post("/{leave_id}/approve", response_model=LeaveResponse)

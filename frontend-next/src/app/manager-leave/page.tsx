@@ -21,11 +21,19 @@ import SmoothScroll from "@/components/shell/SmoothScroll";
 
 type Leave = {
   id: string; employee_id: string; employee_name?: string; leave_type: string; status: string;
-  start_date: string; end_date?: string | null; reason?: string; approval_note?: string;
+  start_date: string; end_date?: string | null; days?: number; reason?: string; approval_note?: string;
   rejection_reason?: string; created_at?: string;
 };
+
+// Approving a request means committing to however many days it covers, so
+// the count is spelled out rather than left as two dates to subtract.
+// Mirrors the same label the applicant sees on their own My Leave screen.
+function dateRangeLabel(start: string, end: string | null | undefined, days: number) {
+  if (!end || end === start) return start + " · 1 day";
+  return start + " — " + end + " · " + days + " days";
+}
 type Wfh = {
-  id: string; employee_id: string; employee_name?: string; date: string; status: string;
+  id: string; employee_id: string; employee_name?: string; date: string; end_date?: string | null; days?: number; status: string;
   description?: string; decision_note?: string; created_at?: string;
 };
 type AttendanceRecord = { employee_id: string; date: string; status: string; marked_at?: string | null };
@@ -107,7 +115,7 @@ export default function ManagerLeavePage() {
       const decisionNote = lr.status === "Approved" ? lr.approval_note : lr.status === "Rejected" ? lr.rejection_reason : "";
       return {
         id: lr.id, isWfh: false as const, employee: lr.employee_name || getEmployeeName(lr.employee_id) || "Unknown",
-        type: lr.leave_type, dates: lr.end_date ? lr.start_date + " — " + lr.end_date : lr.start_date,
+        type: lr.leave_type, dates: dateRangeLabel(lr.start_date, lr.end_date, lr.days || 1),
         reason: lr.reason || "No reason provided.", status: lr.status,
         statusTone: lr.status === "Approved" ? "success" : lr.status === "Rejected" ? "danger" : "warning",
         showActions: lr.status === "Pending",
@@ -121,7 +129,7 @@ export default function ManagerLeavePage() {
       const decisionNote = w.decision_note || "";
       return {
         id: w.id, isWfh: true as const, employee: w.employee_name || getEmployeeName(w.employee_id) || "Unknown",
-        type: "Work From Home", dates: w.date,
+        type: "Work From Home", dates: dateRangeLabel(w.date, w.end_date, w.days || 1),
         reason: w.description || "No description provided.", status: w.status,
         statusTone: w.status === "Approved" ? "success" : w.status === "Rejected" ? "danger" : "warning",
         showActions: w.status === "Pending",

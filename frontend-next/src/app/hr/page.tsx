@@ -62,7 +62,7 @@ type Leave = {
   approved_by_id?: string | null; approved_at?: string | null;
 };
 type Wfh = {
-  id: string; employee_id: string; employee_name?: string; date: string; status: string; description?: string; decision_note?: string; created_at?: string;
+  id: string; employee_id: string; employee_name?: string; date: string; end_date?: string | null; days?: number; status: string; description?: string; decision_note?: string; created_at?: string;
   decided_by?: string | null; decided_at?: string | null;
 };
 type Opening = { id: string; title: string; department: string; opened_at?: string; candidate_count?: number; status: string; salary_bracket?: string; experience?: string; description?: string };
@@ -454,18 +454,23 @@ function HrPageContent() {
   // as me-leave/page.tsx's own Request History month picker — this list is
   // otherwise every leave/WFH request ever filed, which only gets longer.
   const [leaveRequestsMonth, setLeaveRequestsMonth] = useState(() => todayISO().slice(0, 7));
+  // Same "spell out how many days" label the applicant and their manager
+  // both see (me-leave / manager-leave), kept identical here so HR's
+  // read-only view doesn't describe the same request differently.
+  const dateRangeLabel = (start: string, end: string | null | undefined, days: number) =>
+    !end || end === start ? start + " · 1 day" : start + " — " + end + " · " + days + " days";
   const timeOffRows = (leaves as Leave[])
     .filter((lr) => (lr.start_date || "").slice(0, 7) === leaveRequestsMonth)
     .map((lr) => ({
       id: lr.id, isWfh: false as const, employee: lr.employee_name || "Unknown", type: lr.leave_type,
-      dates: lr.end_date ? lr.start_date + " — " + lr.end_date : lr.start_date, status: lr.status,
+      dates: dateRangeLabel(lr.start_date, lr.end_date, lr.days), status: lr.status,
       statusTone: lr.status === "Approved" ? "success" : lr.status === "Rejected" ? "danger" : "warning",
       createdAt: lr.created_at || lr.start_date,
     }));
   const wfhHrRows = (allWfhRequests as Wfh[])
     .filter((w) => (w.date || "").slice(0, 7) === leaveRequestsMonth)
     .map((w) => ({
-      id: w.id, isWfh: true as const, employee: w.employee_name || "Unknown", type: "Work From Home", dates: w.date, status: w.status,
+      id: w.id, isWfh: true as const, employee: w.employee_name || "Unknown", type: "Work From Home", dates: dateRangeLabel(w.date, w.end_date, w.days || 1), status: w.status,
       statusTone: w.status === "Approved" ? "success" : w.status === "Rejected" ? "danger" : "warning",
       createdAt: w.created_at || w.date,
     }));
@@ -482,7 +487,7 @@ function HrPageContent() {
         const decidedByName = leaveDrawerLeaveRaw.approved_by_id ? getEmployeeName(leaveDrawerLeaveRaw.approved_by_id) : "";
         return {
           employee: leaveDrawerLeaveRaw.employee_name || "Unknown", type: leaveDrawerLeaveRaw.leave_type,
-          dates: leaveDrawerLeaveRaw.end_date ? leaveDrawerLeaveRaw.start_date + " — " + leaveDrawerLeaveRaw.end_date : leaveDrawerLeaveRaw.start_date,
+          dates: dateRangeLabel(leaveDrawerLeaveRaw.start_date, leaveDrawerLeaveRaw.end_date, leaveDrawerLeaveRaw.days),
           status: leaveDrawerLeaveRaw.status, statusTone: isApproved ? "success" : isRejected ? "danger" : "warning",
           reasonStr: leaveDrawerLeaveRaw.reason || "No reason provided.", showDecisionNote: !!decisionNote,
           decisionNoteLabel: isApproved ? "Approval note" : "Rejection reason", decisionNoteStr: decisionNote || "",
@@ -497,7 +502,7 @@ function HrPageContent() {
         const decidedByName = leaveDrawerWfhRaw.decided_by ? getEmployeeName(leaveDrawerWfhRaw.decided_by) : "";
         return {
           employee: leaveDrawerWfhRaw.employee_name || "Unknown", type: "Work From Home",
-          dates: leaveDrawerWfhRaw.date,
+          dates: dateRangeLabel(leaveDrawerWfhRaw.date, leaveDrawerWfhRaw.end_date, leaveDrawerWfhRaw.days || 1),
           status: leaveDrawerWfhRaw.status, statusTone: isApproved ? "success" : isRejected ? "danger" : "warning",
           reasonStr: leaveDrawerWfhRaw.description || "No reason provided.", showDecisionNote: !!decisionNote,
           decisionNoteLabel: isApproved ? "Approval note" : "Rejection reason", decisionNoteStr: decisionNote || "",
@@ -888,7 +893,7 @@ function HrPageContent() {
                   {attendanceWfhRows.map((wfh) => (
                     <tr key={wfh.id} onClick={() => openLeaveDrawer(wfh.id)} style={{ borderBottom: "1px solid var(--border-subtle)", cursor: "pointer" }}>
                       <td style={{ padding: "12px 16px", fontSize: 13.5, color: "var(--text-primary)", fontWeight: 500 }}>{wfh.employee_name}</td>
-                      <td style={{ padding: "12px 16px", fontSize: 13.5, color: "var(--text-primary)" }}>{wfh.date}</td>
+                      <td style={{ padding: "12px 16px", fontSize: 13.5, color: "var(--text-primary)" }}>{wfh.end_date ? wfh.date + " — " + wfh.end_date : wfh.date}</td>
                       <td style={{ padding: "12px 16px", fontSize: 13.5, color: "var(--text-secondary)" }}>{wfh.description}</td>
                       <td style={{ padding: "12px 16px" }}><Badge tone={wfh.status === "Approved" ? "success" : wfh.status === "Rejected" ? "danger" : "warning"}>{wfh.status}</Badge></td>
                     </tr>

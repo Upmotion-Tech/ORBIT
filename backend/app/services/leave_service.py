@@ -123,6 +123,57 @@ class LeaveService:
 
         return self._to_response(leave)
 
+    async def _own_pending_leave(self, leave_id: str, user_id: str):
+        """Shared guard for the two self-service actions below. A request is
+        only the applicant's to change while nobody has acted on it — once
+        it's Approved or Rejected it's a decided record (and an approved one
+        the attendance sweep may already have built Leave rows from), so
+        editing or withdrawing it has to go through whoever decided it, not
+        silently from the applicant's own screen."""
+        leave = await self.leave_repo.find_by_id(leave_id)
+        if not leave:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Leave request not found.")
+        if leave.employee_id != user_id:
+            # Deliberately 404, not 403 — a 403 would confirm that someone
+            # else's request with this id exists.
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Leave request not found.")
+        if leave.status != "Pending":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"This request has already been {leave.status.lower()} and can no longer be changed.",
+            )
+        return leave
+
+    async def update_own_leave(self, leave_id: str, data: dict, user_id: str) -> LeaveResponse:
+        leave = await self._own_pending_leave(leave_id, user_id)
+
+        start = data.get("start_date") or leave.start_date
+        end = data.get("end_date") if "end_date" in data else leave.end_date
+        # Same two rules create_leave enforces — an edit must not be able to
+        # sneak past a validation the original submission had to satisfy.
+        if start < now_pkt().date():
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Leave requests can only be filed for today or a future date.",
+            )
+        if end and end < start:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="End date cannot be before start date.",
+            )
+
+        data["start_date"] = start
+        data["end_date"] = end
+        data["days"] = self._count_days(start, end)
+        updated = await self.leave_repo.update(leave, data)
+        await self._audit(user_id, "Edited", f"{updated.leave_type}", f"{updated.days} day(s)")
+        return self._to_response(updated)
+
+    async def delete_own_leave(self, leave_id: str, user_id: str) -> None:
+        leave = await self._own_pending_leave(leave_id, user_id)
+        await self._audit(user_id, "Withdrew", f"{leave.leave_type}", f"{leave.days} day(s)")
+        await self.leave_repo.delete(leave)
+
     async def approve_leave(
         self, leave_id: str, note: Optional[str] = None,
         approved_by=None, persona=None,

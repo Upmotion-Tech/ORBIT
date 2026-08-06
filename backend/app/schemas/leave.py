@@ -14,6 +14,16 @@ class LeaveCreate(BaseModel):
     reason: Optional[str] = None
 
 
+class LeaveUpdate(BaseModel):
+    """Self-service edit of one's own still-Pending request. employee_id is
+    deliberately absent — a request can never be reassigned to someone else,
+    and the owner is taken from the caller's token, not the body."""
+    leave_type: Optional[str] = Field(None, max_length=50)
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    reason: Optional[str] = None
+
+
 class LeaveApproval(BaseModel):
     note: Optional[str] = None
     rejection_reason: Optional[str] = None

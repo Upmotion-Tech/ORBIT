@@ -29,7 +29,7 @@ type RawLeave = {
   approved_by_id?: string | null; approved_at?: string | null;
 };
 type RawWfh = {
-  id: string; date: string; status: string; description?: string; decision_note?: string; created_at?: string;
+  id: string; date: string; end_date?: string | null; days?: number; status: string; description?: string; decision_note?: string; created_at?: string;
   decided_by?: string | null; decided_at?: string | null;
 };
 
@@ -40,6 +40,48 @@ const LEAVE_TYPE_OPTIONS = [
   { value: "Work From Home", label: "Work From Home" },
 ];
 
+// "3 Aug 2026" stays as-is for one day; a range gains an explicit count so
+// neither the applicant nor the approving manager has to work out how long
+// it actually is by subtracting two dates in their head.
+function dateRangeLabel(start: string, end: string | null | undefined, days: number) {
+  if (!end || end === start) return start + " · 1 day";
+  return start + " — " + end + " · " + days + " days";
+}
+
+// Client-side mirror of the backend's own inclusive day count (LeaveService.
+// _count_days / WfhRequestService's end-start+1) so the form can show the
+// length live, before anything is submitted. Returns 0 for an end date that
+// falls before the start, which the caller renders as a warning rather than
+// a nonsensical negative count. Parsed as local midnight ("T00:00:00")
+// rather than bare "YYYY-MM-DD", which JS would read as UTC and can land on
+// the wrong day either side of the PKT offset.
+function countDaysInclusive(start: string, end: string) {
+  if (!start) return 0;
+  if (!end || end === start) return 1;
+  const s = new Date(start + "T00:00:00").getTime();
+  const e = new Date(end + "T00:00:00").getTime();
+  if (isNaN(s) || isNaN(e)) return 0;
+  const diff = Math.round((e - s) / 86400000) + 1;
+  return diff > 0 ? diff : 0;
+}
+
+function DayCountHint({ start, end }: { start: string; end: string }) {
+  if (!start) return null;
+  const days = countDaysInclusive(start, end);
+  const isInvalid = days === 0;
+  return (
+    <div
+      style={{
+        fontSize: 13,
+        fontWeight: 500,
+        color: isInvalid ? "var(--status-danger-text)" : "var(--text-secondary)",
+      }}
+    >
+      {isInvalid ? "End date is before the start date." : `${days} day${days === 1 ? "" : "s"} selected`}
+    </div>
+  );
+}
+
 function formatRow(lr: RawLeave) {
   const isApproved = lr.status === "Approved";
   const isRejected = lr.status === "Rejected";
@@ -48,7 +90,7 @@ function formatRow(lr: RawLeave) {
   return {
     id: lr.id,
     type: lr.leave_type,
-    dates: lr.end_date ? lr.start_date + " — " + lr.end_date : lr.start_date,
+    dates: dateRangeLabel(lr.start_date, lr.end_date, lr.days),
     status: lr.status,
     statusTone: isApproved ? "success" : isRejected ? "danger" : "warning",
     reason: lr.reason || "",
@@ -71,7 +113,7 @@ function formatWfhRow(w: RawWfh) {
   return {
     id: w.id,
     type: "Work From Home",
-    dates: w.date,
+    dates: dateRangeLabel(w.date, w.end_date, w.days || 1),
     status: w.status,
     statusTone: isApproved ? "success" : isRejected ? "danger" : "warning",
     reason: w.description || "",
@@ -102,7 +144,23 @@ export default function MeLeavePage() {
   const [form, setForm] = useState({ type: "Casual", startDate: "", endDate: "", reason: "" });
   const [drawerId, setDrawerId] = useState<string | null>(null);
   const drawerClosing = useClosingTransition();
-  const closeDrawerAnimated = () => drawerClosing.closeWithTransition(() => { setDrawerId(null); clearDeepLinkHash(); });
+  const closeDrawerAnimated = () => drawerClosing.closeWithTransition(() => { setDrawerId(null); setEditing(false); setConfirmWithdraw(false); clearDeepLinkHash(); });
+
+  // Self-service edit/withdraw of a request that nobody has acted on yet.
+  // Both the backend endpoints and the controls below are gated on the
+  // request still being Pending — once a manager approves or rejects it,
+  // it's their decision on record and changing it isn't the applicant's
+  // call anymore (an approved one may already have driven attendance rows).
+  const [editing, setEditing] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [confirmWithdraw, setConfirmWithdraw] = useState(false);
+  const [editForm, setEditForm] = useState({ type: "Casual", startDate: "", endDate: "", reason: "" });
+
+  const openDrawer = (id: string) => {
+    setDrawerId(id);
+    setEditing(false);
+    setConfirmWithdraw(false);
+  };
 
   const load = () => {
     if (!empId) return;
@@ -153,13 +211,81 @@ export default function MeLeavePage() {
       : formatRow(drawerRaw as RawLeave)
     : null;
 
+  const canModifyDrawer = drawer != null && drawer.status === "Pending";
+
+  const startEdit = () => {
+    if (!drawerRaw) return;
+    if (drawerIsWfh) {
+      const w = drawerRaw as RawWfh;
+      setEditForm({ type: "Work From Home", startDate: w.date, endDate: w.end_date || "", reason: w.description || "" });
+    } else {
+      const l = drawerRaw as RawLeave;
+      setEditForm({ type: l.leave_type, startDate: l.start_date, endDate: l.end_date || "", reason: l.reason || "" });
+    }
+    setEditing(true);
+  };
+
+  const saveEdit = () => {
+    if (!drawerId || savingEdit) return;
+    if (!editForm.startDate) {
+      pushToast("Start date is required.", "error");
+      return;
+    }
+    setSavingEdit(true);
+    const onOk = () => {
+      setSavingEdit(false);
+      setEditing(false);
+      pushToast("Request updated.");
+      load();
+    };
+    const onErr = (err: Error) => {
+      setSavingEdit(false);
+      pushToast(err.message || "Could not update the request.", "error");
+    };
+    // A leave request and a WFH request are separate records with separate
+    // endpoints — the type can't be switched between them by editing, only
+    // withdrawn and re-filed, so each branch only sends its own fields.
+    if (drawerIsWfh) {
+      wfhApi
+        .update(drawerId, { date: editForm.startDate, end_date: editForm.endDate || null, description: editForm.reason || null })
+        .then(onOk, onErr);
+    } else {
+      leavesApi
+        .update(drawerId, {
+          leave_type: editForm.type,
+          start_date: editForm.startDate,
+          end_date: editForm.endDate || null,
+          reason: editForm.reason || null,
+        })
+        .then(onOk, onErr);
+    }
+  };
+
+  const withdrawRequest = () => {
+    if (!drawerId) return;
+    const call = drawerIsWfh ? wfhApi.remove(drawerId) : leavesApi.remove(drawerId);
+    call.then(
+      () => {
+        pushToast("Request withdrawn.");
+        setConfirmWithdraw(false);
+        setDrawerId(null);
+        clearDeepLinkHash();
+        load();
+      },
+      (err: Error) => {
+        setConfirmWithdraw(false);
+        pushToast(err.message || "Could not withdraw the request.", "error");
+      }
+    );
+  };
+
   const submit = () => {
     if (!form.startDate || !empId) {
       pushToast("Start date is required.", "error");
       return;
     }
     if (form.type === "Work From Home") {
-      wfhApi.create(form.startDate, form.reason || "").then(
+      wfhApi.create(form.startDate, form.reason || "", form.endDate || null).then(
         () => {
           pushToast("Work From Home request submitted successfully.");
           setForm({ type: "Casual", startDate: "", endDate: "", reason: "" });
@@ -223,6 +349,12 @@ export default function MeLeavePage() {
             />
           </div>
         </div>
+        {/* Live length of whatever is currently picked, updating on every
+            date change — the same inclusive count the backend will compute
+            and the manager will later see on the request. */}
+        <div style={{ marginBottom: 14, marginTop: -4 }}>
+          <DayCountHint start={form.startDate} end={form.endDate} />
+        </div>
         <Input label="Reason (optional)" value={form.reason} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, reason: e.target.value }))} />
         <div style={{ marginTop: 16 }}>
           <Button variant="primary" onClick={submit}>Submit Request</Button>
@@ -249,7 +381,7 @@ export default function MeLeavePage() {
           </tr></thead>
           <tbody>
             {allRequests.map((lr) => (
-              <tr key={lr.id} onClick={() => setDrawerId(lr.id)} style={{ borderBottom: "1px solid var(--border-subtle)", cursor: "pointer" }}>
+              <tr key={lr.id} onClick={() => openDrawer(lr.id)} style={{ borderBottom: "1px solid var(--border-subtle)", cursor: "pointer" }}>
                 <td style={tdStyle}>{lr.type}</td>
                 <td style={tdStyle}>{lr.dates}</td>
                 <td style={{ padding: "14px 16px" }}><Badge tone={lr.statusTone}>{lr.status}</Badge></td>
@@ -270,6 +402,45 @@ export default function MeLeavePage() {
               </button>
             </div>
             <SmoothScroll style={{ flex: 1, padding: 24, fontSize: 14 }} contentStyle={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              {editing ? (
+                <>
+                  {!drawerIsWfh && (
+                    <Select
+                      label="Type"
+                      options={LEAVE_TYPE_OPTIONS.filter((o) => o.value !== "Work From Home")}
+                      value={editForm.type}
+                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setEditForm((f) => ({ ...f, type: e.target.value }))}
+                    />
+                  )}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <span style={{ fontFamily: "var(--font-sans)", fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" }}>Start date</span>
+                    <input
+                      type="date"
+                      value={editForm.startDate}
+                      min={todayISO()}
+                      onChange={(e) => setEditForm((f) => ({ ...f, startDate: e.target.value }))}
+                      style={{ fontFamily: "var(--font-sans)", fontSize: 14, padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border-strong)", background: "var(--bg-surface)", color: "var(--text-primary)" }}
+                    />
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <span style={{ fontFamily: "var(--font-sans)", fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" }}>End date (optional)</span>
+                    <input
+                      type="date"
+                      value={editForm.endDate}
+                      min={editForm.startDate || todayISO()}
+                      onChange={(e) => setEditForm((f) => ({ ...f, endDate: e.target.value }))}
+                      style={{ fontFamily: "var(--font-sans)", fontSize: 14, padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border-strong)", background: "var(--bg-surface)", color: "var(--text-primary)" }}
+                    />
+                  </div>
+                  <DayCountHint start={editForm.startDate} end={editForm.endDate} />
+                  <Input
+                    label="Reason (optional)"
+                    value={editForm.reason}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditForm((f) => ({ ...f, reason: e.target.value }))}
+                  />
+                </>
+              ) : (
+              <>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span style={{ color: "var(--text-secondary)" }}>Dates</span>
                 <span style={{ color: "var(--text-primary)", fontWeight: 500 }}>{drawer.dates}</span>
@@ -291,9 +462,35 @@ export default function MeLeavePage() {
                   <div style={{ fontSize: 14, color: "var(--text-primary)", lineHeight: 1.5 }}>{drawer.decisionNoteStr}</div>
                 </div>
               )}
+              </>
+              )}
             </SmoothScroll>
-            <div style={{ padding: "16px 24px", borderTop: "1px solid var(--border-subtle)", display: "flex", justifyContent: "flex-end", flexShrink: 0 }}>
-              <Button variant="secondary" onClick={closeDrawerAnimated}>Close</Button>
+            <div style={{ padding: "16px 24px", borderTop: "1px solid var(--border-subtle)", display: "flex", justifyContent: "flex-end", gap: 10, flexShrink: 0, flexWrap: "wrap" }}>
+              {editing ? (
+                <>
+                  <Button variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>
+                  <Button variant="primary" disabled={savingEdit} onClick={saveEdit}>{savingEdit ? "Saving…" : "Save changes"}</Button>
+                </>
+              ) : confirmWithdraw ? (
+                <>
+                  <span style={{ flex: 1, alignSelf: "center", fontSize: 13, color: "var(--text-secondary)" }}>Withdraw this request?</span>
+                  <Button variant="ghost" onClick={() => setConfirmWithdraw(false)}>Keep it</Button>
+                  {/* The compiled Button has no "danger" variant (it would
+                      silently fall back to secondary) — destructive intent is
+                      carried by the same status-danger tokens the delete
+                      links elsewhere in the app use. */}
+                  <Button variant="secondary" style={{ background: "var(--status-danger-bg)", color: "var(--status-danger-text)" }} onClick={withdrawRequest}>Withdraw</Button>
+                </>
+              ) : (
+                <>
+                  {/* Only while still Pending — the backend enforces the same
+                      rule, so a decided request can't be changed even if
+                      these somehow rendered. */}
+                  {canModifyDrawer && <Button variant="secondary" style={{ background: "var(--status-danger-bg)", color: "var(--status-danger-text)" }} onClick={() => setConfirmWithdraw(true)}>Withdraw</Button>}
+                  {canModifyDrawer && <Button variant="secondary" onClick={startEdit}>Edit</Button>}
+                  <Button variant="secondary" onClick={closeDrawerAnimated}>Close</Button>
+                </>
+              )}
             </div>
           </div>
         </div>
