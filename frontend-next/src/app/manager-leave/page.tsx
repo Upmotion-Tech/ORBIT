@@ -14,7 +14,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useAppData } from "@/lib/app-data-context";
 import { useToast } from "@/lib/toast-context";
-import { leavesApi, wfhApi, attendanceApi, getEmployeeName, todayISO, formatCommentTimestamp, fromISO, parseDeepLinkHash, clearDeepLinkHash } from "@/lib/orbit-client";
+import { leavesApi, wfhApi, attendanceApi, getEmployeeName, todayISO, formatCommentTimestamp, fromISO, formatDateRange, parseDeepLinkHash, clearDeepLinkHash } from "@/lib/orbit-client";
 import { Badge, Icon } from "@/design-system/healer-bundle";
 import { useClosingTransition } from "@/lib/use-closing-transition";
 import SmoothScroll from "@/components/shell/SmoothScroll";
@@ -28,9 +28,11 @@ type Leave = {
 // Approving a request means committing to however many days it covers, so
 // the count is spelled out rather than left as two dates to subtract.
 // Mirrors the same label the applicant sees on their own My Leave screen.
+// formatDateRange (orbit-client) renders human dates and collapses a
+// same-month range to "10–13 Aug 2026"; raw ISO was too hard to read at a
+// glance, which is the whole point of this column.
 function dateRangeLabel(start: string, end: string | null | undefined, days: number) {
-  if (!end || end === start) return start + " · 1 day";
-  return start + " — " + end + " · " + days + " days";
+  return formatDateRange(start, end || null) + " · " + days + (days === 1 ? " day" : " days");
 }
 type Wfh = {
   id: string; employee_id: string; employee_name?: string; date: string; end_date?: string | null; days?: number; status: string;
@@ -231,7 +233,7 @@ export default function ManagerLeavePage() {
                 >
                   <td style={{ padding: "14px 16px", fontSize: 14, color: "var(--text-primary)", fontWeight: 500 }}>{lr.employee}</td>
                   <td style={{ padding: "14px 16px", fontSize: 14, color: "var(--text-secondary)" }}>{lr.type}</td>
-                  <td style={{ padding: "14px 16px", fontSize: 14, color: "var(--text-primary)" }}>{lr.dates}</td>
+                  <td className="orbit-nowrap-cell" style={{ padding: "14px 16px", fontSize: 14, color: "var(--text-primary)" }}>{lr.dates}</td>
                   <td style={{ padding: "14px 16px", fontSize: 13.5, color: "var(--text-secondary)" }}>{lr.reason}</td>
                   <td style={{ padding: "14px 16px" }}><Badge tone={lr.statusTone}>{lr.status}</Badge></td>
                   <td style={{ padding: "14px 16px", textAlign: "right" }}>
@@ -341,9 +343,9 @@ export default function ManagerLeavePage() {
                   <tbody>
                     {modalLogs.map((r) => (
                       <tr key={r.date} style={{ borderBottom: "1px solid var(--border-subtle)" }}>
-                        <td style={{ padding: "12px 16px", fontSize: 13.5, color: "var(--text-primary)" }}>{fromISO(r.date)}</td>
+                        <td className="orbit-nowrap-cell" style={{ padding: "12px 16px", fontSize: 13.5, color: "var(--text-primary)" }}>{fromISO(r.date)}</td>
                         <td style={{ padding: "12px 16px" }}><Badge tone={attendanceStatusTone(r.status)}>{r.status}</Badge></td>
-                        <td style={{ padding: "12px 16px", fontSize: 13.5, color: "var(--text-secondary)" }}>{r.marked_at ? formatCommentTimestamp(r.marked_at) : "—"}</td>
+                        <td className="orbit-nowrap-cell" style={{ padding: "12px 16px", fontSize: 13.5, color: "var(--text-secondary)" }}>{r.marked_at ? formatCommentTimestamp(r.marked_at) : "—"}</td>
                       </tr>
                     ))}
                   </tbody>

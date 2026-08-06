@@ -26,6 +26,7 @@ import {
   moneyPKR,
   numVal,
   fromISO,
+  formatDateRange,
   todayISO,
   addDaysISO,
   isValidEmail,
@@ -454,11 +455,11 @@ function HrPageContent() {
   // as me-leave/page.tsx's own Request History month picker — this list is
   // otherwise every leave/WFH request ever filed, which only gets longer.
   const [leaveRequestsMonth, setLeaveRequestsMonth] = useState(() => todayISO().slice(0, 7));
-  // Same "spell out how many days" label the applicant and their manager
-  // both see (me-leave / manager-leave), kept identical here so HR's
-  // read-only view doesn't describe the same request differently.
+  // Same "human dates + spell out how many days" label the applicant and
+  // their manager both see (me-leave / manager-leave), kept identical here
+  // so HR's read-only view never describes the same request differently.
   const dateRangeLabel = (start: string, end: string | null | undefined, days: number) =>
-    !end || end === start ? start + " · 1 day" : start + " — " + end + " · " + days + " days";
+    formatDateRange(start, end || null) + " · " + days + (days === 1 ? " day" : " days");
   const timeOffRows = (leaves as Leave[])
     .filter((lr) => (lr.start_date || "").slice(0, 7) === leaveRequestsMonth)
     .map((lr) => ({
@@ -760,16 +761,16 @@ function HrPageContent() {
         <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead><tr style={{ borderBottom: "1px solid var(--border-subtle)" }}>
-              <th style={thStyle}>Employee</th><th style={thStyle}>Type</th><th style={thStyle}>Dates</th><th style={thStyle}>Status</th><th></th>
+              <th style={thStyle}>Employee</th><th style={thStyle}>Type</th><th style={thStyle}>Dates</th><th style={thStyle}>Status</th><th className="orbit-row-hint"></th>
             </tr></thead>
             <tbody>
               {hrLeaveRows.map((lr) => (
                 <tr key={lr.id} onClick={() => openLeaveDrawer(lr.id)} style={{ borderBottom: "1px solid var(--border-subtle)", cursor: "pointer" }}>
                   <td style={{ padding: "14px 16px", fontSize: 14, color: "var(--text-primary)", fontWeight: 500 }}>{lr.employee}</td>
                   <td style={{ padding: "14px 16px", fontSize: 14, color: "var(--text-secondary)" }}>{lr.type}</td>
-                  <td style={{ padding: "14px 16px", fontSize: 14, color: "var(--text-primary)" }}>{lr.dates}</td>
+                  <td className="orbit-nowrap-cell" style={{ padding: "14px 16px", fontSize: 14, color: "var(--text-primary)" }}>{lr.dates}</td>
                   <td style={{ padding: "14px 16px" }}><Badge tone={lr.statusTone}>{lr.status}</Badge></td>
-                  <td style={{ padding: "14px 16px", textAlign: "right", fontSize: 12, color: "var(--text-muted)", fontWeight: 500 }}>Click for details &rarr;</td>
+                  <td className="orbit-row-hint" style={{ padding: "14px 16px", textAlign: "right", fontSize: 12, color: "var(--text-muted)", fontWeight: 500 }}>Click for details &rarr;</td>
                 </tr>
               ))}
             </tbody>
@@ -834,7 +835,7 @@ function HrPageContent() {
                       <td style={{ padding: "12px 16px", fontSize: 13.5, color: "var(--text-primary)", fontWeight: 500 }}>{at.employee_name}</td>
                       <td style={{ padding: "12px 16px", fontSize: 13.5, color: "var(--text-secondary)" }}>{at.employee_department}</td>
                       <td style={{ padding: "12px 16px" }}><Badge tone={attendanceStatusTone(at.status)}>{at.status}</Badge></td>
-                      <td style={{ padding: "12px 16px", fontSize: 13.5, color: "var(--text-secondary)" }}>{at.marked_at ? formatCommentTimestamp(at.marked_at) : "—"}</td>
+                      <td className="orbit-nowrap-cell" style={{ padding: "12px 16px", fontSize: 13.5, color: "var(--text-secondary)" }}>{at.marked_at ? formatCommentTimestamp(at.marked_at) : "—"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -875,7 +876,7 @@ function HrPageContent() {
                           <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 4 }}>Approved by {ah.leave_approved_by_name}</div>
                         )}
                       </td>
-                      <td style={{ padding: "12px 16px", fontSize: 13.5, color: "var(--text-secondary)" }}>{ah.marked_at ? formatCommentTimestamp(ah.marked_at) : "—"}</td>
+                      <td className="orbit-nowrap-cell" style={{ padding: "12px 16px", fontSize: 13.5, color: "var(--text-secondary)" }}>{ah.marked_at ? formatCommentTimestamp(ah.marked_at) : "—"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -893,7 +894,7 @@ function HrPageContent() {
                   {attendanceWfhRows.map((wfh) => (
                     <tr key={wfh.id} onClick={() => openLeaveDrawer(wfh.id)} style={{ borderBottom: "1px solid var(--border-subtle)", cursor: "pointer" }}>
                       <td style={{ padding: "12px 16px", fontSize: 13.5, color: "var(--text-primary)", fontWeight: 500 }}>{wfh.employee_name}</td>
-                      <td style={{ padding: "12px 16px", fontSize: 13.5, color: "var(--text-primary)" }}>{wfh.end_date ? wfh.date + " — " + wfh.end_date : wfh.date}</td>
+                      <td className="orbit-nowrap-cell" style={{ padding: "12px 16px", fontSize: 13.5, color: "var(--text-primary)" }}>{dateRangeLabel(wfh.date, wfh.end_date, wfh.days || 1)}</td>
                       <td style={{ padding: "12px 16px", fontSize: 13.5, color: "var(--text-secondary)" }}>{wfh.description}</td>
                       <td style={{ padding: "12px 16px" }}><Badge tone={wfh.status === "Approved" ? "success" : wfh.status === "Rejected" ? "danger" : "warning"}>{wfh.status}</Badge></td>
                     </tr>

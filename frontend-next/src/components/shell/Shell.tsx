@@ -776,7 +776,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
             </a>
           </div>
 
-          <SmoothScroll className="orbit-screen-content" style={{ flex: 1, padding: 24 }}>
+          <SmoothScroll className="orbit-screen-content" style={{ flex: 1, padding: 24 }} allowPullToRefresh>
             {isScreenAllowed(activeScreen) ? children : null}
           </SmoothScroll>
         </div>

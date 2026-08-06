@@ -747,6 +747,25 @@ html, body {
     max-width: 100% !important;
   }
 
+  /* A date range is a single unit of meaning — letting it wrap mid-value
+     produced rows reading "2026-08-10 — 2026-08-" / "13 · 4 days" across
+     three lines, which is unreadable at a glance. The rule above already
+     gives the table's container overflow-x, but a `width: 100%` table just
+     shrinks to fit instead of overflowing, so the cells wrapped rather than
+     the table scrolling. Forcing nowrap on these cells is what actually
+     pushes the table past the viewport and hands it to that scroller. */
+  .orbit-nowrap-cell {
+    white-space: nowrap !important;
+  }
+
+  /* "Click for details →" is a desktop affordance — on a phone the whole
+     row is already tappable, and this column costs ~120px of the little
+     width there is. Header and cell must BOTH hide or the columns
+     misalign. */
+  .orbit-row-hint {
+    display: none !important;
+  }
+
   /* 2-Panel drawers & form grid splits */
   [style*="gridTemplateColumns: \"280px 1fr\""],
   [style*="grid-template-columns: 280px 1fr"],

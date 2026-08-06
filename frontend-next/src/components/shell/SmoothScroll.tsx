@@ -17,6 +17,11 @@ type SmoothScrollProps = {
   // reserve `style` for the scroll box itself (sizing, padding, position).
   contentStyle?: CSSProperties;
   horizontal?: boolean;
+  // Set only on the one page-level instance (.orbit-screen-content in
+  // Shell.tsx) that stands in for the document's own scroll area. Every
+  // OTHER vertical instance keeps its Y axis contained on purpose — see
+  // below.
+  allowPullToRefresh?: boolean;
 };
 
 // The rest of the app already forces scroll-behavior:auto + near-zero
@@ -58,7 +63,20 @@ function prefersReducedMotion(): boolean {
 // no vertical overflow of its own, so an unqualified `contain` on Y would
 // swallow every vertical scroll gesture made while hovering it, which is
 // the same "page won't scroll under the board" bug from a second angle.
-export default function SmoothScroll({ children, className, style, contentStyle, horizontal }: SmoothScrollProps) {
+//
+// `overscroll-behavior-y: contain` on Y is also, independently, the
+// standard documented technique browsers use to SUPPRESS native
+// pull-to-refresh (chaining the overscroll up to the real document is
+// exactly what the browser needs to see to trigger it) — normally the
+// right call, since you don't want pulling down inside a drawer or Kanban
+// board to reload the whole app. But the page-level instance (Shell.tsx's
+// .orbit-screen-content) effectively IS the document's own scroll area as
+// far as the user is concerned, so containing it there was accidentally
+// disabling pull-to-refresh everywhere, with no way to recover short of
+// backgrounding the installed PWA and reopening it. `allowPullToRefresh`
+// lets that one instance's own Y-axis chain up normally; every nested
+// instance (drawers, flyouts, Kanban, tables) is unaffected.
+export default function SmoothScroll({ children, className, style, contentStyle, horizontal, allowPullToRefresh }: SmoothScrollProps) {
   return (
     <ReactLenis
       root={false}
@@ -67,7 +85,7 @@ export default function SmoothScroll({ children, className, style, contentStyle,
       style={{
         overflow: "auto",
         overscrollBehaviorX: horizontal ? "contain" : "auto",
-        overscrollBehaviorY: horizontal ? "auto" : "contain",
+        overscrollBehaviorY: horizontal || allowPullToRefresh ? "auto" : "contain",
         ...style,
       }}
       options={{

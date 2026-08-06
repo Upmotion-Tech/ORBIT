@@ -180,7 +180,7 @@ export default function MeAttendancePage() {
                     <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 4 }}>Approved by {ar.leaveApprovedByName}</div>
                   )}
                 </td>
-                <td style={{ padding: "12px 16px", fontSize: 13.5, color: "var(--text-secondary)" }}>{ar.markedAtStr}</td>
+                <td className="orbit-nowrap-cell" style={{ padding: "12px 16px", fontSize: 13.5, color: "var(--text-secondary)" }}>{ar.markedAtStr}</td>
               </tr>
             ))}
           </tbody>

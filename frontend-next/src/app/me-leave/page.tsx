@@ -12,6 +12,7 @@ import {
   pktTodayParts,
   getEmployeeName,
   formatActivityTimestamp,
+  formatDateRange,
   parseDeepLinkHash,
   clearDeepLinkHash,
   todayISO,
@@ -40,12 +41,13 @@ const LEAVE_TYPE_OPTIONS = [
   { value: "Work From Home", label: "Work From Home" },
 ];
 
-// "3 Aug 2026" stays as-is for one day; a range gains an explicit count so
-// neither the applicant nor the approving manager has to work out how long
-// it actually is by subtracting two dates in their head.
+// Human dates plus an explicit count, so neither the applicant nor the
+// approving manager has to work out how long a request is by subtracting
+// two dates in their head. formatDateRange (orbit-client) does the date
+// half — it collapses a same-month range to "10–13 Aug 2026" and writes
+// both months out in full when one spans a boundary.
 function dateRangeLabel(start: string, end: string | null | undefined, days: number) {
-  if (!end || end === start) return start + " · 1 day";
-  return start + " — " + end + " · " + days + " days";
+  return formatDateRange(start, end || null) + " · " + days + (days === 1 ? " day" : " days");
 }
 
 // Client-side mirror of the backend's own inclusive day count (LeaveService.
@@ -377,15 +379,15 @@ export default function MeLeavePage() {
             <th style={thStyle}>Type</th>
             <th style={thStyle}>Dates</th>
             <th style={thStyle}>Status</th>
-            <th></th>
+            <th className="orbit-row-hint"></th>
           </tr></thead>
           <tbody>
             {allRequests.map((lr) => (
               <tr key={lr.id} onClick={() => openDrawer(lr.id)} style={{ borderBottom: "1px solid var(--border-subtle)", cursor: "pointer" }}>
                 <td style={tdStyle}>{lr.type}</td>
-                <td style={tdStyle}>{lr.dates}</td>
+                <td className="orbit-nowrap-cell" style={tdStyle}>{lr.dates}</td>
                 <td style={{ padding: "14px 16px" }}><Badge tone={lr.statusTone}>{lr.status}</Badge></td>
-                <td style={{ padding: "14px 16px", textAlign: "right", fontSize: 12, color: "var(--text-muted)", fontWeight: 500 }}>Click for details &rarr;</td>
+                <td className="orbit-row-hint" style={{ padding: "14px 16px", textAlign: "right", fontSize: 12, color: "var(--text-muted)", fontWeight: 500 }}>Click for details &rarr;</td>
               </tr>
             ))}
           </tbody>
