@@ -27,8 +27,22 @@ function attendanceStatusTone(st: string) {
 export default function MeAttendancePage() {
   const { pushToast } = useToast();
   const { holidays } = useAppData();
-  const [month, setMonth] = useState(todayISO().slice(0, 7));
+  const currentMonthIso = todayISO().slice(0, 7);
+  const [month, setMonth] = useState(currentMonthIso);
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
+  // Kept separate from `records` on purpose. `records` follows the month
+  // picker, so browsing to a previous month used to empty out today's row
+  // and make the card above claim attendance wasn't marked yet (and re-enable
+  // its button inside the 10:00–10:30 window). The card is about TODAY, so it
+  // reads its own always-current-month fetch and ignores whatever month the
+  // history table happens to be showing.
+  //
+  // /api/attendance/today would be the natural single-record source for this,
+  // but it's HR-gated (get_hr_user) and returns a company-wide snapshot, so a
+  // regular employee can't use it — hence refetching the current month here.
+  // Costs one duplicate request on mount, when the picker is already on the
+  // current month; keeping the two independent is worth more than saving it.
+  const [todayRecords, setTodayRecords] = useState<AttendanceRecord[]>([]);
   const [marking, setMarking] = useState(false);
 
   const load = () => {
@@ -36,6 +50,17 @@ export default function MeAttendancePage() {
     attendanceApi.me(year, m).then(
       (data: AttendanceRecord[]) => setRecords(data || []),
       () => pushToast("Could not load attendance history.", "error")
+    );
+  };
+
+  const loadToday = () => {
+    const [year, m] = currentMonthIso.split("-").map(Number);
+    attendanceApi.me(year, m).then(
+      (data: AttendanceRecord[]) => setTodayRecords(data || []),
+      // Silent: `load` already toasts on the same underlying failure, and a
+      // second toast for one failed page load is noise. The card just stays
+      // in its "not marked yet" state, which the window check still gates.
+      () => {}
     );
   };
 
@@ -47,6 +72,11 @@ export default function MeAttendancePage() {
   // instead of only on next reload.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(load, [holidays]);
+
+  // Same holiday rationale as above, plus the initial mount fetch — this one
+  // is deliberately not keyed on `month`, which is the entire point.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(loadToday, [holidays]);
 
   // This page doesn't otherwise re-render on a timer — force one every
   // minute so a tab left open across the 10:00 AM/10:30 AM boundary (or midnight
@@ -62,7 +92,7 @@ export default function MeAttendancePage() {
   // get_my_attendance also synthesizes a "Holiday" row for a holiday date
   // with no real record — that's not a genuine mark, so exclude it here or
   // a holiday would look like "already marked present".
-  const todayRecord = records.find((r) => r.date === attendanceTodayIso && r.status !== "Holiday") || null;
+  const todayRecord = todayRecords.find((r) => r.date === attendanceTodayIso && r.status !== "Holiday") || null;
   const hasMarkedToday = !!todayRecord;
   const markedTodayStr = todayRecord?.marked_at ? formatCommentTimestamp(todayRecord.marked_at) : null;
 
@@ -95,6 +125,9 @@ export default function MeAttendancePage() {
         setMarking(false);
         pushToast("Attendance marked for today.");
         load();
+        // The card reads todayRecords, not records, so it needs its own
+        // refresh — otherwise it keeps saying "not marked" until a reload.
+        loadToday();
       },
       (err: Error) => {
         setMarking(false);
