@@ -75,7 +75,7 @@ Highlights beyond the original 1:1 port:
 - **Universal Search** in the topbar — searches leads, projects, tasks (including tags), customers, and people, and jumps straight to a result.
 - **Drag-and-drop** on the CRM/Projects/Tasks Kanban boards, alongside the existing status dropdown.
 - **Deep-linking** — every card/row has a real link, so right-click/ctrl-click/middle-click "open in new tab" works, and closing a drawer cleans the URL back up.
-- Leave/WFH approval now happens through the employee's manager (Manager Hub), not HR — HR's Leave Requests view is read-only.
+- Leave/WFH approval happens through the employee's manager (Manager Hub) — HR's Leave Requests view is read-only, apart from one designated HR account that can also approve/reject from the request drawer.
 - Invoice PDFs are generated directly in Python (no Word/LibreOffice dependency).
 
 For the full file-by-file rationale, known deviations, and TypeScript gotchas, see [CLAUDE.md](./CLAUDE.md).

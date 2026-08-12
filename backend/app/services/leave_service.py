@@ -274,6 +274,15 @@ class LeaveService:
             # never set on reject at all (only approve_leave used to try,
             # and even that silently failed, see the fix above).
             "approved_by_id": rejected_by,
+            # ...and approved_at is likewise the decision timestamp for either
+            # outcome, not just approvals. Without it the employee's own My
+            # Leave drawer rendered "Rejected by <name>" with no date at all
+            # (me-leave/page.tsx only appends the time when approved_at is
+            # present), while an approval showed both — and WFH rejections
+            # already recorded decided_at, so leave was the odd one out.
+            # Only affects rejections made from here on; rows rejected before
+            # this stay null and keep rendering without a timestamp.
+            "approved_at": now_pkt(),
         })
 
         if self.notification_repo:

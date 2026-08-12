@@ -7,8 +7,19 @@
 // Candidate resume upload is intentionally a no-op toast ("not yet
 // implemented via API") — that's the real behavior in the original app too,
 // not something cut during the port. Leave Requests tab (and the Attendance
-// tab's WFH list) are read-only — Approve/Reject moved to the employee's
-// manager via Manager Hub; the drawer still shows who decided and their note.
+// tab's WFH list) are read-only for HR in general — Approve/Reject moved to
+// the employee's manager via Manager Hub; the drawer still shows who decided
+// and their note.
+//
+// ONE DELIBERATE EXCEPTION (HR_APPROVER_EMAIL below): a single named HR
+// account can also decide requests straight from this page, without going
+// through Manager Hub and without being anyone's manager. This is a UI gate
+// only — the backend has always accepted approve/reject from any holder of
+// the "hr" access level (leave_service.py's and wfh_request_service.py's
+// `has_role(persona, "hr", "owner") or is_manager` check), so nothing about
+// permissions or access levels changed to enable this; the buttons were
+// simply never rendered here. Requested as a per-person exception rather
+// than a role-wide one, hence the email match instead of an access check.
 
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -20,6 +31,7 @@ import SmoothScroll from "@/components/shell/SmoothScroll";
 import {
   employeesApi,
   leavesApi,
+  wfhApi,
   openingsApi,
   candidatesApi,
   attendanceApi,
@@ -75,6 +87,15 @@ type AttendanceRow = {
 
 const HIRE_STAGES = ["Applied", "Screening", "Interview", "Offer", "Rejected"];
 
+// The one HR account allowed to approve/reject leave & WFH from this screen
+// (see the exception note in the file header). Compared lowercased/trimmed
+// against the logged-in user's email. Deliberately a specific person, not an
+// access level — if this address ever changes, or the capability should
+// belong to HR as a role, this constant is the single place to change (or
+// swap the check for `access.hr`, which is what the backend already
+// enforces anyway).
+const HR_APPROVER_EMAIL = "hamzashafiq@theupmotion.online";
+
 // useSearchParams() (used below for the ?tab= driven tab pills) requires a
 // Suspense boundary above it per Next.js App Router.
 export default function HrPage() {
@@ -87,7 +108,7 @@ export default function HrPage() {
 
 function HrPageContent() {
   const { currentUser } = useAuth();
-  const { employees, reloadEmployees, leaves, allWfhRequests, holidays } = useAppData();
+  const { employees, reloadEmployees, leaves, allWfhRequests, holidays, reloadLeavesAndWfh } = useAppData();
   const { pushToast } = useToast();
 
   const accessLevels = currentUser?.access_levels || [];
@@ -487,6 +508,8 @@ function HrPageContent() {
         const decisionNote = isApproved ? leaveDrawerLeaveRaw.approval_note : isRejected ? leaveDrawerLeaveRaw.rejection_reason : null;
         const decidedByName = leaveDrawerLeaveRaw.approved_by_id ? getEmployeeName(leaveDrawerLeaveRaw.approved_by_id) : "";
         return {
+          id: leaveDrawerLeaveRaw.id, isWfh: false as const,
+          isPending: leaveDrawerLeaveRaw.status === "Pending",
           employee: leaveDrawerLeaveRaw.employee_name || "Unknown", type: leaveDrawerLeaveRaw.leave_type,
           dates: dateRangeLabel(leaveDrawerLeaveRaw.start_date, leaveDrawerLeaveRaw.end_date, leaveDrawerLeaveRaw.days),
           status: leaveDrawerLeaveRaw.status, statusTone: isApproved ? "success" : isRejected ? "danger" : "warning",
@@ -502,6 +525,8 @@ function HrPageContent() {
         const decisionNote = leaveDrawerWfhRaw.decision_note || null;
         const decidedByName = leaveDrawerWfhRaw.decided_by ? getEmployeeName(leaveDrawerWfhRaw.decided_by) : "";
         return {
+          id: leaveDrawerWfhRaw.id, isWfh: true as const,
+          isPending: leaveDrawerWfhRaw.status === "Pending",
           employee: leaveDrawerWfhRaw.employee_name || "Unknown", type: "Work From Home",
           dates: dateRangeLabel(leaveDrawerWfhRaw.date, leaveDrawerWfhRaw.end_date, leaveDrawerWfhRaw.days || 1),
           status: leaveDrawerWfhRaw.status, statusTone: isApproved ? "success" : isRejected ? "danger" : "warning",
@@ -515,6 +540,48 @@ function HrPageContent() {
   const closeLeaveDrawer = () => setLeaveDrawerId(null);
   const leaveDrawerClosing = useClosingTransition();
   const closeLeaveDrawerAnimated = () => leaveDrawerClosing.closeWithTransition(closeLeaveDrawer);
+
+  // Approve/Reject from this screen — the named-HR-account exception (see
+  // file header). Both the leave list and the Attendance tab's WFH list open
+  // this same drawer, so gating the buttons here covers both surfaces with
+  // one implementation rather than duplicating actions into two tables.
+  const canDecideRequests =
+    ((currentUser?.email as string) || "").trim().toLowerCase() === HR_APPROVER_EMAIL;
+  const [leaveActionModal, setLeaveActionModal] = useState<
+    { id: string; kind: "leave" | "wfh"; type: "approve" | "reject"; note: string } | null
+  >(null);
+  const leaveActionClosing = useClosingTransition();
+  const closeLeaveActionAnimated = () => leaveActionClosing.closeWithTransition(() => setLeaveActionModal(null));
+
+  // Mirrors Manager Hub's confirmAction (manager-leave/page.tsx) — same two
+  // API pairs, same note/reason payload, so a request decided here is
+  // indistinguishable from one decided by the manager. The drawer is left
+  // open on success: it renders off `leaves`/`allWfhRequests`, which
+  // reloadLeavesAndWfh refreshes, so it flips to the decided state in place
+  // and shows the note that was just written.
+  const confirmLeaveAction = () => {
+    if (!leaveActionModal) return;
+    const { id, kind, type } = leaveActionModal;
+    const note = leaveActionModal.note.trim();
+    const label = kind === "wfh" ? "Work-from-home request" : "Leave";
+    const call =
+      kind === "wfh"
+        ? type === "approve"
+          ? wfhApi.approve(id, note)
+          : wfhApi.reject(id, note)
+        : type === "approve"
+        ? leavesApi.approve(id, note)
+        : leavesApi.reject(id, note);
+
+    call.then(
+      () => {
+        pushToast(label + (type === "approve" ? " approved." : " rejected."));
+        setLeaveActionModal(null);
+        reloadLeavesAndWfh();
+      },
+      (err: Error) => pushToast(err.message || "Could not " + type + " the request.", "error")
+    );
+  };
 
   // ---- Hiring tab ----
   const [openings, setOpenings] = useState<Opening[]>([]);
@@ -1105,6 +1172,57 @@ function HrPageContent() {
             </SmoothScroll>
             <div style={{ padding: "16px 24px", borderTop: "1px solid var(--border-subtle)", display: "flex", justifyContent: "flex-end", gap: 12, flexShrink: 0 }}>
               <Button variant="ghost" onClick={closeLeaveDrawerAnimated}>Close</Button>
+              {canDecideRequests && leaveDrawer.isPending && (
+                <>
+                  <button
+                    className="login-btn"
+                    style={{ width: "auto", padding: "10px 16px", background: "linear-gradient(135deg, #DC2626 0%, #EF4444 100%)" }}
+                    onClick={() => setLeaveActionModal({ id: leaveDrawer.id, kind: leaveDrawer.isWfh ? "wfh" : "leave", type: "reject", note: "" })}
+                  >
+                    Reject
+                  </button>
+                  <button
+                    className="login-btn"
+                    style={{ width: "auto", padding: "10px 16px" }}
+                    onClick={() => setLeaveActionModal({ id: leaveDrawer.id, kind: leaveDrawer.isWfh ? "wfh" : "leave", type: "approve", note: "" })}
+                  >
+                    Approve
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---- Approve/Reject confirm (named HR account only) ---- */}
+      {/* zIndex 1200 deliberately sits above the leave drawer's 1000 — this
+          modal is opened from inside that drawer and has to stack over it. */}
+      {leaveActionModal && (
+        <div className={"crm-overlay-fade" + (leaveActionClosing.isClosing ? " orbit-closing" : "")} onClick={closeLeaveActionAnimated} style={{ position: "fixed", inset: 0, background: "rgba(17,20,30,0.45)", zIndex: 1200, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div className={"crm-pop" + (leaveActionClosing.isClosing ? " orbit-closing" : "")} onClick={(e) => e.stopPropagation()} style={{ width: 420, maxWidth: "90vw", background: "var(--bg-surface)", borderRadius: 12, boxShadow: "var(--shadow-popover)", padding: 24 }}>
+            <h2 style={{ margin: "0 0 4px", fontSize: 17, fontWeight: 700, color: "var(--text-primary)" }}>
+              {leaveActionModal.type === "approve" ? "Approve" : "Reject"} {leaveActionModal.kind === "wfh" ? "work-from-home request" : "leave request"}
+            </h2>
+            <label style={{ fontSize: 13, fontWeight: 500, color: "var(--text-secondary)", display: "block", margin: "16px 0 6px" }}>
+              {leaveActionModal.type === "approve" ? "Note (optional)" : "Reason for rejection"}
+            </label>
+            <textarea
+              rows={3}
+              value={leaveActionModal.note}
+              onChange={(e) => setLeaveActionModal((m) => (m ? { ...m, note: e.target.value } : m))}
+              placeholder="Add a note for the employee..."
+              style={{ width: "100%", fontFamily: "var(--font-sans)", fontSize: 14, padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border-strong)", background: "var(--bg-canvas)", color: "var(--text-primary)", resize: "vertical", boxSizing: "border-box" }}
+            />
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 20 }}>
+              <button className="login-btn" style={{ background: "none", color: "var(--text-secondary)", boxShadow: "none", width: "auto", padding: "10px 16px" }} onClick={closeLeaveActionAnimated}>Cancel</button>
+              <button
+                className="login-btn"
+                style={{ width: "auto", padding: "10px 16px", background: leaveActionModal.type === "approve" ? undefined : "linear-gradient(135deg, #DC2626 0%, #EF4444 100%)" }}
+                onClick={confirmLeaveAction}
+              >
+                {leaveActionModal.type === "approve" ? "Approve" : "Reject"}
+              </button>
             </div>
           </div>
         </div>
