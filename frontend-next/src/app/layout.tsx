@@ -33,7 +33,15 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" data-brand="orbit" data-scroll-behavior="smooth" className={inter.variable}>
-      <body>
+      {/* suppressHydrationWarning is scoped to just this element's own
+          attributes — it doesn't hide a real hydration bug anywhere else in
+          the tree. Needed here specifically because browser extensions
+          (Grammarly's data-gr-ext-installed/data-new-gr-c-s-check-loaded is
+          the common one) inject attributes onto <body> before React
+          hydrates, which the server obviously never rendered — a false
+          "mismatch" React would otherwise warn about on every load for
+          anyone with such an extension installed. */}
+      <body suppressHydrationWarning>
         {/* reducedMotion="user" makes every motion.* animation in the app
             (Modal, sidebar, Button press feedback, ...) automatically
             respect the OS-level prefers-reduced-motion setting — transform/

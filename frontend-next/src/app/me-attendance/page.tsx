@@ -49,7 +49,7 @@ export default function MeAttendancePage() {
   useEffect(load, [holidays]);
 
   // This page doesn't otherwise re-render on a timer — force one every
-  // minute so a tab left open across the 8:30 AM/7:30 PM boundary (or midnight
+  // minute so a tab left open across the 10:00 AM/10:30 AM boundary (or midnight
   // into a weekend) doesn't keep showing a stale enabled/disabled button.
   const [, forceTick] = useState(0);
   useEffect(() => {
@@ -116,10 +116,10 @@ export default function MeAttendancePage() {
             {hasMarkedToday && <div style={{ fontSize: 15, fontWeight: 600, color: "var(--status-success-text)" }}>Marked present today at {markedTodayStr}</div>}
             {!hasMarkedToday && isHoliday && <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-secondary)" }}>Holiday — {holidayName}. No attendance required today.</div>}
             {!hasMarkedToday && !isHoliday && isWeekend && <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-secondary)" }}>Weekend — no attendance required today.</div>}
-            {!hasMarkedToday && !isHoliday && !isWeekend && !isWithinHours && <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-secondary)" }}>Attendance can only be marked between 8:30 AM and 7:30 PM.</div>}
+            {!hasMarkedToday && !isHoliday && !isWeekend && !isWithinHours && <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-secondary)" }}>Attendance can only be marked between 10:00 AM and 10:30 AM.</div>}
             {!hasMarkedToday && !isHoliday && !isWeekend && isWithinHours && <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-primary)" }}>You haven&apos;t marked attendance today yet.</div>}
             {/* Short, always-visible reminder of the marking window — not just something you discover once you're blocked. */}
-            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>Attendance can only be marked between 8:30 AM – 7:30 PM, Mon–Fri.</div>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>Attendance can only be marked between 10:00 AM – 10:30 AM, Mon–Fri.</div>
           </div>
         </div>
         {!hasMarkedToday && canMark && (

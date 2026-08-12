@@ -739,7 +739,7 @@ function todayISO() {
 // wall-clock day-of-week/hour independent of the browser's own timezone,
 // the same trick todayISO() above uses for the PKT calendar date. Mirrors
 // the backend's own enforcement in AttendanceService.mark_attendance exactly
-// (holiday check + weekday check + 8:30 AM-7:30 PM window) — this is just
+// (holiday check + weekday check + 10:00 AM-10:30 AM window) — this is just
 // for the UI to grey the button out proactively instead of only finding out
 // from a 400. `holidays` is the list from AppDataContext (each with `date`/
 // `end_date` as "YYYY-MM-DD" strings, `end_date` null for a single-day
@@ -751,7 +751,7 @@ function attendanceWindowNow(holidays) {
   const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
   // Minute-precision since the window boundaries aren't on the hour.
   const currentMinutes = d.getUTCHours() * 60 + d.getUTCMinutes();
-  const isWithinHours = currentMinutes >= (8 * 60 + 30) && currentMinutes < (19 * 60 + 30);
+  const isWithinHours = currentMinutes >= (10 * 60) && currentMinutes < (10 * 60 + 30);
   const todayIso = todayISO();
   const holiday = (holidays || []).find((h) => {
     const start = h.date;

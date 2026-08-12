@@ -124,7 +124,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const { isWeekend, isWithinHours, isHoliday, holidayName, canMark } = attendanceWindowNow(holidays);
 
   useEffect(() => {
-    // Still worth fetching even outside the 8:30 AM-7:30 PM window (but not on a
+    // Still worth fetching even outside the 10:00 AM-10:30 AM window (but not on a
     // weekend, when there's never anything to find) — the label itself
     // switches to "Outside Hours" once the window closes regardless of
     // whether they already marked (see the button below), but this is
@@ -653,7 +653,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
                 marking ? undefined :
                 isHoliday ? `Holiday — ${holidayName}` :
                 isWeekend ? "Weekend — no attendance needed today" :
-                !isWithinHours ? "Attendance can only be marked between 8:30 AM and 7:30 PM" : undefined
+                !isWithinHours ? "Attendance can only be marked between 10:00 AM and 10:30 AM" : undefined
               }
               className={
                 "orbit-attendance-btn" +

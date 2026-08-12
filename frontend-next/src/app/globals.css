@@ -1963,7 +1963,7 @@ body { font-size: 14.5px; }
   box-shadow: 0 2px 10px rgba(239,68,68,0.38);
 }
 /* Covers both reasons marking is unavailable right now — a weekend, or a
-   working day outside the 8:30 AM-7:30 PM window — same muted grey treatment
+   working day outside the 10:00 AM-10:30 AM window — same muted grey treatment
    either way, just a different label/tooltip in the JSX. */
 .orbit-attendance-btn.is-unavailable {
   background: linear-gradient(135deg, #CBD5E1 0%, #94A3B8 100%);
