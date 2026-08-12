@@ -87,6 +87,14 @@ type AttendanceRow = {
 
 const HIRE_STAGES = ["Applied", "Screening", "Interview", "Offer", "Rejected"];
 
+// "2026-08" -> "August 2026". Built from parts rather than parsing the string
+// as a date, since "2026-08" alone parses as UTC midnight and can land on the
+// previous month once rendered in PKT.
+function monthLabelFromIso(ym: string) {
+  const [y, m] = ym.split("-");
+  return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+}
+
 // The one HR account allowed to approve/reject leave & WFH from this screen
 // (see the exception note in the file header). Compared lowercased/trimmed
 // against the logged-in user's email. Deliberately a specific person, not an
@@ -124,9 +132,9 @@ function HrPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const tabParam = searchParams.get("tab");
-  const tab: "employees" | "leave" | "hiring" | "leaveCount" | "attendance" =
-    tabParam === "leave" || tabParam === "hiring" || tabParam === "leaveCount" || tabParam === "attendance" ? tabParam : "employees";
-  const setTab = (t: "employees" | "leave" | "hiring" | "leaveCount" | "attendance") => {
+  const tab: "employees" | "leave" | "hiring" | "leaveCount" | "monthlySummary" | "attendance" =
+    tabParam === "leave" || tabParam === "hiring" || tabParam === "leaveCount" || tabParam === "monthlySummary" || tabParam === "attendance" ? tabParam : "employees";
+  const setTab = (t: "employees" | "leave" | "hiring" | "leaveCount" | "monthlySummary" | "attendance") => {
     router.replace(`/hr?tab=${t}${window.location.hash}`, { scroll: false });
   };
 
@@ -709,6 +717,68 @@ function HrPageContent() {
     .map((k) => ({ id: k, employee: leaveCountByEmp[k].employee, days: leaveCountByEmp[k].days, datesStr: leaveCountByEmp[k].entries.join("; ") }))
     .sort((a, b) => b.days - a.days);
 
+  // ---- Monthly Summary tab ----
+  // Per-employee attendance rollup for one month, with every number
+  // drillable to the dates behind it. Deliberately separate from the Leave
+  // Count tab above: that one counts approved *leave requests* over a
+  // date-range preset (a request for 3 days counts 3, whether or not those
+  // days have since happened), whereas this counts *attendance records* —
+  // what actually happened, including Present/Absent/WFH, which leave
+  // requests know nothing about. They answer different questions and would
+  // disagree for a leave approved but not yet reached.
+  const [summaryMonth, setSummaryMonth] = useState(todayISO().slice(0, 7));
+  const [summaryRecords, setSummaryRecords] = useState<AttendanceRow[]>([]);
+  // {employeeId, status} of the number the user clicked — the drilldown is
+  // driven entirely off this plus summaryRecords, so it needs no fetch.
+  const [summaryDrill, setSummaryDrill] = useState<{ employeeId: string; employeeName: string; status: string } | null>(null);
+  const summaryDrillClosing = useClosingTransition();
+  const closeSummaryDrillAnimated = () => summaryDrillClosing.closeWithTransition(() => setSummaryDrill(null));
+
+  const loadSummary = () => {
+    const [year, month] = summaryMonth.split("-").map(Number);
+    attendanceApi.all(year, month, null).then(
+      (d: AttendanceRow[]) => setSummaryRecords(d || []),
+      () => pushToast("Could not load monthly summary.", "error")
+    );
+  };
+  useEffect(() => {
+    if (tab !== "monthlySummary") return;
+    loadSummary();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, summaryMonth, holidays]);
+
+  // Built off the employee directory rather than off the records, so someone
+  // with no attendance at all this month still appears (as a row of zeroes)
+  // instead of silently vanishing from an HR overview.
+  const summaryRows = employees
+    .map((e) => {
+      const mine = summaryRecords.filter((r) => r.employee_id === e.id);
+      const countOf = (st: string) => mine.filter((r) => r.status === st).length;
+      return {
+        id: e.id,
+        employee: e.name,
+        dept: e.department as string,
+        present: countOf("Present"),
+        absent: countOf("Absent"),
+        wfh: countOf("WFH"),
+        leave: countOf("Leave"),
+      };
+    })
+    .sort((a, b) => a.employee.localeCompare(b.employee));
+
+  const summaryDrillDates = summaryDrill
+    ? summaryRecords
+        .filter((r) => r.employee_id === summaryDrill.employeeId && r.status === summaryDrill.status)
+        .map((r) => ({
+          date: r.date,
+          label: fromISO(r.date),
+          dayName: new Date(r.date + "T00:00:00").toLocaleDateString("en-US", { weekday: "long" }),
+          markedAt: r.marked_at ? formatCommentTimestamp(r.marked_at) : "—",
+          approvedBy: r.leave_approved_by_name || null,
+        }))
+        .sort((a, b) => a.date.localeCompare(b.date))
+    : [];
+
   // ---- Attendance tab ----
   const [attendanceToday, setAttendanceToday] = useState<AttendanceRow[]>([]);
   const [attendanceHistory, setAttendanceHistory] = useState<AttendanceRow[]>([]);
@@ -778,6 +848,7 @@ function HrPageContent() {
             <a href="/hr?tab=leave" className="orbit-setup-tab" style={{ fontWeight: tab === "leave" ? 600 : 400 }} onClick={(e) => { if (isModifiedClick(e)) return; e.preventDefault(); setTab("leave"); }}>Leave Requests</a>
             <a href="/hr?tab=hiring" className="orbit-setup-tab" style={{ fontWeight: tab === "hiring" ? 600 : 400 }} onClick={(e) => { if (isModifiedClick(e)) return; e.preventDefault(); setTab("hiring"); }}>Hiring</a>
             <a href="/hr?tab=leaveCount" className="orbit-setup-tab" style={{ fontWeight: tab === "leaveCount" ? 600 : 400 }} onClick={(e) => { if (isModifiedClick(e)) return; e.preventDefault(); setTab("leaveCount"); }}>Leave Count</a>
+            <a href="/hr?tab=monthlySummary" className="orbit-setup-tab" style={{ fontWeight: tab === "monthlySummary" ? 600 : 400 }} onClick={(e) => { if (isModifiedClick(e)) return; e.preventDefault(); setTab("monthlySummary"); }}>Monthly Summary</a>
             <a href="/hr?tab=attendance" className="orbit-setup-tab" style={{ fontWeight: tab === "attendance" ? 600 : 400 }} onClick={(e) => { if (isModifiedClick(e)) return; e.preventDefault(); setTab("attendance"); }}>Attendance</a>
           </div>
         </div>
@@ -887,6 +958,69 @@ function HrPageContent() {
             </table>
           </div>
         )
+      )}
+
+      {tab === "monthlySummary" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <label style={{ fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" }}>Month</label>
+            <input
+              type="month"
+              value={summaryMonth}
+              max={todayISO().slice(0, 7)}
+              onChange={(e) => setSummaryMonth(e.target.value || todayISO().slice(0, 7))}
+              style={{ fontFamily: "var(--font-sans)", fontSize: 14, padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border-strong)", background: "var(--bg-surface)", color: "var(--text-primary)" }}
+            />
+            <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Click any number to see the exact dates.</span>
+          </div>
+
+          <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead><tr style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+                <th style={thStyle}>Employee</th>
+                <th style={thStyle}>Department</th>
+                <th style={thStyle}>Present</th>
+                <th style={thStyle}>Absent</th>
+                <th style={thStyle}>WFH</th>
+                <th style={thStyle}>Leave</th>
+              </tr></thead>
+              <tbody>
+                {summaryRows.map((sr) => {
+                  // A zero has no dates behind it, so it stays plain text —
+                  // a clickable 0 that opens an empty panel is a dead end.
+                  const countCell = (value: number, status: string, tone: string) => (
+                    <td style={{ padding: "14px 16px" }}>
+                      {value > 0 ? (
+                        <a
+                          href="#"
+                          onClick={(ev) => { ev.preventDefault(); setSummaryDrill({ employeeId: sr.id, employeeName: sr.employee, status }); }}
+                          style={{ fontSize: 14, fontWeight: 700, color: tone, textDecoration: "none", borderBottom: "1px dashed currentColor", paddingBottom: 1 }}
+                        >
+                          {value}
+                        </a>
+                      ) : (
+                        <span style={{ fontSize: 14, color: "var(--text-muted)" }}>0</span>
+                      )}
+                    </td>
+                  );
+                  return (
+                    <tr key={sr.id} style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+                      <td style={{ padding: "14px 16px", fontSize: 14, color: "var(--text-primary)", fontWeight: 500 }}>{sr.employee}</td>
+                      <td style={{ padding: "14px 16px", fontSize: 13.5, color: "var(--text-secondary)" }}>{sr.dept}</td>
+                      {countCell(sr.present, "Present", "var(--status-success-text)")}
+                      {countCell(sr.absent, "Absent", "var(--status-danger-text)")}
+                      {countCell(sr.wfh, "WFH", "var(--brand-primary)")}
+                      {countCell(sr.leave, "Leave", "var(--status-warning-text)")}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {summaryRows.length === 0 && (
+              <div style={{ padding: 32, textAlign: "center", color: "var(--text-muted)", fontSize: 13.5 }}>No employees to summarize.</div>
+            )}
+          </div>
+        </div>
       )}
 
       {tab === "attendance" && (
@@ -1190,6 +1324,45 @@ function HrPageContent() {
                   </button>
                 </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---- Monthly Summary drilldown ---- */}
+      {summaryDrill && (
+        <div className={"crm-overlay-fade" + (summaryDrillClosing.isClosing ? " orbit-closing" : "")} onClick={closeSummaryDrillAnimated} style={{ position: "fixed", inset: 0, background: "rgba(17,20,30,0.45)", zIndex: 1000, display: "flex", justifyContent: "flex-end" }}>
+          <div className={"crm-panel-slide" + (summaryDrillClosing.isClosing ? " orbit-closing" : "")} onClick={(e) => e.stopPropagation()} style={{ width: 460, maxWidth: "92vw", height: "100%", background: "var(--bg-surface)", boxShadow: "var(--shadow-popover)", display: "flex", flexDirection: "column" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 24px", borderBottom: "1px solid var(--border-subtle)", flexShrink: 0 }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--text-primary)" }}>{summaryDrill.employeeName}</h2>
+                <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+                  {summaryDrillDates.length} {summaryDrill.status === "WFH" ? "work-from-home" : summaryDrill.status.toLowerCase()} {summaryDrillDates.length === 1 ? "day" : "days"} · {monthLabelFromIso(summaryMonth)}
+                </div>
+              </div>
+              <button onClick={closeSummaryDrillAnimated} aria-label="Close" style={{ background: "none", border: "none", cursor: "pointer", padding: 4, lineHeight: 0 }}><Icon name="x" size={20} color="var(--text-muted)" /></button>
+            </div>
+            <SmoothScroll style={{ flex: 1, padding: 24 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead><tr style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+                  <th style={thStyle}>Date</th><th style={thStyle}>Day</th><th style={thStyle}>Marked At</th>
+                </tr></thead>
+                <tbody>
+                  {summaryDrillDates.map((d) => (
+                    <tr key={d.date} style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+                      <td className="orbit-nowrap-cell" style={{ padding: "12px 8px", fontSize: 13.5, color: "var(--text-primary)", fontWeight: 500 }}>
+                        {d.label}
+                        {d.approvedBy && <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 3 }}>Approved by {d.approvedBy}</div>}
+                      </td>
+                      <td style={{ padding: "12px 8px", fontSize: 13.5, color: "var(--text-secondary)" }}>{d.dayName}</td>
+                      <td className="orbit-nowrap-cell" style={{ padding: "12px 8px", fontSize: 13.5, color: "var(--text-secondary)" }}>{d.markedAt}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </SmoothScroll>
+            <div style={{ padding: "16px 24px", borderTop: "1px solid var(--border-subtle)", display: "flex", justifyContent: "flex-end", flexShrink: 0 }}>
+              <Button variant="ghost" onClick={closeSummaryDrillAnimated}>Close</Button>
             </div>
           </div>
         </div>

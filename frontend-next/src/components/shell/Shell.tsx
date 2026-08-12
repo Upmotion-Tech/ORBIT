@@ -121,7 +121,63 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   // Recomputed on every render — Shell already re-renders every second for
   // the live clock (see `now`/setInterval below), so this naturally stays
   // current without its own ticker.
-  const { isWeekend, isWithinHours, isHoliday, holidayName, canMark } = attendanceWindowNow(holidays);
+  const { isWeekend, isWithinHours, isBeforeWindow, isAfterWindow, isHoliday, holidayName, canMark } = attendanceWindowNow(holidays);
+
+  // Once the window closes with nothing marked, the outcome is already
+  // determined — but the server won't write the row until the 23:55 sweep
+  // (main.py's _run_attendance_sweep), so between 10:30 and then there is no
+  // record to read and the chip has to work it out itself.
+  //
+  // run_end_of_day_sweep resolves in a specific order — approved WFH, then
+  // approved leave, then Absent — and this mirrors it exactly. Getting the
+  // order wrong (or skipping straight to "Absent") would tell someone with an
+  // approved leave day that they're absent, for the whole working day, until
+  // 23:55 quietly corrected it. They were never supposed to mark in the first
+  // place. Both lists are already loaded in AppDataProvider, so this costs no
+  // extra request.
+  // Both context types carry an index signature, so their date fields come
+  // through as `unknown` and need casting before comparison (the same gotcha
+  // frontend-next/CLAUDE.md lists). A null end_date means a single-day
+  // request, matching find_approved_for_employee_and_date on the backend.
+  const todayIsoStr = todayISO();
+  const coversToday = (start: unknown, end: unknown) => {
+    const s = (start as string) || "";
+    const e = (end as string) || s;
+    return !!s && s <= todayIsoStr && todayIsoStr <= e;
+  };
+  const myApprovedWfhToday = allWfhRequests.some(
+    (w) => w.employee_id === currentUser?.id && w.status === "Approved" && coversToday(w.date, w.end_date)
+  );
+  const myApprovedLeaveToday = leaves.some(
+    (l) => l.employee_id === currentUser?.id && l.status === "Approved" && coversToday(l.start_date, l.end_date)
+  );
+
+  // Label, icon, aria-label, title and style class each used to repeat their
+  // own copy of this precedence chain inline. That's exactly how "Attendance
+  // marked" became unreachable after 10:30 — the window check sat ahead of
+  // the marked check in some copies and the chain was long enough that it
+  // wasn't obvious. One object, five consumers, no drift.
+  //
+  // Icon names are resolved straight into a lucide CDN URL by the design
+  // system's Icon (healer-bundle.js), so a name that doesn't exist in
+  // lucide-static 0.400.0 renders a blank box rather than erroring — every
+  // name below is one already in use elsewhere in this app.
+  const attendanceChip = (() => {
+    if (marking) return { label: "Marking…", icon: "clock", aria: "Marking attendance", title: undefined as string | undefined, cls: " is-pending" };
+    // Neither is a working day, so nothing is expected and nothing is owed.
+    if (isHoliday) return { label: "Holiday", icon: "party-popper", aria: `Holiday — ${holidayName}`, title: `Holiday — ${holidayName}`, cls: " is-unavailable" };
+    if (isWeekend) return { label: "Weekend", icon: "moon", aria: "Weekend — attendance not required", title: "Weekend — no attendance needed today", cls: " is-unavailable" };
+    // Marked wins over the window from here down — marking at 10:08 should
+    // still read "Attendance marked" at 6 PM, not "Outside Hours".
+    if (attendanceMarkedToday) return { label: "Attendance marked", icon: "circle-check", aria: "Attendance marked for today", title: "Attendance already marked for today", cls: " is-done" };
+    if (isBeforeWindow) return { label: "Attendance Slot 10:00 AM–10:30 AM", icon: "clock", aria: "Attendance slot opens at 10:00 AM", title: "Attendance can be marked between 10:00 AM and 10:30 AM", cls: " is-unavailable" };
+    if (isWithinHours) return { label: "Mark Attendance", icon: "clock", aria: "Mark attendance", title: undefined as string | undefined, cls: " is-pending" };
+    // Past the window and unmarked: mirror run_end_of_day_sweep's own
+    // WFH -> Leave -> Absent order, since that's what will land at 23:55.
+    if (myApprovedWfhToday) return { label: "WFH", icon: "circle-check", aria: "Working from home today", title: "Approved work-from-home day — no attendance needed", cls: " is-done" };
+    if (myApprovedLeaveToday) return { label: "On Leave", icon: "calendar", aria: "On approved leave today", title: "Approved leave — no attendance needed", cls: " is-done" };
+    return { label: "Absent", icon: "triangle-alert", aria: "Absent — attendance window closed", title: "The 10:00 AM–10:30 AM window closed with no attendance marked", cls: " is-unavailable" };
+  })();
 
   useEffect(() => {
     // Still worth fetching even outside the 10:00 AM-10:30 AM window (but not on a
@@ -642,33 +698,14 @@ export default function Shell({ children }: { children: React.ReactNode }) {
               onClick={markAttendance}
               disabled={marking || attendanceMarkedToday || !canMark}
               style={{ marginLeft: "auto" }}
-              aria-label={
-                marking ? "Marking attendance" :
-                isHoliday ? `Holiday — ${holidayName}` :
-                isWeekend ? "Weekend — attendance not required" :
-                !isWithinHours ? "Outside attendance hours" :
-                attendanceMarkedToday ? "Attendance marked" : "Mark attendance"
-              }
-              title={
-                marking ? undefined :
-                isHoliday ? `Holiday — ${holidayName}` :
-                isWeekend ? "Weekend — no attendance needed today" :
-                !isWithinHours ? "Attendance can only be marked between 10:00 AM and 10:30 AM" : undefined
-              }
-              className={
-                "orbit-attendance-btn" +
-                (isHoliday ? " is-unavailable" : !canMark ? " is-unavailable" : attendanceMarkedToday ? " is-done" : " is-pending") +
-                (marking ? " is-marking" : "")
-              }
+              aria-label={attendanceChip.aria}
+              title={attendanceChip.title}
+              className={"orbit-attendance-btn" + attendanceChip.cls + (marking ? " is-marking" : "")}
             >
               <span className="orbit-attendance-icon-badge">
-                <Icon name={isHoliday ? "party-popper" : isWeekend ? "moon" : !isWithinHours ? "clock" : attendanceMarkedToday ? "circle-check" : "clock"} size={13} color="#fff" />
+                <Icon name={attendanceChip.icon} size={13} color="#fff" />
               </span>
-              <span className="orbit-attendance-label">
-                {marking ? "Marking…" : isHoliday ? "Holiday" :
-                  isWeekend ? "Weekend" : !isWithinHours ? "Outside Hours" :
-                  attendanceMarkedToday ? "Attendance marked" : "Mark Attendance"}
-              </span>
+              <span className="orbit-attendance-label">{attendanceChip.label}</span>
             </button>
 
             <div ref={notifWrapRef} className="orbit-notif-wrap" style={{ position: "relative" }}>

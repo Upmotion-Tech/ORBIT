@@ -752,6 +752,12 @@ function attendanceWindowNow(holidays) {
   // Minute-precision since the window boundaries aren't on the hour.
   const currentMinutes = d.getUTCHours() * 60 + d.getUTCMinutes();
   const isWithinHours = currentMinutes >= (10 * 60) && currentMinutes < (10 * 60 + 30);
+  // "Outside the window" splits into two states that read very differently to
+  // a user: before it opens the slot is still ahead of you (show when it is),
+  // after it closes the chance is gone (you're absent). isWithinHours alone
+  // couldn't tell those apart.
+  const isBeforeWindow = currentMinutes < (10 * 60);
+  const isAfterWindow = currentMinutes >= (10 * 60 + 30);
   const todayIso = todayISO();
   const holiday = (holidays || []).find((h) => {
     const start = h.date;
@@ -760,7 +766,8 @@ function attendanceWindowNow(holidays) {
   }) || null;
   const isHoliday = !!holiday;
   return {
-    isWeekend, isWithinHours, isHoliday, holidayName: holiday ? holiday.name : null,
+    isWeekend, isWithinHours, isBeforeWindow, isAfterWindow,
+    isHoliday, holidayName: holiday ? holiday.name : null,
     canMark: !isWeekend && isWithinHours && !isHoliday,
   };
 }
