@@ -70,15 +70,15 @@ class AttendanceService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Attendance can't be marked on weekends — Saturday and Sunday aren't working days.",
             )
-        # Marking window: 8:30 AM - 7:30 PM PKT on a working day. Same
+        # Marking window: 10:00 AM - 10:30 AM PKT on a working day. Same
         # "frontend greys it out, backend actually enforces it" reasoning as
         # the weekend check above. Minute-precision since the boundaries
         # aren't on the hour.
         current_minutes = now.hour * 60 + now.minute
-        if not (8 * 60 + 30 <= current_minutes < 19 * 60 + 30):
+        if not (10 * 60 <= current_minutes < 10 * 60 + 30):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Attendance can only be marked between 8:30 AM and 7:30 PM.",
+                detail="Attendance can only be marked between 10:00 AM and 10:30 AM.",
             )
         existing = await self.attendance_repo.find_by_employee_and_date(employee_id, today)
         if existing:
