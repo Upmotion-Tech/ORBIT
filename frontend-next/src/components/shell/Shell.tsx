@@ -30,6 +30,8 @@ import {
   todayISO,
   PKT_TZ,
   attendanceWindowNow,
+  ATTENDANCE_WINDOW_LABEL,
+  ATTENDANCE_ON_TIME_LABEL,
 } from "@/lib/orbit-client";
 import { SidebarSection, Icon, Avatar } from "@/design-system/healer-bundle";
 import SmoothScroll from "./SmoothScroll";
@@ -121,7 +123,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   // Recomputed on every render — Shell already re-renders every second for
   // the live clock (see `now`/setInterval below), so this naturally stays
   // current without its own ticker.
-  const { isWeekend, isWithinHours, isBeforeWindow, isAfterWindow, isHoliday, holidayName, canMark } = attendanceWindowNow(holidays);
+  const { isWeekend, isWithinHours, isLateWindow, isBeforeWindow, isAfterWindow, isHoliday, holidayName, canMark } = attendanceWindowNow(holidays);
 
   // Once the window closes with nothing marked, the outcome is already
   // determined — but the server won't write the row until the 23:55 sweep
@@ -170,13 +172,17 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     // Marked wins over the window from here down — marking at 10:08 should
     // still read "Attendance marked" at 6 PM, not "Outside Hours".
     if (attendanceMarkedToday) return { label: "Attendance marked", icon: "circle-check", aria: "Attendance marked for today", title: "Attendance already marked for today", cls: " is-done" };
-    if (isBeforeWindow) return { label: "Attendance Slot 10:00 AM–10:30 AM", icon: "clock", aria: "Attendance slot opens at 10:00 AM", title: "Attendance can be marked between 10:00 AM and 10:30 AM", cls: " is-unavailable" };
+    if (isBeforeWindow) return { label: `Attendance Slot ${ATTENDANCE_WINDOW_LABEL}`, icon: "clock", aria: `Attendance slot opens at 10:00 AM`, title: `Attendance can be marked between ${ATTENDANCE_WINDOW_LABEL}`, cls: " is-unavailable" };
+    // Still fully markable past the on-time cutoff — the label warns that
+    // doing so now records Late rather than Present, instead of hiding it and
+    // letting the status be a surprise after the fact.
+    if (isLateWindow) return { label: "Mark Attendance (Late)", icon: "triangle-alert", aria: "Mark attendance — will be recorded as late", title: `On-time marking closed at ${ATTENDANCE_ON_TIME_LABEL}; marking now records Late`, cls: " is-pending" };
     if (isWithinHours) return { label: "Mark Attendance", icon: "clock", aria: "Mark attendance", title: undefined as string | undefined, cls: " is-pending" };
     // Past the window and unmarked: mirror run_end_of_day_sweep's own
     // WFH -> Leave -> Absent order, since that's what will land at 23:55.
     if (myApprovedWfhToday) return { label: "WFH", icon: "circle-check", aria: "Working from home today", title: "Approved work-from-home day — no attendance needed", cls: " is-done" };
     if (myApprovedLeaveToday) return { label: "On Leave", icon: "calendar", aria: "On approved leave today", title: "Approved leave — no attendance needed", cls: " is-done" };
-    return { label: "Absent", icon: "triangle-alert", aria: "Absent — attendance window closed", title: "The 10:00 AM–10:30 AM window closed with no attendance marked", cls: " is-unavailable" };
+    return { label: "Absent", icon: "triangle-alert", aria: "Absent — attendance window closed", title: `The ${ATTENDANCE_WINDOW_LABEL} window closed with no attendance marked`, cls: " is-unavailable" };
   })();
 
   useEffect(() => {
@@ -207,10 +213,17 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     if (marking || attendanceMarkedToday || !canMark) return;
     setMarking(true);
     attendanceApi.mark().then(
-      () => {
+      (rec: { status?: string }) => {
         setMarking(false);
         setAttendanceMarkedToday(true);
-        pushToast("Attendance marked for today.");
+        // Echo the status the server actually recorded — it owns the on-time
+        // cutoff, and an approved WFH day comes back "WFH" whatever the time.
+        pushToast(
+          rec?.status === "Late" ? "Attendance marked — recorded as Late."
+          : rec?.status === "WFH" ? "Attendance marked — recorded as Work From Home."
+          : "Attendance marked for today.",
+          rec?.status === "Late" ? "warning" : undefined
+        );
       },
       (err: Error) => {
         setMarking(false);

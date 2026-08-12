@@ -8,6 +8,16 @@ from app.repositories.attendance_repository import AttendanceRepository
 from app.repositories.employee_repository import EmployeeRepository
 from app.schemas.attendance import AttendanceResponse, TodayAttendanceRow
 
+# Attendance marking window, PKT minutes-since-midnight. Marking is accepted
+# anywhere in [OPEN, CLOSE); at or after ON_TIME_CUTOFF the record is written
+# as "Late" instead of "Present". Named constants rather than inline
+# arithmetic because these three boundaries are the whole policy, and the
+# frontend mirrors them in attendanceWindowNow (orbit-client.js) — if they
+# ever change, both sides have to move together.
+WINDOW_OPEN_MIN = 10 * 60          # 10:00 AM
+ON_TIME_CUTOFF_MIN = 10 * 60 + 40  # 10:40 AM
+WINDOW_CLOSE_MIN = 19 * 60         # 7:00 PM
+
 
 class AttendanceService:
     def __init__(
@@ -70,16 +80,18 @@ class AttendanceService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Attendance can't be marked on weekends — Saturday and Sunday aren't working days.",
             )
-        # Marking window: 10:00 AM - 10:30 AM PKT on a working day. Same
-        # "frontend greys it out, backend actually enforces it" reasoning as
-        # the weekend check above. Minute-precision since the boundaries
-        # aren't on the hour.
+        # Marking window: 10:00 AM - 7:00 PM PKT on a working day, with an
+        # on-time cutoff at 10:40 AM — mark at or after that and the record
+        # says "Late" rather than "Present". Same "frontend greys it out,
+        # backend actually enforces it" reasoning as the weekend check above.
+        # Minute-precision since none of the boundaries are on the hour.
         current_minutes = now.hour * 60 + now.minute
-        if not (10 * 60 <= current_minutes < 10 * 60 + 30):
+        if not (WINDOW_OPEN_MIN <= current_minutes < WINDOW_CLOSE_MIN):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Attendance can only be marked between 10:00 AM and 10:30 AM.",
+                detail="Attendance can only be marked between 10:00 AM and 7:00 PM.",
             )
+        is_late = current_minutes >= ON_TIME_CUTOFF_MIN
         existing = await self.attendance_repo.find_by_employee_and_date(employee_id, today)
         if existing:
             # Idempotent — re-clicking Mark Attendance after already marking
@@ -96,12 +108,14 @@ class AttendanceService:
         # even when the employee proactively marks attendance instead of
         # being picked up by run_end_of_day_sweep's own WFH check below —
         # same rule, just enforced at the earlier of the two points it can
-        # apply.
+        # apply. WFH also outranks "Late": the status column holds one value,
+        # and on an approved work-from-home day the fact that it was approved
+        # WFH is the thing worth keeping, not what time they checked in.
         wfh = await self.wfh_repo.find_approved_for_employee_and_date(employee_id, today) if self.wfh_repo else None
         record = await self.attendance_repo.create({
             "employee_id": employee_id,
             "date": today,
-            "status": "WFH" if wfh else "Present",
+            "status": "WFH" if wfh else "Late" if is_late else "Present",
             "marked_at": now_pkt(),
         })
         return AttendanceResponse(

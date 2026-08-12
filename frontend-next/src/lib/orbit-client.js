@@ -739,25 +739,40 @@ function todayISO() {
 // wall-clock day-of-week/hour independent of the browser's own timezone,
 // the same trick todayISO() above uses for the PKT calendar date. Mirrors
 // the backend's own enforcement in AttendanceService.mark_attendance exactly
-// (holiday check + weekday check + 10:00 AM-10:30 AM window) — this is just
+// (holiday check + weekday check + 10:00 AM-7:00 PM window) — this is just
 // for the UI to grey the button out proactively instead of only finding out
 // from a 400. `holidays` is the list from AppDataContext (each with `date`/
 // `end_date` as "YYYY-MM-DD" strings, `end_date` null for a single-day
 // holiday) — lexicographic comparison of ISO date strings works correctly
 // here since they're all the same YYYY-MM-DD format.
+const ATTENDANCE_WINDOW_OPEN_MIN = 10 * 60;          // 10:00 AM
+const ATTENDANCE_ON_TIME_CUTOFF_MIN = 10 * 60 + 40;  // 10:40 AM — at/after this, marking records "Late"
+const ATTENDANCE_WINDOW_CLOSE_MIN = 19 * 60;         // 7:00 PM
+// Single source for the human-readable slot, so the several places that
+// mention it in copy can't drift from the numbers above.
+const ATTENDANCE_WINDOW_LABEL = '10:00 AM – 7:00 PM';
+const ATTENDANCE_ON_TIME_LABEL = '10:40 AM';
+
 function attendanceWindowNow(holidays) {
   const d = new Date(Date.now() + 5 * 3600 * 1000);
   const dayOfWeek = d.getUTCDay(); // 0=Sun ... 6=Sat
   const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-  // Minute-precision since the window boundaries aren't on the hour.
+  // Minute-precision since none of the boundaries are on the hour. These
+  // three must stay in step with WINDOW_OPEN_MIN / ON_TIME_CUTOFF_MIN /
+  // WINDOW_CLOSE_MIN in the backend's attendance_service.py — that's the
+  // enforcing copy, this one only drives the button state.
   const currentMinutes = d.getUTCHours() * 60 + d.getUTCMinutes();
-  const isWithinHours = currentMinutes >= (10 * 60) && currentMinutes < (10 * 60 + 30);
+  const isWithinHours = currentMinutes >= ATTENDANCE_WINDOW_OPEN_MIN && currentMinutes < ATTENDANCE_WINDOW_CLOSE_MIN;
+  // Marking is still accepted past the on-time cutoff, right up to close —
+  // it just records "Late" instead of "Present". So this is NOT part of
+  // canMark; it only changes what the button says.
+  const isLateWindow = isWithinHours && currentMinutes >= ATTENDANCE_ON_TIME_CUTOFF_MIN;
   // "Outside the window" splits into two states that read very differently to
   // a user: before it opens the slot is still ahead of you (show when it is),
   // after it closes the chance is gone (you're absent). isWithinHours alone
   // couldn't tell those apart.
-  const isBeforeWindow = currentMinutes < (10 * 60);
-  const isAfterWindow = currentMinutes >= (10 * 60 + 30);
+  const isBeforeWindow = currentMinutes < ATTENDANCE_WINDOW_OPEN_MIN;
+  const isAfterWindow = currentMinutes >= ATTENDANCE_WINDOW_CLOSE_MIN;
   const todayIso = todayISO();
   const holiday = (holidays || []).find((h) => {
     const start = h.date;
@@ -766,7 +781,7 @@ function attendanceWindowNow(holidays) {
   }) || null;
   const isHoliday = !!holiday;
   return {
-    isWeekend, isWithinHours, isBeforeWindow, isAfterWindow,
+    isWeekend, isWithinHours, isLateWindow, isBeforeWindow, isAfterWindow,
     isHoliday, holidayName: holiday ? holiday.name : null,
     canMark: !isWeekend && isWithinHours && !isHoliday,
   };
@@ -1276,6 +1291,8 @@ export {
   PKT_TZ,
   todayISO,
   attendanceWindowNow,
+  ATTENDANCE_WINDOW_LABEL,
+  ATTENDANCE_ON_TIME_LABEL,
   addDaysISO,
   // employee id <-> name cache
   setEmployeeCache,

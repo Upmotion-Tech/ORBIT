@@ -5,7 +5,7 @@
 // (script.js:5166-5210).
 
 import { useEffect, useState } from "react";
-import { attendanceApi, todayISO, formatCommentTimestamp, attendanceWindowNow } from "@/lib/orbit-client";
+import { attendanceApi, todayISO, formatCommentTimestamp, attendanceWindowNow, ATTENDANCE_WINDOW_LABEL, ATTENDANCE_ON_TIME_LABEL } from "@/lib/orbit-client";
 import { useToast } from "@/lib/toast-context";
 import { useAppData } from "@/lib/app-data-context";
 import { Button, Icon, Badge } from "@/design-system/healer-bundle";
@@ -21,7 +21,7 @@ function monthLabelFrom(ym: string) {
   return d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
 }
 function attendanceStatusTone(st: string) {
-  return st === "Present" ? "success" : st === "Absent" ? "danger" : st === "WFH" ? "info" : st === "Leave" ? "warning" : st === "Holiday" ? "info" : "neutral";
+  return st === "Present" ? "success" : st === "Absent" ? "danger" : st === "Late" ? "warning" : st === "WFH" ? "info" : st === "Leave" ? "warning" : st === "Holiday" ? "info" : "neutral";
 }
 
 export default function MeAttendancePage() {
@@ -88,7 +88,7 @@ export default function MeAttendancePage() {
   }, []);
 
   const attendanceTodayIso = todayISO();
-  const { isWeekend, isWithinHours, isHoliday, holidayName, canMark } = attendanceWindowNow(holidays);
+  const { isWeekend, isWithinHours, isLateWindow, isHoliday, holidayName, canMark } = attendanceWindowNow(holidays);
   // get_my_attendance also synthesizes a "Holiday" row for a holiday date
   // with no real record — that's not a genuine mark, so exclude it here or
   // a holiday would look like "already marked present".
@@ -104,6 +104,7 @@ export default function MeAttendancePage() {
   const cardIconColor = hasMarkedToday ? "var(--status-success-text)" : !canMark ? "var(--text-muted)" : "var(--status-warning-text)";
 
   const presentCount = records.filter((r) => r.status === "Present").length;
+  const lateCount = records.filter((r) => r.status === "Late").length;
   const absentCount = records.filter((r) => r.status === "Absent").length;
   const wfhCount = records.filter((r) => r.status === "WFH").length;
   const leaveCount = records.filter((r) => r.status === "Leave").length;
@@ -121,9 +122,17 @@ export default function MeAttendancePage() {
     if (marking || !canMark) return;
     setMarking(true);
     attendanceApi.mark().then(
-      () => {
+      (rec: AttendanceRecord) => {
         setMarking(false);
-        pushToast("Attendance marked for today.");
+        // Report the status the server actually wrote rather than inferring
+        // it from the clock here — the backend owns the on-time cutoff, and
+        // an approved WFH day comes back "WFH" no matter what time it is.
+        pushToast(
+          rec?.status === "Late" ? "Attendance marked — recorded as Late."
+          : rec?.status === "WFH" ? "Attendance marked — recorded as Work From Home."
+          : "Attendance marked for today.",
+          rec?.status === "Late" ? "warning" : undefined
+        );
         load();
         // The card reads todayRecords, not records, so it needs its own
         // refresh — otherwise it keeps saying "not marked" until a reload.
@@ -149,14 +158,17 @@ export default function MeAttendancePage() {
             {hasMarkedToday && <div style={{ fontSize: 15, fontWeight: 600, color: "var(--status-success-text)" }}>Marked present today at {markedTodayStr}</div>}
             {!hasMarkedToday && isHoliday && <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-secondary)" }}>Holiday — {holidayName}. No attendance required today.</div>}
             {!hasMarkedToday && !isHoliday && isWeekend && <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-secondary)" }}>Weekend — no attendance required today.</div>}
-            {!hasMarkedToday && !isHoliday && !isWeekend && !isWithinHours && <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-secondary)" }}>Attendance can only be marked between 10:00 AM and 10:30 AM.</div>}
-            {!hasMarkedToday && !isHoliday && !isWeekend && isWithinHours && <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-primary)" }}>You haven&apos;t marked attendance today yet.</div>}
+            {!hasMarkedToday && !isHoliday && !isWeekend && !isWithinHours && <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-secondary)" }}>Attendance can only be marked between {ATTENDANCE_WINDOW_LABEL}.</div>}
+            {/* Past the on-time cutoff but still open — say plainly that marking
+                now records Late, rather than letting it be a surprise after. */}
+            {!hasMarkedToday && !isHoliday && !isWeekend && isLateWindow && <div style={{ fontSize: 15, fontWeight: 600, color: "var(--status-warning-text)" }}>You haven&apos;t marked attendance yet — marking now records as <strong>Late</strong>.</div>}
+            {!hasMarkedToday && !isHoliday && !isWeekend && isWithinHours && !isLateWindow && <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-primary)" }}>You haven&apos;t marked attendance today yet.</div>}
             {/* Short, always-visible reminder of the marking window — not just something you discover once you're blocked. */}
-            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>Attendance can only be marked between 10:00 AM – 10:30 AM, Mon–Fri.</div>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>Attendance can be marked {ATTENDANCE_WINDOW_LABEL}, Mon–Fri. On time until {ATTENDANCE_ON_TIME_LABEL}.</div>
           </div>
         </div>
         {!hasMarkedToday && canMark && (
-          <Button variant="primary" onClick={markAttendance}>Mark Attendance</Button>
+          <Button variant="primary" onClick={markAttendance}>{isLateWindow ? "Mark Attendance (Late)" : "Mark Attendance"}</Button>
         )}
         {!hasMarkedToday && !canMark && (
           <Button variant="secondary" disabled>Mark Attendance</Button>
@@ -165,10 +177,17 @@ export default function MeAttendancePage() {
 
       <div>
         <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 10 }}>{monthLabelFrom(month)} summary</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 24 }}>
+        {/* Five tiles since Late joined the set (was four). auto-fit rather
+            than a fixed repeat(5,1fr) so the extra tile wraps instead of
+            squeezing all five onto a phone-width row. */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 24 }}>
           <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-card)", padding: 18 }}>
             <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 6 }}>Present</div>
             <div style={{ fontSize: 28, fontWeight: 700, color: "var(--status-success-text)" }}>{presentCount}</div>
+          </div>
+          <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-card)", padding: 18 }}>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 6 }}>Late</div>
+            <div style={{ fontSize: 28, fontWeight: 700, color: "var(--status-warning-text)" }}>{lateCount}</div>
           </div>
           <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 12, boxShadow: "var(--shadow-card)", padding: 18 }}>
             <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 6 }}>Absent</div>

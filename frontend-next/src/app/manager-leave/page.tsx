@@ -41,7 +41,7 @@ type Wfh = {
 type AttendanceRecord = { employee_id: string; date: string; status: string; marked_at?: string | null };
 
 function attendanceStatusTone(st: string) {
-  return st === "Present" ? "success" : st === "Absent" ? "danger" : st === "WFH" ? "info" : "neutral";
+  return st === "Present" ? "success" : st === "Absent" ? "danger" : st === "Late" ? "warning" : st === "WFH" ? "info" : "neutral";
 }
 
 export default function ManagerLeavePage() {

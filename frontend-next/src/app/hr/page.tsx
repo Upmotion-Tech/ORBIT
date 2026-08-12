@@ -759,6 +759,7 @@ function HrPageContent() {
         employee: e.name,
         dept: e.department as string,
         present: countOf("Present"),
+        late: countOf("Late"),
         absent: countOf("Absent"),
         wfh: countOf("WFH"),
         leave: countOf("Leave"),
@@ -801,7 +802,7 @@ function HrPageContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, attendanceMonth, attendanceEmployeeFilter, holidays]);
 
-  const attendanceStatusTone = (st: string) => (st === "Present" ? "success" : st === "Absent" ? "danger" : st === "WFH" ? "info" : st === "Leave" ? "warning" : st === "Holiday" ? "info" : "neutral");
+  const attendanceStatusTone = (st: string) => (st === "Present" ? "success" : st === "Absent" ? "danger" : st === "Late" ? "warning" : st === "WFH" ? "info" : st === "Leave" ? "warning" : st === "Holiday" ? "info" : "neutral");
   const attendanceEmployeeOptions = [{ value: "", label: "All employees" }, ...employees.map((e) => ({ value: e.id, label: e.name }))];
   // History is organized one day at a time (Back/Next step through actual
   // calendar days) rather than a flat list of every record in the month —
@@ -980,6 +981,7 @@ function HrPageContent() {
                 <th style={thStyle}>Employee</th>
                 <th style={thStyle}>Department</th>
                 <th style={thStyle}>Present</th>
+                <th style={thStyle}>Late</th>
                 <th style={thStyle}>Absent</th>
                 <th style={thStyle}>WFH</th>
                 <th style={thStyle}>Leave</th>
@@ -1008,6 +1010,7 @@ function HrPageContent() {
                       <td style={{ padding: "14px 16px", fontSize: 14, color: "var(--text-primary)", fontWeight: 500 }}>{sr.employee}</td>
                       <td style={{ padding: "14px 16px", fontSize: 13.5, color: "var(--text-secondary)" }}>{sr.dept}</td>
                       {countCell(sr.present, "Present", "var(--status-success-text)")}
+                      {countCell(sr.late, "Late", "var(--status-warning-text)")}
                       {countCell(sr.absent, "Absent", "var(--status-danger-text)")}
                       {countCell(sr.wfh, "WFH", "var(--brand-primary)")}
                       {countCell(sr.leave, "Leave", "var(--status-warning-text)")}
