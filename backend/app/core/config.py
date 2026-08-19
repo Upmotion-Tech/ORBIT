@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     # key as "not configured" and returns a friendly error rather than
     # crashing, same pattern as smtp_* above.
     groq_api: Optional[str] = None
-    groq_model: str = "llama-3.3-70b-versatile"
+    groq_model: str = "openai/gpt-oss-120b"
 
     # extra="ignore": .env sometimes picks up unrelated keys (e.g. an API key
     # for some other tool/experiment on the same machine) that aren't part of
