@@ -9,6 +9,8 @@ from app.repositories.wfh_request_repository import WfhRequestRepository
 from app.repositories.employee_repository import EmployeeRepository
 from app.schemas.wfh_request import WfhRequestResponse
 
+HALF_DAY_VALUES = {"First Half", "Second Half"}
+
 
 class WfhRequestService:
     def __init__(
@@ -32,23 +34,39 @@ class WfhRequestService:
             return req.date.strftime("%d %b %Y")
         return f"{req.date.strftime('%d %b %Y')} - {req.end_date.strftime('%d %b %Y')}"
 
+    @staticmethod
+    def _validate_half_day(half_day: Optional[str], day: date, end_day: Optional[date]) -> None:
+        if not half_day:
+            return
+        if half_day not in HALF_DAY_VALUES:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail='half_day must be "First Half" or "Second Half".',
+            )
+        if end_day and end_day != day:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="A half-day request can only cover a single day, not a date range.",
+            )
+
     def _to_response(self, req, employee) -> WfhRequestResponse:
         # end_date stays None for a single-day request rather than being
         # echoed back as a copy of `date` — the frontend keys off exactly
         # that to decide whether to render "3 Aug" or "3 Aug — 5 Aug".
         last_day = req.end_date or req.date
+        days = 0.5 if req.half_day else (last_day - req.date).days + 1
         return WfhRequestResponse(
             id=req.id, employee_id=req.employee_id,
             employee_name=employee.name if employee else None,
             employee_department=employee.department if employee else None,
-            date=req.date, end_date=req.end_date,
-            days=(last_day - req.date).days + 1,
+            date=req.date, end_date=req.end_date, half_day=req.half_day,
+            days=days,
             description=req.description, status=req.status,
             decision_note=req.decision_note, decided_by=req.decided_by, decided_at=req.decided_at,
             created_at=req.created_at,
         )
 
-    async def create_request(self, employee_id: str, day: date, description: Optional[str], user: str = "anonymous", end_day: Optional[date] = None) -> WfhRequestResponse:
+    async def create_request(self, employee_id: str, day: date, description: Optional[str], user: str = "anonymous", end_day: Optional[date] = None, half_day: Optional[str] = None) -> WfhRequestResponse:
         employee = await self.employee_repo.find_by_id(employee_id)
         if not employee:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found.")
@@ -65,6 +83,7 @@ class WfhRequestService:
                 )
             if end_day == day:
                 end_day = None
+        self._validate_half_day(half_day, day, end_day)
 
         last_day = end_day or day
         existing = await self.wfh_repo.find_overlapping_for_employee(employee_id, day, last_day)
@@ -83,6 +102,7 @@ class WfhRequestService:
             "employee_id": employee_id,
             "date": day,
             "end_date": end_day,
+            "half_day": half_day,
             "description": description,
             "status": "Pending",
         })
@@ -145,6 +165,8 @@ class WfhRequestService:
                 )
             if end_day == day:
                 end_day = None
+        half_day = data.get("half_day") if "half_day" in data else req.half_day
+        self._validate_half_day(half_day, day, end_day)
 
         # Same overlap rule as create_request, but this request's own row
         # must not count as a conflict with itself.
@@ -162,6 +184,7 @@ class WfhRequestService:
 
         data["date"] = day
         data["end_date"] = end_day
+        data["half_day"] = half_day
         req = await self.wfh_repo.update(req, data)
         employee = await self.employee_repo.find_by_id(req.employee_id)
         return self._to_response(req, employee)
@@ -172,15 +195,18 @@ class WfhRequestService:
 
     async def _apply_attendance_effect(self, req) -> None:
         # Retroactively fix existing attendance rows across the request's
-        # whole range (e.g. ones the end-of-day sweep already marked Absent,
-        # or a day the employee marked Present while this was still Pending,
-        # before it was approved) — going forward, the sweep and
-        # mark_attendance both check for an approved WFH request covering
-        # the day, so this only matters for days already passed by the time
-        # approval lands. Walks day by day rather than issuing one bulk
-        # UPDATE, since a range is a handful of days at most and this reuses
-        # the same per-day repo calls the single-day version already used.
-        if not self.attendance_repo:
+        # whole range (e.g. one the end-of-day sweep already marked Absent
+        # before this request was approved) — this only matters for a
+        # request approved after its own date(s) already passed.
+        #
+        # Only for a FULL-day request (half_day is None). A half-day WFH
+        # doesn't excuse the employee from checking in for the other,
+        # required half — AttendanceService still expects a real mark_attendance
+        # call for that half, timed against its own slot, and that's what
+        # should end up in the record (Present/Late/Absent), not a blanket
+        # "WFH" overwrite. Full-day WFH still gets this fix-up since there's
+        # no other half to account for.
+        if not self.attendance_repo or req.half_day:
             return
         day = req.date
         last_day = req.end_date or req.date

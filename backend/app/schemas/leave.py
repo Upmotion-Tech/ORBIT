@@ -11,6 +11,10 @@ class LeaveCreate(BaseModel):
     leave_type: str = Field(..., max_length=50)
     start_date: date
     end_date: Optional[date] = None
+    # "First Half" / "Second Half" / omitted (full day). Only valid alongside
+    # a single day (no end_date, or end_date == start_date) — LeaveService
+    # rejects it paired with a real range.
+    half_day: Optional[str] = None
     reason: Optional[str] = None
 
 
@@ -21,6 +25,7 @@ class LeaveUpdate(BaseModel):
     leave_type: Optional[str] = Field(None, max_length=50)
     start_date: Optional[date] = None
     end_date: Optional[date] = None
+    half_day: Optional[str] = None
     reason: Optional[str] = None
 
 
@@ -35,7 +40,8 @@ class LeaveResponse(BaseModel):
     leave_type: str
     start_date: date
     end_date: Optional[date] = None
-    days: int
+    days: float
+    half_day: Optional[str] = None
     reason: Optional[str] = None
     status: str
     applied_at: Optional[datetime] = None
@@ -56,16 +62,18 @@ class LeaveResponse(BaseModel):
 
 
 class LeaveBalanceResponse(BaseModel):
+    # Float, not int — a half-day request contributes 0.5 to *_used/pending,
+    # which then also makes *_remaining potentially fractional.
     employee_id: str
-    casual_used: int = 0
-    casual_pending: int = 0
-    casual_remaining: int = 0
-    sick_used: int = 0
-    sick_pending: int = 0
-    sick_remaining: int = 0
-    annual_used: int = 0
-    annual_pending: int = 0
-    annual_remaining: int = 0
-    total_used: int = 0
-    total_pending: int = 0
-    total_remaining: int = 0
+    casual_used: float = 0
+    casual_pending: float = 0
+    casual_remaining: float = 0
+    sick_used: float = 0
+    sick_pending: float = 0
+    sick_remaining: float = 0
+    annual_used: float = 0
+    annual_pending: float = 0
+    annual_remaining: float = 0
+    total_used: float = 0
+    total_pending: float = 0
+    total_remaining: float = 0

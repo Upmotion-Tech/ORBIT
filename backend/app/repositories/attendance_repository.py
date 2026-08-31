@@ -11,13 +11,28 @@ class AttendanceRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def find_by_employee_and_date(self, employee_id: str, day: date) -> AttendanceRecord | None:
+    async def find_by_employee_and_date(self, employee_id: str, day: date, half_day: str | None = None) -> AttendanceRecord | None:
+        # half_day defaults to None (a normal, single full-day row) — every
+        # pre-existing caller passes only employee_id/day and keeps working
+        # unchanged. mark_attendance passes an explicit half when routing a
+        # click to a specific half's row on a half-day Leave/WFH day.
         result = await self.db.execute(
             select(AttendanceRecord).where(
-                and_(AttendanceRecord.employee_id == employee_id, AttendanceRecord.date == day)
+                and_(
+                    AttendanceRecord.employee_id == employee_id,
+                    AttendanceRecord.date == day,
+                    AttendanceRecord.half_day == half_day,
+                )
             )
         )
         return result.scalar_one_or_none()
+
+    async def find_all_for_date(self, day: date) -> list[AttendanceRecord]:
+        """Every row (any employee, any half) for one date — the sweep uses
+        this to know exactly which (employee, half) combinations are already
+        covered before deciding what's still missing."""
+        result = await self.db.execute(select(AttendanceRecord).where(AttendanceRecord.date == day))
+        return list(result.scalars().all())
 
     async def create(self, data: dict) -> AttendanceRecord:
         record = AttendanceRecord(**data)
@@ -45,19 +60,6 @@ class AttendanceRepository:
             query = query.where(AttendanceRecord.employee_id == employee_id)
         result = await self.db.execute(query)
         return [(r[0], r[1]) for r in result.all()]
-
-    async def find_active_employees_without_record(self, day: date) -> list[Employee]:
-        # Every active employee who has no attendance row at all for `day` —
-        # the exact set the end-of-day sweep needs to mark Absent.
-        subq = select(AttendanceRecord.employee_id).where(AttendanceRecord.date == day)
-        result = await self.db.execute(
-            select(Employee).where(
-                Employee.deleted_at.is_(None),
-                Employee.is_active.is_(True),
-                Employee.id.notin_(subq),
-            )
-        )
-        return list(result.scalars().all())
 
     async def erase_present_in_range(self, start: date, end: date) -> int:
         """Deletes any self-marked "Present" record whose date falls in

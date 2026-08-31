@@ -12,6 +12,10 @@ class AttendanceResponse(BaseModel):
     employee_name: Optional[str] = None
     employee_department: Optional[str] = None
     date: date
+    # Null = a normal, single full-day record. "First Half"/"Second Half"
+    # identifies which half this specific row covers on a half-day Leave/WFH
+    # day, where the SAME date can have two separate rows/statuses.
+    half_day: Optional[str] = None
     status: str
     marked_at: Optional[datetime] = None
     # Populated only when status == "Leave" — who approved the leave that

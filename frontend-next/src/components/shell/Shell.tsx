@@ -30,8 +30,7 @@ import {
   todayISO,
   PKT_TZ,
   attendanceWindowNow,
-  ATTENDANCE_WINDOW_LABEL,
-  ATTENDANCE_ON_TIME_LABEL,
+  attendanceChipNow,
 } from "@/lib/orbit-client";
 import { SidebarSection, Icon, Avatar } from "@/design-system/healer-bundle";
 import SmoothScroll from "./SmoothScroll";
@@ -118,27 +117,14 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   // mark_attendance) — already used by the My Attendance page's own button;
   // this is the same call, just reachable from anywhere instead of only
   // after navigating there.
-  const [attendanceMarkedToday, setAttendanceMarkedToday] = useState(false);
+  const [todaysAttendanceRecords, setTodaysAttendanceRecords] = useState<{ date: string; status: string; half_day?: string | null }[]>([]);
   const [marking, setMarking] = useState(false);
-  // Recomputed on every render — Shell already re-renders every second for
-  // the live clock (see `now`/setInterval below), so this naturally stays
-  // current without its own ticker.
-  const { isWeekend, isWithinHours, isLateWindow, isBeforeWindow, isAfterWindow, isHoliday, holidayName, canMark } = attendanceWindowNow(holidays);
+  const { isWeekend } = attendanceWindowNow(holidays);
 
-  // Once the window closes with nothing marked, the outcome is already
-  // determined — but the server won't write the row until the 23:55 sweep
-  // (main.py's _run_attendance_sweep), so between 10:30 and then there is no
-  // record to read and the chip has to work it out itself.
-  //
-  // run_end_of_day_sweep resolves in a specific order — approved WFH, then
-  // approved leave, then Absent — and this mirrors it exactly. Getting the
-  // order wrong (or skipping straight to "Absent") would tell someone with an
-  // approved leave day that they're absent, for the whole working day, until
-  // 23:55 quietly corrected it. They were never supposed to mark in the first
-  // place. Both lists are already loaded in AppDataProvider, so this costs no
-  // extra request.
-  // Both context types carry an index signature, so their date fields come
-  // through as `unknown` and need casting before comparison (the same gotcha
+  // Both lists are already loaded in AppDataProvider, so finding today's own
+  // approved WFH/Leave (if any) costs no extra request. Both context types
+  // carry an index signature, so their date fields come through as
+  // `unknown` and need casting before comparison (the same gotcha
   // frontend-next/CLAUDE.md lists). A null end_date means a single-day
   // request, matching find_approved_for_employee_and_date on the backend.
   const todayIsoStr = todayISO();
@@ -147,81 +133,64 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     const e = (end as string) || s;
     return !!s && s <= todayIsoStr && todayIsoStr <= e;
   };
-  const myApprovedWfhToday = allWfhRequests.some(
+  const myWfhToday = (allWfhRequests as unknown as { employee_id: string; status: string; date: unknown; end_date: unknown; half_day?: string | null }[]).find(
     (w) => w.employee_id === currentUser?.id && w.status === "Approved" && coversToday(w.date, w.end_date)
-  );
-  const myApprovedLeaveToday = leaves.some(
+  ) || null;
+  const myLeaveToday = (leaves as unknown as { employee_id: string; status: string; start_date: unknown; end_date: unknown; half_day?: string | null }[]).find(
     (l) => l.employee_id === currentUser?.id && l.status === "Approved" && coversToday(l.start_date, l.end_date)
-  );
+  ) || null;
 
-  // Label, icon, aria-label, title and style class each used to repeat their
-  // own copy of this precedence chain inline. That's exactly how "Attendance
-  // marked" became unreachable after 10:30 — the window check sat ahead of
-  // the marked check in some copies and the chain was long enough that it
-  // wasn't obvious. One object, five consumers, no drift.
-  //
-  // Icon names are resolved straight into a lucide CDN URL by the design
-  // system's Icon (healer-bundle.js), so a name that doesn't exist in
-  // lucide-static 0.400.0 renders a blank box rather than erroring — every
-  // name below is one already in use elsewhere in this app.
-  const attendanceChip = (() => {
-    if (marking) return { label: "Marking…", icon: "clock", aria: "Marking attendance", title: undefined as string | undefined, cls: " is-pending" };
-    // Neither is a working day, so nothing is expected and nothing is owed.
-    if (isHoliday) return { label: "Holiday", icon: "party-popper", aria: `Holiday — ${holidayName}`, title: `Holiday — ${holidayName}`, cls: " is-unavailable" };
-    if (isWeekend) return { label: "Weekend", icon: "moon", aria: "Weekend — attendance not required", title: "Weekend — no attendance needed today", cls: " is-unavailable" };
-    // Marked wins over the window from here down — marking at 10:08 should
-    // still read "Attendance marked" at 6 PM, not "Outside Hours".
-    if (attendanceMarkedToday) return { label: "Attendance marked", icon: "circle-check", aria: "Attendance marked for today", title: "Attendance already marked for today", cls: " is-done" };
-    if (isBeforeWindow) return { label: `Attendance Slot ${ATTENDANCE_WINDOW_LABEL}`, icon: "clock", aria: `Attendance slot opens at 10:00 AM`, title: `Attendance can be marked between ${ATTENDANCE_WINDOW_LABEL}`, cls: " is-unavailable" };
-    // Still fully markable past the on-time cutoff — the label warns that
-    // doing so now records Late rather than Present, instead of hiding it and
-    // letting the status be a surprise after the fact.
-    if (isLateWindow) return { label: "Mark Attendance (Late)", icon: "triangle-alert", aria: "Mark attendance — will be recorded as late", title: `On-time marking closed at ${ATTENDANCE_ON_TIME_LABEL}; marking now records Late`, cls: " is-pending" };
-    if (isWithinHours) return { label: "Mark Attendance", icon: "clock", aria: "Mark attendance", title: undefined as string | undefined, cls: " is-pending" };
-    // Past the window and unmarked: mirror run_end_of_day_sweep's own
-    // WFH -> Leave -> Absent order, since that's what will land at 23:55.
-    if (myApprovedWfhToday) return { label: "WFH", icon: "circle-check", aria: "Working from home today", title: "Approved work-from-home day — no attendance needed", cls: " is-done" };
-    if (myApprovedLeaveToday) return { label: "On Leave", icon: "calendar", aria: "On approved leave today", title: "Approved leave — no attendance needed", cls: " is-done" };
-    return { label: "Absent", icon: "triangle-alert", aria: "Absent — attendance window closed", title: `The ${ATTENDANCE_WINDOW_LABEL} window closed with no attendance marked`, cls: " is-unavailable" };
-  })();
+  // attendanceChipNow (orbit-client.js) owns the whole label/icon/aria/
+  // title/cls/canMark precedence chain, half-day-aware, shared verbatim with
+  // My Attendance's own button — one function, every consumer reads it, so
+  // the two can't drift from each other the way separately-copied chains did.
+  const chip = attendanceChipNow(holidays, myWfhToday, myLeaveToday, todaysAttendanceRecords, marking);
 
-  useEffect(() => {
-    // Still worth fetching even outside the 10:00 AM-10:30 AM window (but not on a
-    // weekend, when there's never anything to find) — the label itself
-    // switches to "Outside Hours" once the window closes regardless of
-    // whether they already marked (see the button below), but this is
-    // still what keeps the button correctly disabled so it can't be
-    // clicked again. Re-runs whenever `holidays` changes too (e.g. right
-    // after Setup creates one covering today) so a same-day retroactive
-    // holiday's server-side erasure of an existing "Present" row is
-    // reflected here promptly rather than only on next login.
+  const loadTodaysAttendance = () => {
     if (!currentUser?.id || isWeekend) return;
     const today = new Date();
     attendanceApi.me(today.getFullYear(), today.getMonth() + 1).then(
-      (records: { date: string; status: string }[]) => {
+      (records: { date: string; status: string; half_day?: string | null }[]) => {
         // get_my_attendance also synthesizes a "Holiday" row for a holiday
         // date with no real record — that's not a genuine mark, so exclude
         // it or a holiday would look like "already marked".
-        setAttendanceMarkedToday((records || []).some((r) => r.date === todayISO() && r.status !== "Holiday"));
+        setTodaysAttendanceRecords((records || []).filter((r) => r.date === todayISO() && r.status !== "Holiday"));
       },
       () => {}
     );
+  };
+  useEffect(() => {
+    // Still worth fetching even outside the marking window (but not on a
+    // weekend, when there's never anything to find) — the chip's label
+    // switches to reflect the window regardless of whether it's already
+    // marked, but this is still what keeps the button correctly disabled so
+    // an already-marked half can't be clicked again. Re-runs whenever
+    // `holidays` changes too (e.g. right after Setup creates one covering
+    // today) so a same-day retroactive holiday's server-side erasure of an
+    // existing "Present" row is reflected here promptly rather than only on
+    // next login.
+    loadTodaysAttendance();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser?.id, holidays]);
 
   const markAttendance = () => {
-    if (marking || attendanceMarkedToday || !canMark) return;
+    if (marking || !chip.canMark) return;
     setMarking(true);
     attendanceApi.mark().then(
-      (rec: { status?: string }) => {
+      (rec: { status?: string; half_day?: string | null }) => {
         setMarking(false);
-        setAttendanceMarkedToday(true);
+        // Re-fetch rather than optimistically append — a half-day WFH day
+        // can still have a second slot left to mark, and re-fetching is the
+        // simplest way to get the chip back to a state that matches exactly
+        // what the server now holds, same as before this click.
+        loadTodaysAttendance();
+        const halfSuffix = rec?.half_day ? ` (${rec.half_day})` : "";
         // Echo the status the server actually recorded — it owns the on-time
-        // cutoff, and an approved WFH day comes back "WFH" whatever the time.
+        // cutoff, and an approved WFH slot comes back "WFH" whatever the time.
         pushToast(
-          rec?.status === "Late" ? "Attendance marked — recorded as Late."
-          : rec?.status === "WFH" ? "Attendance marked — recorded as Work From Home."
-          : "Attendance marked for today.",
+          rec?.status === "Late" ? `Attendance marked — recorded as Late${halfSuffix}.`
+          : rec?.status === "WFH" ? `Attendance marked — recorded as Work From Home${halfSuffix}.`
+          : `Attendance marked for today${halfSuffix}.`,
           rec?.status === "Late" ? "warning" : undefined
         );
       },
@@ -709,16 +678,16 @@ export default function Shell({ children }: { children: React.ReactNode }) {
 
             <button
               onClick={markAttendance}
-              disabled={marking || attendanceMarkedToday || !canMark}
+              disabled={marking || !chip.canMark}
               style={{ marginLeft: "auto" }}
-              aria-label={attendanceChip.aria}
-              title={attendanceChip.title}
-              className={"orbit-attendance-btn" + attendanceChip.cls + (marking ? " is-marking" : "")}
+              aria-label={chip.aria}
+              title={chip.title}
+              className={"orbit-attendance-btn" + chip.cls + (marking ? " is-marking" : "")}
             >
               <span className="orbit-attendance-icon-badge">
-                <Icon name={attendanceChip.icon} size={13} color="#fff" />
+                <Icon name={chip.icon} size={13} color="#fff" />
               </span>
-              <span className="orbit-attendance-label">{attendanceChip.label}</span>
+              <span className="orbit-attendance-label">{chip.label}</span>
             </button>
 
             <div ref={notifWrapRef} className="orbit-notif-wrap" style={{ position: "relative" }}>

@@ -72,11 +72,11 @@ type LeaveBalance = { casual_remaining: number; sick_remaining: number; annual_r
 type Leave = {
   id: string; employee_id: string; employee_name?: string; leave_type: string; status: string; start_date: string;
   end_date?: string | null; days: number; reason?: string; approval_note?: string; rejection_reason?: string; created_at?: string;
-  approved_by_id?: string | null; approved_at?: string | null;
+  approved_by_id?: string | null; approved_at?: string | null; half_day?: string | null;
 };
 type Wfh = {
   id: string; employee_id: string; employee_name?: string; date: string; end_date?: string | null; days?: number; status: string; description?: string; decision_note?: string; created_at?: string;
-  decided_by?: string | null; decided_at?: string | null;
+  decided_by?: string | null; decided_at?: string | null; half_day?: string | null;
 };
 type Opening = { id: string; title: string; department: string; opened_at?: string; candidate_count?: number; status: string; salary_bracket?: string; experience?: string; description?: string };
 type Candidate = { id: string; name: string; rating?: number; applied_date?: string; stage: string; resume_url?: string; notes?: string };

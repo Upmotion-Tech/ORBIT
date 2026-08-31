@@ -786,6 +786,180 @@ function attendanceWindowNow(holidays) {
     canMark: !isWeekend && isWithinHours && !isHoliday,
   };
 }
+
+// (start, end) PKT minutes-since-midnight of each half's own slot — mirrors
+// the backend's SLOT_RANGE in attendance_service.py exactly. First Half
+// 10:00 AM-3:00 PM, Second Half 3:00-7:00 PM.
+const HALF_SLOT_RANGE = {
+  'First Half': [ATTENDANCE_WINDOW_OPEN_MIN, 15 * 60],
+  'Second Half': [15 * 60, ATTENDANCE_WINDOW_CLOSE_MIN],
+};
+function otherHalf(half) { return half === 'First Half' ? 'Second Half' : 'First Half'; }
+
+// Which slot(s) actually need an active mark_attendance click today, given
+// the employee's own approved WFH/Leave covering today (if any) — pure data,
+// no time-of-day or record state yet. Extracted out of attendanceChipNow so
+// attendanceSlotChipsNow (below) can build its own per-slot view off the
+// exact same slot definitions instead of re-deriving them and risking drift.
+function _attendanceSlotDefs(myWfhToday, myLeaveToday) {
+  const wfhHalf = myWfhToday && myWfhToday.half_day ? myWfhToday.half_day : null;
+  const leaveHalf = !wfhHalf && myLeaveToday && myLeaveToday.half_day ? myLeaveToday.half_day : null;
+  const isFullDayWfh = !!myWfhToday && !myWfhToday.half_day;
+  // A full-day approved Leave needs no marking at all — same as the leave
+  // half of a half-day Leave day, just for the whole day. Only reached once
+  // neither a half-day WFH nor a half-day Leave applies, and skipped if a
+  // full-day WFH is ALSO approved for today (nothing currently prevents
+  // that combination at request time) so that still-legitimate WFH mark
+  // isn't blocked — matches mark_attendance's own precedence exactly.
+  const isFullDayLeaveOnly = !wfhHalf && !leaveHalf && !!myLeaveToday && !myLeaveToday.half_day && !isFullDayWfh;
+
+  if (wfhHalf) {
+    const officeHalf = otherHalf(wfhHalf);
+    const [wOpen, wClose] = HALF_SLOT_RANGE[wfhHalf];
+    const [oOpen, oClose] = HALF_SLOT_RANGE[officeHalf];
+    return [
+      { half: wfhHalf, kind: 'wfh', open: wOpen, close: wClose, cutoff: null },
+      { half: officeHalf, kind: 'office', open: oOpen, close: oClose, cutoff: oOpen + 40 },
+    ];
+  }
+  if (leaveHalf) {
+    const officeHalf = otherHalf(leaveHalf);
+    const [oOpen, oClose] = HALF_SLOT_RANGE[officeHalf];
+    return [{ half: officeHalf, kind: 'office', open: oOpen, close: oClose, cutoff: oOpen + 40 }];
+  }
+  if (isFullDayLeaveOnly) return [];
+  return [{ half: null, kind: isFullDayWfh ? 'wfh-fullday' : 'normal', open: ATTENDANCE_WINDOW_OPEN_MIN, close: ATTENDANCE_WINDOW_CLOSE_MIN, cutoff: isFullDayWfh ? null : ATTENDANCE_ON_TIME_CUTOFF_MIN }];
+}
+
+// Full attendance-chip state for "right now," aware of half-day Leave/WFH —
+// mirrors AttendanceService.mark_attendance's own slot logic on the
+// frontend side, so the button never proactively shows a state the backend
+// would then reject. Shared by the topbar chip (Shell.tsx) and My
+// Attendance (me-attendance/page.tsx) so the two can't drift from each
+// other, same "one object, every consumer reads it, no drift" reasoning
+// Shell.tsx's own chip precedence chain already documents.
+//
+// myWfhToday / myLeaveToday: the current employee's own APPROVED WFH/Leave
+// request covering today, if any (each with a `half_day` field — falsy
+// means a full day). todaysRecords: this employee's own attendance rows for
+// today — 0, 1, or 2 of them (a half-day Leave/WFH day can have one row per
+// half, each independently marked — see the model in attendance.py).
+function attendanceChipNow(holidays, myWfhToday, myLeaveToday, todaysRecords, marking) {
+  const { isWeekend, isHoliday, holidayName } = attendanceWindowNow(holidays);
+  if (marking) return { label: 'Marking…', icon: 'clock', aria: 'Marking attendance', title: undefined, cls: ' is-pending', canMark: false };
+  if (isHoliday) return { label: 'Holiday', icon: 'party-popper', aria: `Holiday — ${holidayName}`, title: `Holiday — ${holidayName}`, cls: ' is-unavailable', canMark: false };
+  if (isWeekend) return { label: 'Weekend', icon: 'moon', aria: 'Weekend — attendance not required', title: 'Weekend — no attendance needed today', cls: ' is-unavailable', canMark: false };
+
+  // The slot(s) that actually need an active mark_attendance click today —
+  // a half-day WFH needs BOTH halves (the WFH half itself, no lateness
+  // there, and the other in-office half); a half-day Leave needs only the
+  // in-office half (nothing to confirm during the leave half); a full-day
+  // Leave needs none at all; anything else (including a full-day WFH) is
+  // the single normal full-day slot.
+  const slots = _attendanceSlotDefs(myWfhToday, myLeaveToday);
+  if (slots.length === 0) {
+    return { label: 'On Leave', icon: 'calendar', aria: 'On approved leave today — no attendance needed', title: 'You have approved leave for today — attendance doesn\'t need to be marked.', cls: ' is-unavailable', canMark: false };
+  }
+
+  const d = new Date(Date.now() + 5 * 3600 * 1000);
+  const currentMinutes = d.getUTCHours() * 60 + d.getUTCMinutes();
+  const recordFor = (half) => (todaysRecords || []).find((r) => (r.half_day || null) === (half || null)) || null;
+  const slotStates = slots.map((s) => ({ ...s, record: recordFor(s.half) }));
+  const allMarked = slotStates.every((s) => !!s.record);
+  const anyMarked = slotStates.some((s) => !!s.record);
+
+  if (allMarked) {
+    // Marked wins over the window from here down — marking early should
+    // still read "Attendance marked" at 6 PM, not flip back to a window
+    // message once the clock moves on.
+    return { label: 'Attendance marked', icon: 'circle-check', aria: 'Attendance marked for today', title: 'Attendance already marked for today', cls: ' is-done', canMark: false };
+  }
+
+  const markable = slotStates.find((s) => !s.record && currentMinutes >= s.open && currentMinutes < s.close);
+  if (markable) {
+    if (markable.kind === 'wfh') {
+      return { label: `Mark Attendance (WFH — ${markable.half})`, icon: 'clock', aria: `Mark work-from-home attendance for the ${markable.half}`, title: undefined, hint: 'No late marking for a WFH half — any time in this window counts.', cls: ' is-pending', canMark: true };
+    }
+    const isLate = markable.cutoff !== null && currentMinutes >= markable.cutoff;
+    const halfSuffix = markable.half ? ` — ${markable.half}` : '';
+    // Only for a HALF-day office slot — a normal full day already states its
+    // own cutoff in the page's generic bottom line, so this would just be a
+    // second, redundant sentence there. A half-day slot has its own cutoff
+    // clock time (e.g. 3:40 PM for a Second Half office slot) that line
+    // never mentions, which is exactly what needs spelling out here.
+    const halfHint = markable.half && markable.cutoff !== null
+      ? `On time until ${_formatMinutesAmPm(markable.cutoff)} for the ${markable.half}; Late after that until ${_formatMinutesAmPm(markable.close)}.`
+      : undefined;
+    if (isLate) {
+      return { label: `Mark Attendance (Late${halfSuffix})`, icon: 'triangle-alert', aria: 'Mark attendance — will be recorded as late', title: `On-time marking for this slot has closed; marking now records Late`, hint: halfHint, cls: ' is-pending', canMark: true };
+    }
+    return { label: `Mark Attendance${halfSuffix}`, icon: 'clock', aria: 'Mark attendance', title: undefined, hint: halfHint, cls: ' is-pending', canMark: true };
+  }
+
+  // Nothing markable right now — either too early for the next slot, or a
+  // slot's window has already closed unmarked.
+  const upcoming = slotStates.find((s) => !s.record && currentMinutes < s.open);
+  if (upcoming) {
+    const label = upcoming.half ? `Opens ${_formatMinutesAmPm(upcoming.open)} (${upcoming.half})` : `Attendance Slot ${ATTENDANCE_WINDOW_LABEL}`;
+    return { label, icon: 'clock', aria: `Attendance slot opens at ${_formatMinutesAmPm(upcoming.open)}`, title: `Attendance can be marked between ${_formatMinutesAmPm(upcoming.open)} and ${_formatMinutesAmPm(upcoming.close)}`, cls: ' is-unavailable', canMark: false };
+  }
+  if (anyMarked) {
+    // One half marked, the other half's own window already closed unmarked
+    // — that half is what the 23:55 sweep will resolve to Absent tonight.
+    return { label: 'Partially Marked', icon: 'triangle-alert', aria: 'One half marked, the other half\'s window has closed', title: 'The other half\'s attendance window closed with nothing marked for it', cls: ' is-unavailable', canMark: false };
+  }
+  return { label: 'Absent', icon: 'triangle-alert', aria: 'Absent — attendance window closed', title: 'Today\'s attendance window closed with no attendance marked', cls: ' is-unavailable', canMark: false };
+}
+
+// One status entry PER SLOT for a half-day WFH/Leave day, so a page with
+// room for it (My Attendance) can show both halves' own state side by side
+// instead of attendanceChipNow's single evolving button (which only ever
+// names whichever slot needs attention next). Returns null for anything
+// that isn't a genuine two-slot day — a normal day, a full-day WFH/Leave
+// day, a holiday, or a weekend — so callers know to fall back to the one
+// shared attendanceChipNow card instead.
+function attendanceSlotChipsNow(holidays, myWfhToday, myLeaveToday, todaysRecords, marking) {
+  const { isWeekend, isHoliday } = attendanceWindowNow(holidays);
+  if (isHoliday || isWeekend) return null;
+
+  const slotDefs = _attendanceSlotDefs(myWfhToday, myLeaveToday);
+  if (slotDefs.length < 2) return null;
+
+  const d = new Date(Date.now() + 5 * 3600 * 1000);
+  const currentMinutes = d.getUTCHours() * 60 + d.getUTCMinutes();
+  const recordFor = (half) => (todaysRecords || []).find((r) => (r.half_day || null) === (half || null)) || null;
+
+  return slotDefs.map((s) => {
+    const record = recordFor(s.half);
+    if (marking && !record) {
+      return { half: s.half, kind: s.kind, label: 'Marking…', icon: 'clock', canMark: false, record: null, hint: undefined };
+    }
+    if (record) {
+      const icon = record.status === 'Late' || record.status === 'Absent' ? 'triangle-alert'
+        : record.status === 'WFH' ? 'clock' : record.status === 'Leave' ? 'calendar' : 'circle-check';
+      return { half: s.half, kind: s.kind, label: record.status, icon, canMark: false, record, hint: undefined };
+    }
+    if (currentMinutes >= s.open && currentMinutes < s.close) {
+      if (s.kind === 'wfh') {
+        return { half: s.half, kind: s.kind, label: 'Mark Attendance (WFH)', icon: 'clock', canMark: true, record: null, hint: 'No late marking for a WFH half — any time in this window counts.' };
+      }
+      const isLate = s.cutoff !== null && currentMinutes >= s.cutoff;
+      const hint = s.cutoff !== null ? `On time until ${_formatMinutesAmPm(s.cutoff)}; Late after that until ${_formatMinutesAmPm(s.close)}.` : undefined;
+      return { half: s.half, kind: s.kind, label: isLate ? 'Mark Attendance (Late)' : 'Mark Attendance', icon: isLate ? 'triangle-alert' : 'clock', canMark: true, record: null, hint };
+    }
+    if (currentMinutes < s.open) {
+      const hint = s.cutoff !== null ? `On time until ${_formatMinutesAmPm(s.cutoff)} once open; Late after that until ${_formatMinutesAmPm(s.close)}.` : undefined;
+      return { half: s.half, kind: s.kind, label: `Opens ${_formatMinutesAmPm(s.open)}`, icon: 'clock', canMark: false, record: null, hint };
+    }
+    return { half: s.half, kind: s.kind, label: 'Absent', icon: 'triangle-alert', canMark: false, record: null, hint: undefined };
+  });
+}
+function _formatMinutesAmPm(minutes) {
+  const h = Math.floor(minutes / 60), m = minutes % 60;
+  const period = h < 12 ? 'AM' : 'PM';
+  const h12 = h % 12 || 12;
+  return `${h12}:${String(m).padStart(2, '0')} ${period}`;
+}
 function addDaysISO(iso, days) {
   const d = new Date(iso + 'T00:00:00Z');
   d.setUTCDate(d.getUTCDate() + days);
@@ -1010,8 +1184,10 @@ const attendanceApi = {
 const wfhApi = {
   // endDateIso is optional — omitted/empty means a single-day request, the
   // same shape leavesApi.create already uses for its own optional end date.
-  create(dateIso, description, endDateIso) {
-    return apiFetch('/api/wfh/mine', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date: dateIso, end_date: endDateIso || null, description: description || null }) });
+  // halfDay is optional too — "First Half"/"Second Half"/omitted (full day);
+  // only valid for a single-day request, same rule the backend enforces.
+  create(dateIso, description, endDateIso, halfDay) {
+    return apiFetch('/api/wfh/mine', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date: dateIso, end_date: endDateIso || null, description: description || null, half_day: halfDay || null }) });
   },
   mine() { return apiFetch('/api/wfh/mine'); },
   // Same self-service semantics as leavesApi.update/remove above.
@@ -1291,6 +1467,8 @@ export {
   PKT_TZ,
   todayISO,
   attendanceWindowNow,
+  attendanceChipNow,
+  attendanceSlotChipsNow,
   ATTENDANCE_WINDOW_LABEL,
   ATTENDANCE_ON_TIME_LABEL,
   addDaysISO,
