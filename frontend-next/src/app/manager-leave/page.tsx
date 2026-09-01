@@ -22,7 +22,7 @@ import SmoothScroll from "@/components/shell/SmoothScroll";
 type Leave = {
   id: string; employee_id: string; employee_name?: string; leave_type: string; status: string;
   start_date: string; end_date?: string | null; days?: number; reason?: string; approval_note?: string;
-  rejection_reason?: string; created_at?: string;
+  rejection_reason?: string; created_at?: string; half_day?: string | null;
 };
 
 // Approving a request means committing to however many days it covers, so
@@ -31,12 +31,13 @@ type Leave = {
 // formatDateRange (orbit-client) renders human dates and collapses a
 // same-month range to "10–13 Aug 2026"; raw ISO was too hard to read at a
 // glance, which is the whole point of this column.
-function dateRangeLabel(start: string, end: string | null | undefined, days: number) {
-  return formatDateRange(start, end || null) + " · " + days + (days === 1 ? " day" : " days");
+function dateRangeLabel(start: string, end: string | null | undefined, days: number, halfDay?: string | null) {
+  const base = formatDateRange(start, end || null) + " · " + days + (days === 1 ? " day" : " days");
+  return halfDay ? base + " (" + halfDay + ")" : base;
 }
 type Wfh = {
   id: string; employee_id: string; employee_name?: string; date: string; end_date?: string | null; days?: number; status: string;
-  description?: string; decision_note?: string; created_at?: string;
+  description?: string; decision_note?: string; created_at?: string; half_day?: string | null;
 };
 type AttendanceRecord = { employee_id: string; date: string; status: string; marked_at?: string | null };
 
@@ -117,7 +118,7 @@ export default function ManagerLeavePage() {
       const decisionNote = lr.status === "Approved" ? lr.approval_note : lr.status === "Rejected" ? lr.rejection_reason : "";
       return {
         id: lr.id, isWfh: false as const, employee: lr.employee_name || getEmployeeName(lr.employee_id) || "Unknown",
-        type: lr.leave_type, dates: dateRangeLabel(lr.start_date, lr.end_date, lr.days || 1),
+        type: lr.leave_type, dates: dateRangeLabel(lr.start_date, lr.end_date, lr.days || 1, lr.half_day),
         reason: lr.reason || "No reason provided.", status: lr.status,
         statusTone: lr.status === "Approved" ? "success" : lr.status === "Rejected" ? "danger" : "warning",
         showActions: lr.status === "Pending",
@@ -131,7 +132,7 @@ export default function ManagerLeavePage() {
       const decisionNote = w.decision_note || "";
       return {
         id: w.id, isWfh: true as const, employee: w.employee_name || getEmployeeName(w.employee_id) || "Unknown",
-        type: "Work From Home", dates: dateRangeLabel(w.date, w.end_date, w.days || 1),
+        type: "Work From Home", dates: dateRangeLabel(w.date, w.end_date, w.days || 1, w.half_day),
         reason: w.description || "No description provided.", status: w.status,
         statusTone: w.status === "Approved" ? "success" : w.status === "Rejected" ? "danger" : "warning",
         showActions: w.status === "Pending",

@@ -34,6 +34,7 @@ async def create_wfh_request(
         current_user.get("user_id"), body.date, body.description,
         user=current_user.get("user_id", "anonymous"),
         end_day=body.end_date,
+        half_day=body.half_day,
     )
 
 

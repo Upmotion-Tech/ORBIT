@@ -18,6 +18,33 @@ WINDOW_OPEN_MIN = 10 * 60          # 10:00 AM
 ON_TIME_CUTOFF_MIN = 10 * 60 + 40  # 10:40 AM
 WINDOW_CLOSE_MIN = 19 * 60         # 7:00 PM
 
+# Half-day slots, for anyone with an approved First-Half or Second-Half
+# Leave/WFH request. Each half is its own independently-markable window —
+# see SLOT_RANGE below and mark_attendance's half-day branches.
+FIRST_HALF_START_MIN = 10 * 60      # 10:00 AM
+SECOND_HALF_START_MIN = 15 * 60     # 3:00 PM
+HALF_ON_TIME_GRACE_MIN = 40         # same 40-minute grace as the normal window
+
+# (start, end) PKT minutes-since-midnight of each half's own slot, [start,
+# end) — First Half 10:00 AM-3:00 PM, Second Half 3:00-7:00 PM. Used to
+# route "which half is `now` in" for whichever half is actively being
+# marked: the WFH half itself (no lateness there), or the required
+# non-leave/non-WFH half of a half-day Leave/WFH day (Present/Late as usual,
+# timed against that half's own start).
+SLOT_RANGE = {
+    "First Half": (FIRST_HALF_START_MIN, SECOND_HALF_START_MIN),
+    "Second Half": (SECOND_HALF_START_MIN, WINDOW_CLOSE_MIN),
+}
+
+
+def _format_minutes(minutes: int) -> str:
+    """600 -> "10:00 AM", 900 -> "3:00 PM" — for error messages that need to
+    name a shifted window's actual boundary rather than the normal one."""
+    h, m = divmod(minutes, 60)
+    period = "AM" if h < 12 else "PM"
+    h12 = h % 12 or 12
+    return f"{h12}:{m:02d} {period}"
+
 
 class AttendanceService:
     def __init__(
@@ -50,6 +77,30 @@ class AttendanceService:
             approver_name = approver.name if approver else None
         return approver_name, leave.leave_type
 
+    @staticmethod
+    def _other_half(half: str) -> str:
+        return "Second Half" if half == "First Half" else "First Half"
+
+    async def _approved_leave_and_wfh(self, employee_id: str, day: date):
+        """(leave, wfh) — the approved LeaveRequest/WfhRequest rows covering
+        `day` for this employee, or None for whichever doesn't apply. Fetched
+        together since mark_attendance needs both to decide what's required
+        today: a half-day WFH needs both its own half AND the other,
+        in-office half actively marked; a half-day Leave needs only the
+        in-office half marked (nothing to confirm during the leave half
+        itself); either FULL-day version is its own single-slot case."""
+        leave = await self.leave_repo.find_approved_for_employee_and_date(employee_id, day) if self.leave_repo else None
+        wfh = await self.wfh_repo.find_approved_for_employee_and_date(employee_id, day) if self.wfh_repo else None
+        return leave, wfh
+
+    @staticmethod
+    def _to_attendance_response(record, employee) -> AttendanceResponse:
+        return AttendanceResponse(
+            id=record.id, employee_id=record.employee_id,
+            employee_name=employee.name, employee_department=employee.department,
+            date=record.date, half_day=record.half_day, status=record.status, marked_at=record.marked_at,
+        )
+
     async def mark_attendance(self, employee_id: str) -> AttendanceResponse:
         employee = await self.employee_repo.find_by_id(employee_id)
         if not employee:
@@ -57,6 +108,7 @@ class AttendanceService:
 
         now = now_pkt()
         today = now.date()
+        current_minutes = now.hour * 60 + now.minute
         # Checked before the weekend/hours gates below since it's the most
         # specific, most informative reason when it applies (a company
         # holiday can land on a weekday) — same actual-enforcement reasoning
@@ -80,49 +132,113 @@ class AttendanceService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Attendance can't be marked on weekends — Saturday and Sunday aren't working days.",
             )
-        # Marking window: 10:00 AM - 7:00 PM PKT on a working day, with an
-        # on-time cutoff at 10:40 AM — mark at or after that and the record
-        # says "Late" rather than "Present". Same "frontend greys it out,
-        # backend actually enforces it" reasoning as the weekend check above.
-        # Minute-precision since none of the boundaries are on the hour.
-        current_minutes = now.hour * 60 + now.minute
+
+        leave, wfh = await self._approved_leave_and_wfh(employee_id, today)
+
+        # Half-day WFH: BOTH halves need an active click — the WFH half
+        # itself (no lateness there, just confirming it happened at all,
+        # same "no free pass" reasoning as full-day WFH below) and the
+        # other, in-office half (Present/Late as normal). Whichever slot
+        # `now` falls in decides which of the two rows this click is for —
+        # each half is its own independently-idempotent row.
+        if wfh and wfh.half_day:
+            wfh_half = wfh.half_day
+            office_half = self._other_half(wfh_half)
+            wfh_open, wfh_close = SLOT_RANGE[wfh_half]
+            office_open, office_close = SLOT_RANGE[office_half]
+            office_cutoff = office_open + HALF_ON_TIME_GRACE_MIN
+
+            if wfh_open <= current_minutes < wfh_close:
+                half_to_mark, status_value = wfh_half, "WFH"
+            elif office_open <= current_minutes < office_close:
+                half_to_mark = office_half
+                status_value = "Late" if current_minutes >= office_cutoff else "Present"
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        f"You have approved WFH for the {wfh_half} today — mark your WFH half between "
+                        f"{_format_minutes(wfh_open)} and {_format_minutes(wfh_close)}, or your office half "
+                        f"between {_format_minutes(office_open)} and {_format_minutes(office_close)}."
+                    ),
+                )
+
+            existing = await self.attendance_repo.find_by_employee_and_date(employee_id, today, half_day=half_to_mark)
+            if existing:
+                # Idempotent per HALF, not per day — re-clicking after
+                # already marking THIS half returns that row unchanged; the
+                # other half (if not yet marked) is still markable later.
+                return self._to_attendance_response(existing, employee)
+            record = await self.attendance_repo.create({
+                "employee_id": employee_id, "date": today, "half_day": half_to_mark,
+                "status": status_value, "marked_at": now_pkt(),
+            })
+            return self._to_attendance_response(record, employee)
+
+        # Half-day Leave: only the non-leave half needs marking — there's
+        # nothing to confirm during the leave half itself, same as a
+        # full-day Leave needs no marking at all.
+        if leave and leave.half_day:
+            leave_half = leave.half_day
+            office_half = self._other_half(leave_half)
+            office_open, office_close = SLOT_RANGE[office_half]
+            office_cutoff = office_open + HALF_ON_TIME_GRACE_MIN
+
+            if not (office_open <= current_minutes < office_close):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        f"You have approved leave for the {leave_half} today — attendance can only be "
+                        f"marked between {_format_minutes(office_open)} and {_format_minutes(office_close)}."
+                    ),
+                )
+            existing = await self.attendance_repo.find_by_employee_and_date(employee_id, today, half_day=office_half)
+            if existing:
+                return self._to_attendance_response(existing, employee)
+            record = await self.attendance_repo.create({
+                "employee_id": employee_id, "date": today, "half_day": office_half,
+                "status": "Late" if current_minutes >= office_cutoff else "Present", "marked_at": now_pkt(),
+            })
+            return self._to_attendance_response(record, employee)
+
+        # Full-day Leave: no marking needed OR allowed — mirrors the leave
+        # half of a half-day Leave day (also blocked above). Without this,
+        # someone on approved leave who clicks Mark Attendance anyway would
+        # silently overwrite what the end-of-day sweep would otherwise have
+        # recorded as "Leave" with Present/Late instead. Skipped when a
+        # full-day WFH is ALSO approved for today (nothing currently stops
+        # that combination at request time) — that case still needs its own
+        # WFH mark via the fallback below, same as it always has.
+        is_full_day_wfh = bool(wfh and wfh.half_day is None)
+        if leave and leave.half_day is None and not is_full_day_wfh:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="You have approved leave for today — attendance doesn't need to be marked.",
+            )
+
+        # Normal day, including a FULL-day approved WFH — doesn't shift the
+        # window, uses the single ordinary full-day slot.
         if not (WINDOW_OPEN_MIN <= current_minutes < WINDOW_CLOSE_MIN):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Attendance can only be marked between 10:00 AM and 7:00 PM.",
             )
-        is_late = current_minutes >= ON_TIME_CUTOFF_MIN
         existing = await self.attendance_repo.find_by_employee_and_date(employee_id, today)
         if existing:
-            # Idempotent — re-clicking Mark Attendance after already marking
-            # today just returns the original record instead of erroring or
-            # creating a duplicate (the DB's own unique constraint on
-            # (employee_id, date) would reject a second insert anyway).
-            return AttendanceResponse(
-                id=existing.id, employee_id=existing.employee_id,
-                employee_name=employee.name, employee_department=employee.department,
-                date=existing.date, status=existing.status, marked_at=existing.marked_at,
-            )
+            return self._to_attendance_response(existing, employee)
 
-        # An approved WFH day should read as "WFH", not a plain "Present",
-        # even when the employee proactively marks attendance instead of
-        # being picked up by run_end_of_day_sweep's own WFH check below —
-        # same rule, just enforced at the earlier of the two points it can
-        # apply. WFH also outranks "Late": the status column holds one value,
-        # and on an approved work-from-home day the fact that it was approved
-        # WFH is the thing worth keeping, not what time they checked in.
-        wfh = await self.wfh_repo.find_approved_for_employee_and_date(employee_id, today) if self.wfh_repo else None
+        # A FULL-day approved WFH reads as "WFH", not Present/Late, once they
+        # do mark — timing within the window doesn't matter, only that they
+        # marked at all somewhere in it (run_end_of_day_sweep no longer
+        # grants this automatically for a no-show, see there for why).
+        is_late = current_minutes >= ON_TIME_CUTOFF_MIN
         record = await self.attendance_repo.create({
             "employee_id": employee_id,
             "date": today,
-            "status": "WFH" if wfh else "Late" if is_late else "Present",
+            "status": "WFH" if is_full_day_wfh else "Late" if is_late else "Present",
             "marked_at": now_pkt(),
         })
-        return AttendanceResponse(
-            id=record.id, employee_id=record.employee_id,
-            employee_name=employee.name, employee_department=employee.department,
-            date=record.date, status=record.status, marked_at=record.marked_at,
-        )
+        return self._to_attendance_response(record, employee)
 
     @staticmethod
     def _month_bounds(year: int, month: int) -> tuple[date, date]:
@@ -157,7 +273,7 @@ class AttendanceService:
             approver_name, leave_type = await self._leave_info(r.leave_request_id)
             out.append(AttendanceResponse(
                 id=r.id, employee_id=r.employee_id, employee_name=e.name, employee_department=e.department,
-                date=r.date, status=r.status, marked_at=r.marked_at,
+                date=r.date, half_day=r.half_day, status=r.status, marked_at=r.marked_at,
                 leave_approved_by_name=approver_name, leave_type=leave_type,
             ))
 
@@ -174,7 +290,7 @@ class AttendanceService:
                     employee_department=employee.department if employee else None,
                     date=d, status="Holiday", marked_at=None,
                 ))
-        out.sort(key=lambda r: r.date, reverse=True)
+        out.sort(key=lambda r: (r.date, r.half_day or ""), reverse=True)
         return out
 
     async def get_all_attendance(self, year: int, month: int, employee_id: Optional[str] = None) -> list[AttendanceResponse]:
@@ -186,7 +302,7 @@ class AttendanceService:
             approver_name, leave_type = await self._leave_info(r.leave_request_id)
             out.append(AttendanceResponse(
                 id=r.id, employee_id=r.employee_id, employee_name=e.name, employee_department=e.department,
-                date=r.date, status=r.status, marked_at=r.marked_at,
+                date=r.date, half_day=r.half_day, status=r.status, marked_at=r.marked_at,
                 leave_approved_by_name=approver_name, leave_type=leave_type,
             ))
 
@@ -207,13 +323,26 @@ class AttendanceService:
                         employee_name=emp.name, employee_department=emp.department,
                         date=d, status="Holiday", marked_at=None,
                     ))
-        out.sort(key=lambda r: r.date, reverse=True)
+        out.sort(key=lambda r: (r.date, r.half_day or ""), reverse=True)
         return out
 
     async def get_today_snapshot(self) -> list[TodayAttendanceRow]:
         today = now_pkt().date()
         rows = await self.attendance_repo.find_for_month_with_employee(today.year, today.month)
-        marked_by_emp = {r.employee_id: r for r, _ in rows if r.date == today}
+        # A half-day Leave/WFH employee can have TWO rows for today — this is
+        # a one-line-per-employee overview (TodayAttendanceRow has no
+        # half_day field), so pick whichever is most current: the one with
+        # the later marked_at, or if only one was ever actually marked
+        # (marked_at set), prefer that over an auto-swept row with none.
+        marked_by_emp: dict[str, object] = {}
+        for r, _ in rows:
+            if r.date != today:
+                continue
+            current = marked_by_emp.get(r.employee_id)
+            if current is None:
+                marked_by_emp[r.employee_id] = r
+            elif r.marked_at and (not current.marked_at or r.marked_at > current.marked_at):
+                marked_by_emp[r.employee_id] = r
         is_holiday_today = bool(await self._holiday_dates_in_range(today, today))
 
         employees = await self.employee_repo.find_all(status_filter="Active", page_size=10000)
@@ -237,14 +366,28 @@ class AttendanceService:
                 ))
         return out
 
+    async def _notify_absent(self, employee_id: str, target_day: date) -> None:
+        if self.notification_repo:
+            await self.notification_repo.create(
+                user_id=employee_id,
+                notif_type="Attendance",
+                title="Marked absent",
+                message=f"You have been marked absent for {target_day.strftime('%d %b %Y')} — no attendance was recorded.",
+            )
+
     async def run_end_of_day_sweep(self, day: Optional[date] = None) -> int:
-        """Marks every active employee who never checked in on `day` (default:
-        today, PKT) as Absent, and notifies them. No-ops entirely for
-        Saturday/Sunday or a declared company holiday — neither is a working
-        day, so nobody is marked absent on them. Safe to call more than once
-        for the same day: an employee already marked Present or already
-        swept as Absent is simply skipped (the query only ever returns
-        employees with zero attendance row for the day)."""
+        """Marks every active employee's still-missing slot(s) for `day`
+        (default: today, PKT) as Absent, and notifies them once per employee.
+        No-ops entirely for Saturday/Sunday or a declared company holiday —
+        neither is a working day. Safe to call more than once for the same
+        day: every create is guarded by an explicit (employee, half) already-
+        covered check, so a second run creates nothing new and sends no
+        duplicate notifications.
+
+        Iterates every active employee (not just ones with zero rows) since
+        a half-day Leave/WFH day can need up to two independent rows — an
+        employee who already marked one half can still be missing the
+        other."""
         target_day = day or now_pkt().date()
         if target_day.weekday() > 4:  # Mon=0 ... Fri=4, Sat=5, Sun=6
             return 0
@@ -253,45 +396,75 @@ class AttendanceService:
             if holidays:
                 return 0
 
-        missing = await self.attendance_repo.find_active_employees_without_record(target_day)
+        employees = await self.employee_repo.find_all(status_filter="Active", page_size=10000)
+        existing = await self.attendance_repo.find_all_for_date(target_day)
+        covered = {(r.employee_id, r.half_day) for r in existing}
+
         absent_count = 0
-        for emp in missing:
-            # An approved work-from-home day counts as worked, not absent —
-            # nobody who got WFH approved for today should get swept to
-            # Absent just because they never physically checked in.
-            wfh = await self.wfh_repo.find_approved_for_employee_and_date(emp.id, target_day) if self.wfh_repo else None
-            if wfh:
-                await self.attendance_repo.create({
-                    "employee_id": emp.id, "date": target_day, "status": "WFH", "marked_at": None,
-                })
+        for emp in employees:
+            leave, wfh = await self._approved_leave_and_wfh(emp.id, target_day)
+
+            if leave and leave.half_day is None:
+                # Full-day leave: the one real exemption — nothing to check
+                # in for when not working at all that day. Leave requests
+                # can only be filed for today or a future date (see
+                # LeaveService.create_leave), so by sweep time any leave
+                # covering target_day has already been decided — the only
+                # place Leave vs Absent is ever decided for a full day, no
+                # later retroactive fix-up needed.
+                if (emp.id, None) not in covered:
+                    await self.attendance_repo.create({
+                        "employee_id": emp.id, "date": target_day, "status": "Leave",
+                        "marked_at": None, "leave_request_id": leave.id,
+                    })
                 continue
 
-            # Same for approved leave. Leave requests can only be filed for
-            # today or a future date (see LeaveService.create_leave) — so by
-            # the time this sweep runs for `target_day` at end of day, any
-            # leave covering it has already been decided. This is the only
-            # place Leave vs Absent ever gets decided; there's no later
-            # retroactive fix-up needed.
-            leave = await self.leave_repo.find_approved_for_employee_and_date(emp.id, target_day) if self.leave_repo else None
-            if leave:
-                await self.attendance_repo.create({
-                    "employee_id": emp.id, "date": target_day, "status": "Leave",
-                    "marked_at": None, "leave_request_id": leave.id,
-                })
+            if wfh and wfh.half_day:
+                # Half-day WFH: BOTH halves are a real obligation — the WFH
+                # half itself is NOT auto-credited (same "no free pass" as
+                # full-day WFH below) and neither is the other, in-office
+                # half. Each one still missing becomes its own Absent row.
+                office_half = self._other_half(wfh.half_day)
+                was_absent = False
+                for half in (wfh.half_day, office_half):
+                    if (emp.id, half) not in covered:
+                        await self.attendance_repo.create({
+                            "employee_id": emp.id, "date": target_day, "half_day": half,
+                            "status": "Absent", "marked_at": None,
+                        })
+                        was_absent = True
+                if was_absent:
+                    absent_count += 1
+                    await self._notify_absent(emp.id, target_day)
                 continue
 
-            await self.attendance_repo.create({
-                "employee_id": emp.id,
-                "date": target_day,
-                "status": "Absent",
-                "marked_at": None,
-            })
-            absent_count += 1
-            if self.notification_repo:
-                await self.notification_repo.create(
-                    user_id=emp.id,
-                    notif_type="Attendance",
-                    title="Marked absent",
-                    message=f"You have been marked absent for {target_day.strftime('%d %b %Y')} — no attendance was recorded.",
-                )
+            if leave and leave.half_day:
+                # Half-day leave: the leave half needs no marking at all
+                # (auto-covered here, same as a full day) — only the other,
+                # in-office half is a real obligation.
+                office_half = self._other_half(leave.half_day)
+                if (emp.id, leave.half_day) not in covered:
+                    await self.attendance_repo.create({
+                        "employee_id": emp.id, "date": target_day, "half_day": leave.half_day,
+                        "status": "Leave", "marked_at": None, "leave_request_id": leave.id,
+                    })
+                if (emp.id, office_half) not in covered:
+                    await self.attendance_repo.create({
+                        "employee_id": emp.id, "date": target_day, "half_day": office_half,
+                        "status": "Absent", "marked_at": None,
+                    })
+                    absent_count += 1
+                    await self._notify_absent(emp.id, target_day)
+                continue
+
+            # Normal day, including a full-day approved WFH — neither is
+            # exempt from actually checking in (see mark_attendance for why
+            # WFH lost its automatic credit here).
+            if (emp.id, None) not in covered:
+                await self.attendance_repo.create({
+                    "employee_id": emp.id, "date": target_day, "status": "Absent", "marked_at": None,
+                })
+                absent_count += 1
+                await self._notify_absent(emp.id, target_day)
+
         return absent_count

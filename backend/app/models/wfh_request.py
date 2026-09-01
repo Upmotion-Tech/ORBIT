@@ -25,6 +25,12 @@ class WfhRequest(Base):
     # multi-day request sets this to the last day it covers, and every
     # range check reads it as COALESCE(end_date, date).
     end_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    # Null = full day. "First Half"/"Second Half" means only that half is
+    # WFH — the employee still has to physically check in for the other
+    # half (AttendanceService shifts that day's marking window to the other
+    # half's slot). Only meaningful for a single-day request (end_date
+    # null) — WfhRequestService rejects it alongside a real range.
+    half_day: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     description: Mapped[str] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="Pending")  # Pending/Approved/Rejected
     decision_note: Mapped[str] = mapped_column(Text, nullable=True)

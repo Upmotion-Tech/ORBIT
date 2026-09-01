@@ -27,11 +27,11 @@ type LeaveBalance = { casual_remaining: number; sick_remaining: number; annual_r
 type RawLeave = {
   id: string; leave_type: string; start_date: string; end_date?: string | null; days: number;
   status: string; reason?: string; approval_note?: string; rejection_reason?: string; created_at?: string;
-  approved_by_id?: string | null; approved_at?: string | null;
+  approved_by_id?: string | null; approved_at?: string | null; half_day?: string | null;
 };
 type RawWfh = {
   id: string; date: string; end_date?: string | null; days?: number; status: string; description?: string; decision_note?: string; created_at?: string;
-  decided_by?: string | null; decided_at?: string | null;
+  decided_by?: string | null; decided_at?: string | null; half_day?: string | null;
 };
 
 const LEAVE_TYPE_OPTIONS = [
@@ -41,13 +41,22 @@ const LEAVE_TYPE_OPTIONS = [
   { value: "Work From Home", label: "Work From Home" },
 ];
 
+// Only valid for a single-day request — matches LeaveService/WfhRequestService's
+// own _validate_half_day rule (end date must be empty or equal to start date).
+const HALF_DAY_OPTIONS = [
+  { value: "", label: "Full Day" },
+  { value: "First Half", label: "First Half (10:00 AM – 2:00 PM)" },
+  { value: "Second Half", label: "Second Half (3:00 PM – 7:00 PM)" },
+];
+
 // Human dates plus an explicit count, so neither the applicant nor the
 // approving manager has to work out how long a request is by subtracting
 // two dates in their head. formatDateRange (orbit-client) does the date
 // half — it collapses a same-month range to "10–13 Aug 2026" and writes
 // both months out in full when one spans a boundary.
-function dateRangeLabel(start: string, end: string | null | undefined, days: number) {
-  return formatDateRange(start, end || null) + " · " + days + (days === 1 ? " day" : " days");
+function dateRangeLabel(start: string, end: string | null | undefined, days: number, halfDay?: string | null) {
+  const base = formatDateRange(start, end || null) + " · " + days + (days === 1 ? " day" : " days");
+  return halfDay ? base + " (" + halfDay + ")" : base;
 }
 
 // Client-side mirror of the backend's own inclusive day count (LeaveService.
@@ -92,7 +101,7 @@ function formatRow(lr: RawLeave) {
   return {
     id: lr.id,
     type: lr.leave_type,
-    dates: dateRangeLabel(lr.start_date, lr.end_date, lr.days),
+    dates: dateRangeLabel(lr.start_date, lr.end_date, lr.days, lr.half_day),
     status: lr.status,
     statusTone: isApproved ? "success" : isRejected ? "danger" : "warning",
     reason: lr.reason || "",
@@ -115,7 +124,7 @@ function formatWfhRow(w: RawWfh) {
   return {
     id: w.id,
     type: "Work From Home",
-    dates: dateRangeLabel(w.date, w.end_date, w.days || 1),
+    dates: dateRangeLabel(w.date, w.end_date, w.days || 1, w.half_day),
     status: w.status,
     statusTone: isApproved ? "success" : isRejected ? "danger" : "warning",
     reason: w.description || "",
@@ -143,7 +152,7 @@ export default function MeLeavePage() {
     const t = pktTodayParts();
     return t.y + "-" + String(t.m + 1).padStart(2, "0");
   });
-  const [form, setForm] = useState({ type: "Casual", startDate: "", endDate: "", reason: "" });
+  const [form, setForm] = useState({ type: "Casual", startDate: "", endDate: "", reason: "", halfDay: "" });
   const [drawerId, setDrawerId] = useState<string | null>(null);
   const drawerClosing = useClosingTransition();
   const closeDrawerAnimated = () => drawerClosing.closeWithTransition(() => { setDrawerId(null); setEditing(false); setConfirmWithdraw(false); clearDeepLinkHash(); });
@@ -156,7 +165,7 @@ export default function MeLeavePage() {
   const [editing, setEditing] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [confirmWithdraw, setConfirmWithdraw] = useState(false);
-  const [editForm, setEditForm] = useState({ type: "Casual", startDate: "", endDate: "", reason: "" });
+  const [editForm, setEditForm] = useState({ type: "Casual", startDate: "", endDate: "", reason: "", halfDay: "" });
 
   const openDrawer = (id: string) => {
     setDrawerId(id);
@@ -219,10 +228,10 @@ export default function MeLeavePage() {
     if (!drawerRaw) return;
     if (drawerIsWfh) {
       const w = drawerRaw as RawWfh;
-      setEditForm({ type: "Work From Home", startDate: w.date, endDate: w.end_date || "", reason: w.description || "" });
+      setEditForm({ type: "Work From Home", startDate: w.date, endDate: w.end_date || "", reason: w.description || "", halfDay: w.half_day || "" });
     } else {
       const l = drawerRaw as RawLeave;
-      setEditForm({ type: l.leave_type, startDate: l.start_date, endDate: l.end_date || "", reason: l.reason || "" });
+      setEditForm({ type: l.leave_type, startDate: l.start_date, endDate: l.end_date || "", reason: l.reason || "", halfDay: l.half_day || "" });
     }
     setEditing(true);
   };
@@ -244,12 +253,17 @@ export default function MeLeavePage() {
       setSavingEdit(false);
       pushToast(err.message || "Could not update the request.", "error");
     };
+    // half_day only ever applies to a genuinely single-day request — if the
+    // date fields were edited into a range, drop it rather than send a
+    // half_day the backend would reject as covering more than one day.
+    const isSingleDayEdit = !editForm.endDate || editForm.endDate === editForm.startDate;
+    const halfDay = isSingleDayEdit ? editForm.halfDay || null : null;
     // A leave request and a WFH request are separate records with separate
     // endpoints — the type can't be switched between them by editing, only
     // withdrawn and re-filed, so each branch only sends its own fields.
     if (drawerIsWfh) {
       wfhApi
-        .update(drawerId, { date: editForm.startDate, end_date: editForm.endDate || null, description: editForm.reason || null })
+        .update(drawerId, { date: editForm.startDate, end_date: editForm.endDate || null, description: editForm.reason || null, half_day: halfDay })
         .then(onOk, onErr);
     } else {
       leavesApi
@@ -258,6 +272,7 @@ export default function MeLeavePage() {
           start_date: editForm.startDate,
           end_date: editForm.endDate || null,
           reason: editForm.reason || null,
+          half_day: halfDay,
         })
         .then(onOk, onErr);
     }
@@ -286,11 +301,15 @@ export default function MeLeavePage() {
       pushToast("Start date is required.", "error");
       return;
     }
+    // Same single-day-only rule the backend enforces — a range selection
+    // silently ignores whatever half-day choice is still sitting in state.
+    const isSingleDay = !form.endDate || form.endDate === form.startDate;
+    const halfDay = isSingleDay ? form.halfDay || null : null;
     if (form.type === "Work From Home") {
-      wfhApi.create(form.startDate, form.reason || "", form.endDate || null).then(
+      wfhApi.create(form.startDate, form.reason || "", form.endDate || null, halfDay).then(
         () => {
           pushToast("Work From Home request submitted successfully.");
-          setForm({ type: "Casual", startDate: "", endDate: "", reason: "" });
+          setForm({ type: "Casual", startDate: "", endDate: "", reason: "", halfDay: "" });
           load();
         },
         (err: Error) => pushToast(err.message || "Could not submit Work From Home request.", "error")
@@ -304,11 +323,12 @@ export default function MeLeavePage() {
         start_date: form.startDate,
         end_date: form.endDate || null,
         reason: form.reason || "",
+        half_day: halfDay,
       })
       .then(
         () => {
           pushToast("Leave submitted successfully.");
-          setForm({ type: "Casual", startDate: "", endDate: "", reason: "" });
+          setForm({ type: "Casual", startDate: "", endDate: "", reason: "", halfDay: "" });
           load();
         },
         (err: Error) => pushToast(err.message || "Could not submit leave.", "error")
@@ -346,7 +366,15 @@ export default function MeLeavePage() {
               type="date"
               value={form.endDate}
               min={form.startDate || todayISO()}
-              onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))}
+              onChange={(e) => {
+                const endDate = e.target.value;
+                // A half-day choice only makes sense for a single day — drop
+                // it the moment the range actually widens past one day,
+                // rather than leaving a stale selection the backend would
+                // silently ignore (or reject) on submit.
+                const stillSingleDay = !endDate || endDate === form.startDate;
+                setForm((f) => ({ ...f, endDate, halfDay: stillSingleDay ? f.halfDay : "" }));
+              }}
               style={{ fontFamily: "var(--font-sans)", fontSize: 14, padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border-strong)", background: "var(--bg-surface)", color: "var(--text-primary)" }}
             />
           </div>
@@ -357,6 +385,16 @@ export default function MeLeavePage() {
         <div style={{ marginBottom: 14, marginTop: -4 }}>
           <DayCountHint start={form.startDate} end={form.endDate} />
         </div>
+        {(!form.endDate || form.endDate === form.startDate) && (
+          <div style={{ marginBottom: 14 }}>
+            <Select
+              label="Duration"
+              options={HALF_DAY_OPTIONS}
+              value={form.halfDay}
+              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setForm((f) => ({ ...f, halfDay: e.target.value }))}
+            />
+          </div>
+        )}
         <Input label="Reason (optional)" value={form.reason} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, reason: e.target.value }))} />
         <div style={{ marginTop: 16 }}>
           <Button variant="primary" onClick={submit}>Submit Request</Button>
@@ -430,11 +468,23 @@ export default function MeLeavePage() {
                       type="date"
                       value={editForm.endDate}
                       min={editForm.startDate || todayISO()}
-                      onChange={(e) => setEditForm((f) => ({ ...f, endDate: e.target.value }))}
+                      onChange={(e) => {
+                        const endDate = e.target.value;
+                        const stillSingleDay = !endDate || endDate === editForm.startDate;
+                        setEditForm((f) => ({ ...f, endDate, halfDay: stillSingleDay ? f.halfDay : "" }));
+                      }}
                       style={{ fontFamily: "var(--font-sans)", fontSize: 14, padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border-strong)", background: "var(--bg-surface)", color: "var(--text-primary)" }}
                     />
                   </div>
                   <DayCountHint start={editForm.startDate} end={editForm.endDate} />
+                  {(!editForm.endDate || editForm.endDate === editForm.startDate) && (
+                    <Select
+                      label="Duration"
+                      options={HALF_DAY_OPTIONS}
+                      value={editForm.halfDay}
+                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setEditForm((f) => ({ ...f, halfDay: e.target.value }))}
+                    />
+                  )}
                   <Input
                     label="Reason (optional)"
                     value={editForm.reason}

@@ -13,6 +13,8 @@ from app.models.employee import Employee
 from app.core.time import now_pkt
 from app.core.permissions import has_role
 
+HALF_DAY_VALUES = {"First Half", "Second Half"}
+
 
 class LeaveService:
     def __init__(
@@ -32,6 +34,21 @@ class LeaveService:
     async def _audit(self, actor: str, action: str, label: str, detail: Optional[str] = None) -> None:
         if self.audit_repo:
             await self.audit_repo.log(actor, action, "Leave Request", label, detail)
+
+    @staticmethod
+    def _validate_half_day(half_day: Optional[str], start: date, end: Optional[date]) -> None:
+        if not half_day:
+            return
+        if half_day not in HALF_DAY_VALUES:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail='half_day must be "First Half" or "Second Half".',
+            )
+        if end and end != start:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="A half-day request can only cover a single day, not a date range.",
+            )
 
     async def list_leave_requests(
         self, employee_id=None, status_filter=None, leave_type=None,
@@ -80,8 +97,10 @@ class LeaveService:
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="End date cannot be before start date.",
             )
+        half_day = data.get("half_day")
+        self._validate_half_day(half_day, start, end)
 
-        days = self._count_days(start, end)
+        days = self._count_days(start, end, half_day)
 
         # Snapshot balance at submission
         balance_snapshot = None
@@ -161,10 +180,13 @@ class LeaveService:
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="End date cannot be before start date.",
             )
+        half_day = data.get("half_day") if "half_day" in data else leave.half_day
+        self._validate_half_day(half_day, start, end)
 
         data["start_date"] = start
         data["end_date"] = end
-        data["days"] = self._count_days(start, end)
+        data["half_day"] = half_day
+        data["days"] = self._count_days(start, end, half_day)
         updated = await self.leave_repo.update(leave, data)
         await self._audit(user_id, "Edited", f"{updated.leave_type}", f"{updated.days} day(s)")
         return self._to_response(updated)
@@ -356,7 +378,9 @@ class LeaveService:
             total_remaining=max(0, casual_total + sick_total + annual_total - casual_used - sick_used - annual_used - casual_pending - sick_pending - annual_pending),
         )
 
-    def _count_days(self, start: date, end: Optional[date]) -> int:
+    def _count_days(self, start: date, end: Optional[date], half_day: Optional[str] = None) -> float:
+        if half_day:
+            return 0.5
         if not end:
             return 1
         return (end - start).days + 1
