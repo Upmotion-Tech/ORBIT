@@ -54,6 +54,7 @@ type Lead = {
   actualClose: string | null; followUp: string | null; followUpOverdue: boolean;
   scopeDoc: boolean; contract: boolean; scopeDocUrl: string | null; contractUrl: string | null;
   scopeDocName?: string; contractName?: string; isLockedRevenue: boolean; createdDateStr: string;
+  closedAt: string | null;
 };
 type Activity = { ts: string; user: string; text: string; type: string };
 type Customer = { id: string; company_name: string };
@@ -403,14 +404,30 @@ export default function CrmPage() {
   };
   const crmDateRange = resolveDateRangePreset(dateRangePreset === "custom" ? "custom" : dateRangePreset, dateFrom, dateTo);
   const filtersActive = !!(search || filterSource || filterStage || filterRep || dateRangePreset);
-  // Won/Lost leads drop out of the Kanban/List pipeline view once closed —
-  // they stay in the DB and reappear here the moment a date filter is
-  // active (or the Stage filter is explicitly set to Won/Lost), matching
-  // "still filterable for the period it was open." Full history for any
-  // time regardless of filters lives in the separate Past Leads view below.
+  // A closed (Won/Lost) lead STAYS on the Kanban/List board, in its own
+  // Won or Lost column, for 20 days after it closed — then it falls off and
+  // lives on in Past Leads. Mirrors Dev's completed-project rule exactly
+  // (PROJECT_STALE_DAYS / isStaleCompleted in dev/page.tsx), and for the
+  // same reason: a deal that just closed is still active news — commission,
+  // handover, kickoff, or a correction if someone picked the wrong outcome —
+  // so it shouldn't vanish the instant the stage flips.
+  //
+  // Keyed on closedAt (server-set Lead.closed_at), never on the drawer's
+  // user-editable "Actual closure" date. closedAt === null means either a
+  // live lead (not terminal, so this never applies) or a lead closed before
+  // that column existed — the latter reads as "closed long ago", so every
+  // pre-existing Won/Lost lead stays in Past Leads exactly where it is
+  // today rather than leaping back onto the board on deploy.
+  const LEAD_STALE_DAYS = 20;
+  const isStaleClosed = (l: { stage: string; closedAt: string | null }) =>
+    (l.stage === "Won" || l.stage === "Lost") &&
+    (!l.closedAt || Date.now() - new Date(l.closedAt).getTime() > LEAD_STALE_DAYS * 24 * 60 * 60 * 1000);
+  // Even a long-closed lead reappears on the board the moment a date filter
+  // is active or Stage is explicitly set to Won/Lost — "still filterable for
+  // the period it was open", unchanged from before.
   const showTerminalStages = !!dateRangePreset || filterStage === "Won" || filterStage === "Lost";
   const filteredUnsorted = leads.filter((l) => {
-    if (!showTerminalStages && (l.stage === "Won" || l.stage === "Lost")) return false;
+    if (!showTerminalStages && isStaleClosed(l)) return false;
     if (debouncedSearch && !matchesSearch(leadSearchHaystack(l), debouncedSearch)) return false;
     if (filterSource && l.source !== filterSource) return false;
     if (filterStage && l.stage !== filterStage) return false;
@@ -428,10 +445,18 @@ export default function CrmPage() {
   // whose whole job is this pipeline. Nobody loses access in the switch:
   // Shell's route guard is `case "crm": return access.crm`, so anyone who
   // can reach this screen at all already satisfies isCrmOwner.
+  // Only leads past the 20-day window — a just-closed lead is still on the
+  // board above, so listing it here too would show it in two places at once.
+  // Sorted newest-closed first, preferring the real closedAt timestamp and
+  // falling back to the old actualClose/received dates for rows that predate
+  // the closed_at column (which would otherwise all sort as equal).
   const pastLeads = leads
-    .filter((l) => l.stage === "Won" || l.stage === "Lost")
+    .filter(isStaleClosed)
     .filter((l) => !debouncedSearch || matchesSearch(leadSearchHaystack(l), debouncedSearch))
-    .sort((a, b) => (toISO(b.actualClose || b.received) || "").localeCompare(toISO(a.actualClose || a.received) || ""));
+    .sort((a, b) => {
+      const key = (l: Lead) => l.closedAt || toISO(l.actualClose || l.received) || "";
+      return key(b).localeCompare(key(a));
+    });
   const tomorrowIso = addDaysISO(todayISO(), 1);
   const filteredLeads = (sortLeads(filteredUnsorted, sort) as Lead[]).map((l) => {
     const followUpISO = toISO(l.followUp || "");

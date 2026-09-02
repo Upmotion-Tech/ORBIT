@@ -9,6 +9,13 @@ from sqlalchemy.orm import joinedload
 from app.core.time import now_pkt
 from app.models.lead import Lead
 
+# The two closed/terminal stages. Kept here rather than imported from
+# LeadService (a repository importing a service would invert this codebase's
+# router -> service -> repository layering) and deliberately narrower than
+# that module's VALID_STAGES/STAGE_WORKFLOW, which describe the whole
+# pipeline. Only update_stage below needs it, to stamp Lead.closed_at.
+TERMINAL_STAGES = ("Won", "Lost")
+
 
 class LeadRepository:
     def __init__(self, db: AsyncSession):
@@ -123,9 +130,30 @@ class LeadRepository:
         await self.db.flush()
         return lead
 
+    def _stamp_closure(self, lead: Lead, stage: str) -> None:
+        """Set/clear Lead.closed_at for a stage write.
+
+        A lead's stage can be changed through TWO different service paths —
+        LeadService.change_stage (the dropdown / Kanban drag) and
+        LeadService.update_lead (the drawer's own Stage field, which goes
+        through the generic update() below) — so this rule lives in one
+        place and is called from both, rather than being stamped in whichever
+        path someone happened to remember.
+
+        Re-closing under the other outcome (Won -> Lost, a correction)
+        intentionally restarts the 20-day board window: the corrected outcome
+        is the recent news worth showing. Reopening to a live stage clears it.
+        """
+        lead.closed_at = now_pkt() if stage in TERMINAL_STAGES else None
+
     async def update(self, lead: Lead, data: dict) -> Lead:
         for key, value in data.items():
             setattr(lead, key, value)
+        # Only when this update actually carries a stage, and never when the
+        # caller set closed_at explicitly (nothing does today, but silently
+        # overwriting a caller's own value would be a nasty surprise).
+        if "stage" in data and "closed_at" not in data:
+            self._stamp_closure(lead, data["stage"])
         lead.updated_at = now_pkt()
         await self.db.flush()
         return lead
@@ -139,6 +167,7 @@ class LeadRepository:
     async def update_stage(self, lead: Lead, stage: str) -> Lead:
         lead.stage = stage
         lead.updated_at = now_pkt()
+        self._stamp_closure(lead, stage)
         if stage == "Won":
             lead.is_locked_revenue = bool(lead.scope_document_data and lead.signed_contract_data)
         await self.db.flush()

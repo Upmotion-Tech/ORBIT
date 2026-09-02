@@ -83,6 +83,10 @@ class LeadResponse(BaseModel):
 
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    # Server-set moment the lead entered Won/Lost; None for a live lead or for
+    # any row closed before this column existed. Drives the 20-day
+    # pipeline-board window on the CRM screen — see Lead.closed_at.
+    closed_at: Optional[datetime] = None
     created_by: Optional[str] = None
     updated_by: Optional[str] = None
 
@@ -90,7 +94,7 @@ class LeadResponse(BaseModel):
 
     model_config = {"from_attributes": True}
 
-    @field_validator("created_at", "updated_at", mode="before")
+    @field_validator("created_at", "updated_at", "closed_at", mode="before")
     @classmethod
     def _normalize_to_pkt(cls, v):
         return to_pkt(v) if isinstance(v, datetime) else v

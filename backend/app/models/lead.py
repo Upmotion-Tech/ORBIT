@@ -33,6 +33,24 @@ class Lead(Base):
     actual_closure_date: Mapped[date] = mapped_column(Date, nullable=True)
     follow_up_date: Mapped[date] = mapped_column(Date, nullable=True)
 
+    # When the stage actually moved INTO a terminal stage (Won/Lost), set
+    # server-side on that transition and cleared if the lead is reopened —
+    # the direct counterpart of Project.completed_at, and it exists for the
+    # same reason: it drives "a closed lead stays on the pipeline board for
+    # 20 days, then falls off into Past Leads" (see LEAD_STALE_DAYS in
+    # crm/page.tsx).
+    #
+    # Deliberately NOT actual_closure_date, which is a user-editable Date in
+    # the lead drawer: that can be left blank, backdated, or edited at will,
+    # so keying a visibility window off it would be both gameable and
+    # undefined for any lead whose rep never filled it in. updated_at is no
+    # good either — it moves on every edit, so adding a comment to a lead
+    # closed months ago would drag it back onto the live board.
+    #
+    # NULL means "closed at an unknown time" (every row that predates this
+    # column) and is treated as long-closed, i.e. it stays in Past Leads.
+    closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
     # Stored directly in Postgres (Neon), not on local disk — Render's
     # filesystem is ephemeral and wipes every uploaded file on redeploy (the
     # same fix already applied to Policy PDFs; see policy_service.py).

@@ -653,6 +653,12 @@ function apiLeadToDisplay(l) {
     scopeDocName: l.scope_document_url ? (l.scope_document_filename || l.scope_document_url.split('/').pop()) : undefined,
     contractName: l.signed_contract_url ? (l.signed_contract_filename || l.signed_contract_url.split('/').pop()) : undefined,
     isLockedRevenue: !!l.is_locked_revenue,
+    // Server-set moment the lead entered Won/Lost (Lead.closed_at) — null
+    // for a live lead, and also null for any lead closed before that column
+    // existed, which the CRM board reads as "closed long ago". Kept as the
+    // raw ISO string, not a Date, so the 20-day comparison and the Past
+    // Leads sort can both work off it directly (same as Dev's completed_at).
+    closedAt: l.closed_at || null,
     updatedAt: l.updated_at ? new Date(l.updated_at).getTime() : 0,
     createdAt: l.created_at || null,
     createdDateStr: formatLocalDateOnly(l.created_at),
