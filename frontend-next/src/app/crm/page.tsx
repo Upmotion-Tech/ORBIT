@@ -115,7 +115,6 @@ export default function CrmPage() {
   // message explaining why. Gate it on the real access_levels list instead —
   // the same source of truth every other write on this screen already uses.
   const allowInlineStatusChange = isCrmOwner;
-  const isOwnerDept = currentUser?.department === "Owner";
 
   const loadLeads = () => {
     leadsApi.list().then(
@@ -419,9 +418,16 @@ export default function CrmPage() {
     if (!inDateRange(toISO(l.received), crmDateRange)) return false;
     return true;
   });
-  // Past Leads (Owner department only): the full Won/Lost archive, unaffected
-  // by the pipeline filters above — always browsable regardless of when the
-  // lead closed.
+  // Past Leads: the full Won/Lost archive, unaffected by the pipeline
+  // filters above — always browsable regardless of when the lead closed.
+  // Gated on the `owner`/`crm` access level (isCrmOwner), NOT on being in
+  // the Owner department as it originally was. The backend's own
+  // _to_response already spells out the intended model — "an employee
+  // holding the crm access level functions as Owner for this module" — and
+  // the department check contradicted it, hiding the tab from CRM staff
+  // whose whole job is this pipeline. Nobody loses access in the switch:
+  // Shell's route guard is `case "crm": return access.crm`, so anyone who
+  // can reach this screen at all already satisfies isCrmOwner.
   const pastLeads = leads
     .filter((l) => l.stage === "Won" || l.stage === "Lost")
     .filter((l) => !debouncedSearch || matchesSearch(leadSearchHaystack(l), debouncedSearch))
@@ -541,7 +547,7 @@ export default function CrmPage() {
           <div className="orbit-pill-toggle" style={{ display: "flex", background: "var(--bg-page)", borderRadius: 9999, padding: 3, gap: 2 }}>
             <button onClick={() => setView("kanban")} style={{ border: "none", borderRadius: 9999, padding: "7px 16px", cursor: "pointer", fontSize: 13, fontWeight: 600, background: view === "kanban" ? "#fff" : "transparent", color: view === "kanban" ? "var(--brand-primary)" : "var(--text-secondary)" }}>Kanban</button>
             <button onClick={() => setView("list")} style={{ border: "none", borderRadius: 9999, padding: "7px 16px", cursor: "pointer", fontSize: 13, fontWeight: 600, background: view === "list" ? "#fff" : "transparent", color: view === "list" ? "var(--brand-primary)" : "var(--text-secondary)" }}>List</button>
-            {isOwnerDept && (
+            {isCrmOwner && (
               <button onClick={() => setView("past")} style={{ border: "none", borderRadius: 9999, padding: "7px 16px", cursor: "pointer", fontSize: 13, fontWeight: 600, background: view === "past" ? "#fff" : "transparent", color: view === "past" ? "var(--brand-primary)" : "var(--text-secondary)" }}>Past Leads</button>
             )}
           </div>
@@ -704,7 +710,7 @@ export default function CrmPage() {
       </AnimatePresence>
 
       <AnimatePresence>
-      {view === "past" && isOwnerDept && (
+      {view === "past" && isCrmOwner && (
         <motion.div key="crm-past" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}>
         {pastLeads.length === 0 ? (
           <div style={{ background: "var(--bg-page)", borderRadius: 12, padding: "48px 24px", textAlign: "center", color: "var(--text-muted)", fontSize: 13.5 }}>No Won or Lost leads yet.</div>
