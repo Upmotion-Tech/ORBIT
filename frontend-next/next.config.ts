@@ -1,4 +1,3 @@
-import path from "path";
 import type { NextConfig } from "next";
 
 // The ported API client (src/lib/orbit-client.js) calls relative `/api/...`
@@ -14,25 +13,17 @@ import type { NextConfig } from "next";
 // vercel.json in this app).
 const BACKEND_ORIGIN = process.env.ORBIT_BACKEND_ORIGIN || "http://localhost:8000";
 
+// DO NOT add `turbopack.root` or `outputFileTracingRoot` here. Both were
+// tried (pinned to __dirname) purely to silence a local-only Windows
+// warning — "inferred your workspace root… Detected additional lockfiles" —
+// caused by a stray leftover package.json/package-lock.json sitting in the
+// developer's home directory. They work locally but FAIL the build on
+// Vercel, whose cloud containers have a different directory layout: the
+// hardcoded absolute path breaks Vercel's output tracer and config
+// validation. That mistake took production down once already. Fix that
+// warning at its source instead (delete the stray home-directory lockfile);
+// it's cosmetic and must never be traded for a deployment risk.
 const nextConfig: NextConfig = {
-  // Pin the workspace root to THIS directory. Next.js/Turbopack infers the
-  // root by walking up for a lockfile, and there's a stray leftover
-  // package.json + package-lock.json sitting in the Windows home directory
-  // (C:\Users\<user>\) — so it was picking the home directory as the root
-  // and treating all of it, OneDrive included, as the project. That's what
-  // produced the "inferred your workspace root, but it may not be correct /
-  // Detected additional lockfiles" warning on every build and dev start,
-  // with source paths logged as "[project]/OneDrive/Desktop/Orbit/...".
-  // Beyond the noise it means filesystem watching and module resolution
-  // span an enormous, actively cloud-syncing tree, which makes compiles
-  // slower and file-watching flaky. Both keys below are the documented fix
-  // (see node_modules/next/dist/docs — turbopack.md and output.md):
-  // `turbopack.root` for dev/build resolution, `outputFileTracingRoot` for
-  // the production output trace.
-  turbopack: {
-    root: __dirname,
-  },
-  outputFileTracingRoot: __dirname,
   // Version-skew protection. Without an identifier here, a tab that was
   // loaded before a deploy keeps running the OLD build's JS, and its
   // client-side router then asks for RSC payloads from a deployment that
