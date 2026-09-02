@@ -103,8 +103,18 @@ export default function CrmPage() {
 
   const accessLevels = currentUser?.access_levels || [];
   const isCrmOwner = accessLevels.includes("owner") || accessLevels.includes("crm");
-  const persona = currentUser?.access_level;
-  const allowInlineStatusChange = persona === "owner";
+  // Gates Kanban drag-and-drop, the grab cursor, and the inline stage
+  // <select> on a card. This used to read `currentUser.access_level`
+  // (SINGULAR) and require exactly "owner" — but that field isn't an access
+  // level at all, it's the derived persona flavor from derivePersonaFlavor()
+  // in orbit-client.js, which has branches for owner/hr/finance/dev and NO
+  // case for crm, so a CRM specialist fell through to "employee". The result
+  // was a user holding the `crm` access level who could edit every lead
+  // field and use the drawer's stage dropdown (both gated on isCrmOwner,
+  // correctly) yet silently could not drag a card between columns, with no
+  // message explaining why. Gate it on the real access_levels list instead —
+  // the same source of truth every other write on this screen already uses.
+  const allowInlineStatusChange = isCrmOwner;
   const isOwnerDept = currentUser?.department === "Owner";
 
   const loadLeads = () => {
@@ -219,7 +229,22 @@ export default function CrmPage() {
       pushToast("Upload the scope document and signed contract before marking this lead Won.", "warning");
       return;
     }
-    if (!isStageTransitionAllowed(crmStagesList, lead.stage, newStage, isOwnerOrCrm() && persona === "owner")) {
+    // Holding the `crm` access level now carries the same stage freedom as
+    // Owner (any stage → any stage) — that's the intended model: `crm` means
+    // running the pipeline. This used to AND in `persona === "owner"`, which
+    // excluded CRM users and left them unable to correct a lead from Won to
+    // Lost, while still allowing Lost → Won (a backwards move short-circuits
+    // on `iTo <= iFrom` inside isStageTransitionAllowed) — an asymmetry that
+    // was never intentional. The backend never enforced any of this anyway:
+    // routers/leads.py's stage endpoint passes is_owner=True unconditionally,
+    // so the server already accepted every transition from any owner-or-crm
+    // caller, and its own stricter STAGE_WORKFLOW table has been dead code.
+    //
+    // Since every surface that can reach this function is itself gated on
+    // owner-or-crm, this guard no longer fires for anyone in practice. The
+    // call is kept as the one seam to re-narrow pipeline order later if some
+    // subset of CRM users should be held to it again.
+    if (!isStageTransitionAllowed(crmStagesList, lead.stage, newStage, isOwnerOrCrm())) {
       pushToast("Cannot skip stages — move this lead through the pipeline in order, or ask an Owner to override.", "warning");
       return;
     }

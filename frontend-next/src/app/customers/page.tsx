@@ -9,6 +9,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast-context";
 import { customersApi, deepLinkHref, isModifiedClick, parseDeepLinkHash, clearDeepLinkHash } from "@/lib/orbit-client";
 import { useClosingTransition } from "@/lib/use-closing-transition";
+import { useDebouncedFieldSave } from "@/lib/use-debounced-field-save";
 import SmoothScroll from "@/components/shell/SmoothScroll";
 import { Button, Input, Icon } from "@/design-system/healer-bundle";
 
@@ -35,7 +36,31 @@ export default function CustomersPage() {
   const load = () => { customersApi.list().then((data: Customer[]) => setCustomers(data)).catch(() => {}); };
   useEffect(load, []);
 
+  // Every field in this drawer is a free-text input, and the save used to
+  // fire on each keystroke — one API call, one audit-log row and one toast
+  // PER CHARACTER (typing "Noha Vista" left ten "Fields updated:
+  // company_name" entries in the Audit Trail; backspacing left the same
+  // trail in reverse). Keystrokes now only update local state, and the save
+  // is debounced and coalesced into a single request per pause — so one edit
+  // means one audit entry and one toast.
+  const saveCustomerFields = (id: string, fields: Record<string, unknown>) => {
+    customersApi.update(id, fields).then(
+      () => pushToast("Customer updated."),
+      (err: Error) => pushToast(err.message || "Could not save change.", "error")
+    );
+  };
+  const { queue: queueCustomerSave, flush: flushCustomerSave, discard: discardCustomerSave } =
+    useDebouncedFieldSave(saveCustomerFields);
+
+  const setFieldLive = (id: string, field: string, val: string) => {
+    setCustomers((cur) => cur.map((c) => (c.id === id ? { ...c, [field]: val } : c)));
+    queueCustomerSave(id, field, val);
+  };
+
   const closeCustomerDrawer = () => {
+    // Don't drop the last keystrokes just because the drawer closed inside
+    // the debounce window.
+    flushCustomerSave();
     setSelectedId(null);
     clearDeepLinkHash();
   };
@@ -66,14 +91,6 @@ export default function CustomersPage() {
 
   const selected = selectedId ? customers.find((c) => c.id === selectedId) || null : null;
 
-  const setFieldLive = (id: string, field: string, val: string) => {
-    setCustomers((cur) => cur.map((c) => (c.id === id ? { ...c, [field]: val } : c)));
-    customersApi.update(id, { [field]: val }).then(
-      () => pushToast("Customer updated."),
-      (err: Error) => pushToast(err.message || "Could not save change.", "error")
-    );
-  };
-
   const submitNewCustomer = () => {
     if (!form.company_name.trim()) {
       pushToast("Company name is required.", "error");
@@ -92,6 +109,9 @@ export default function CustomersPage() {
   const deleteSelectedCustomer = () => {
     if (!selectedId) return;
     if (window.confirm("Are you sure you want to delete this customer?")) {
+      // Drop any half-typed edit rather than letting its debounced PUT land
+      // after the DELETE and 404 with a confusing error toast.
+      discardCustomerSave();
       customersApi.remove(selectedId).then(
         () => {
           setSelectedId(null);
