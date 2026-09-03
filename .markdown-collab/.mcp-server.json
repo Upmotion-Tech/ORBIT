@@ -1,8 +1,8 @@
 {
   "url": "http://127.0.0.1:62016/mcp",
   "port": 62016,
-  "token": "92673fa6af8a5a9415c784b500330ebf200c28b1af0be715c7718756a859df5f",
+  "token": "cd36e85cc37fbbb04c2934a903c6426870ed4bde23e2974d52ed965ecfafe56b",
   "version": "0.34.80",
-  "pid": 8428,
-  "startedAt": "2026-09-02T06:22:00.992Z"
+  "pid": 21328,
+  "startedAt": "2026-09-03T06:10:52.298Z"
 }

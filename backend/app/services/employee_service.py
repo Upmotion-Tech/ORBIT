@@ -35,20 +35,20 @@ class EmployeeService:
     async def list_employees(
         self, search=None, department=None, status_filter=None,
         sort_by="created_at", sort_dir="desc",
-        page=1, page_size=100, persona=None,
+        page=1, page_size=100, persona=None, viewer_id=None,
     ) -> list[EmployeeResponse]:
         employees = await self.employee_repo.find_all(
             search=search, department=department, status_filter=status_filter,
             sort_by=sort_by, sort_dir=sort_dir,
             page=page, page_size=page_size,
         )
-        return [self._to_response(e, persona) for e in employees]
+        return [self._to_response(e, persona, viewer_id) for e in employees]
 
-    async def get_employee(self, employee_id: str, persona=None) -> Optional[EmployeeResponse]:
+    async def get_employee(self, employee_id: str, persona=None, viewer_id=None) -> Optional[EmployeeResponse]:
         employee = await self.employee_repo.find_by_id(employee_id)
         if not employee:
             return None
-        return self._to_response(employee, persona)
+        return self._to_response(employee, persona, viewer_id)
 
     async def create_employee(
         self, data: dict, user="anonymous", persona=None, background_tasks=None,
@@ -390,13 +390,63 @@ class EmployeeService:
 
         return employee_name
 
-    def _to_response(self, employee: Employee, persona) -> EmployeeResponse:
+    def _to_response(self, employee: Employee, persona, viewer_id=None) -> EmployeeResponse:
         resp = EmployeeResponse.model_validate(employee)
-        if not has_role(persona, "owner", "hr", "finance"):
+        privileged = has_role(persona, "owner", "hr", "finance")
+        if not privileged:
             resp.salary = None
         if resp.probation_end:
             resp.probation_status = "In Probation" if now_pkt().date() < resp.probation_end else "Cleared"
         # Computed, not stored — served out of the DB via a dedicated
         # authenticated endpoint rather than a static disk path.
         resp.contract_file_url = f"/api/employees/{employee.id}/contract" if employee.contract_file_data else None
+
+        # GET /api/employees is deliberately open to every authenticated user:
+        # the frontend needs an id -> name directory to resolve approvers,
+        # assignees and managers across nearly every screen (see
+        # app-data-context.tsx's employee cache). But "needs everyone's names"
+        # was being served as "gets everyone's whole HR record" — salary was
+        # the ONLY field ever redacted, so any logged-in employee could read
+        # every colleague's CNIC, personal phone, date of birth and
+        # next-of-kin contact, plus two things that are outright security
+        # signals: the full access_levels map (who to target) and
+        # must_change_password (which privileged accounts are still sitting on
+        # their initial password).
+        #
+        # So: strip personal data for OTHER people, never for yourself —
+        # My Record renders the viewer's own profile straight out of this same
+        # list (me-record/page.tsx reads useAppData().employees), so a blanket
+        # redaction would blank out an employee's own details. Mirrors the
+        # is_self exemption the contract download endpoint already uses.
+        # Privileged HR/Owner/Finance callers are unaffected, which is what
+        # keeps the HR screen and Setup > Employees working.
+        if not privileged and viewer_id != employee.id:
+            resp.cnic = None
+            resp.phone = None
+            resp.birthdate = None
+            resp.emergency_contact = None
+            resp.emergency_contact_relation = None
+            resp.contract_file_url = None
+            resp.contract_file_name = None
+            # HR-record detail nobody outside HR needs to know about a
+            # colleague: when they joined, whether they're still on probation,
+            # their contract type, their work email.
+            resp.start_date = None
+            resp.probation_end = None
+            resp.probation_status = None
+            resp.created_at = None
+            resp.updated_at = None
+            # Not Optional on the schema, so these get neutral values rather
+            # than None: an empty permission list, "nothing pending", and
+            # blank strings for the two required text fields.
+            resp.access_levels = []
+            resp.must_change_password = False
+            resp.email = ""
+            resp.employment_type = ""
+        # What deliberately SURVIVES for a colleague: id, name, role,
+        # department, manager, status/is_active. That's the org chart — the
+        # id -> name directory the whole frontend resolves approvers,
+        # assignees, comment authors and Manager Hub reports against, plus
+        # `status`, which Dev uses to filter out terminated staff from its
+        # assignee pickers. Trimming any of those breaks real screens.
         return resp

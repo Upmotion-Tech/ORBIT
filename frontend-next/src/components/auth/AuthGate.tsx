@@ -8,16 +8,50 @@
 // SSR already renders the authChecking splash consistently on first paint,
 // so there's nothing analogous to flash).
 
+import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { AppDataProvider } from "@/lib/app-data-context";
 import Shell from "@/components/shell/Shell";
 import LoginScreen from "./LoginScreen";
 import ChangePasswordScreen from "./ChangePasswordScreen";
 
+// The backend sleeps after a period of inactivity (Render spins the instance
+// down), so the first request after a quiet spell can sit for 30-60s while it
+// cold-starts. This splash used to show a bare "ORBIT" wordmark for that whole
+// time, which reads as a frozen app rather than a server waking up — and the
+// natural user response to that is to refresh, which achieves nothing and
+// restarts the wait.
+//
+// The message is deliberately DELAYED rather than shown immediately: when the
+// backend is already warm, checkAuth resolves in well under a second, and
+// flashing "waking up the server" on every ordinary load would be both
+// inaccurate and alarming. It only appears once the wait is long enough to
+// actually need explaining.
+const COLD_START_HINT_MS = 2500;
+
 function AuthSplash() {
+  const [showColdStartHint, setShowColdStartHint] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setShowColdStartHint(true), COLD_START_HINT_MS);
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
     <div className="auth-splash-screen">
       <div className="auth-splash-logo">ORBIT</div>
+      {showColdStartHint && (
+        // role/aria-live so a screen reader announces this when it appears,
+        // rather than it being a silent visual-only change.
+        <div role="status" aria-live="polite" style={{ textAlign: "center", maxWidth: 340, padding: "0 20px" }}>
+          <div style={{ fontFamily: "var(--font-sans)", fontSize: 14, fontWeight: 600, color: "#1B2233" }}>
+            Waking up the server…
+          </div>
+          <div style={{ fontFamily: "var(--font-sans)", fontSize: 12.5, lineHeight: 1.5, color: "#6A7285", marginTop: 6 }}>
+            The server goes to sleep after a period of inactivity. This can take
+            up to a minute — no need to refresh.
+          </div>
+        </div>
+      )}
     </div>
   );
 }

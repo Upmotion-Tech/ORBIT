@@ -531,7 +531,63 @@ function apiErrorMessage(body) {
 // Set by Component.componentDidMount so a 401 anywhere can kick the user back
 // to the login screen without threading `this` through every apiFetch call.
 let onSessionExpired = null;
+// In-flight GET de-duplication.
+//
+// Several independent effects legitimately want the same data at the same
+// moment, and each was opening its own request. Loading My Attendance fired
+// GET /api/attendance/me FOUR times on mount alone: once from Shell's topbar
+// chip, and three more from the page (useEffect(load,[month]),
+// useEffect(load,[holidays]) and useEffect(loadToday,[holidays]) — the last
+// two hit the same URL whenever the month picker sits on the current month).
+// `holidays` then arrives asynchronously from AppDataProvider and re-fires
+// every effect keyed on it, pushing a single page visit up to ~7 identical
+// requests. Same pattern duplicated employees/projects/tasks/notifications.
+//
+// So: if an identical GET is ALREADY in flight, hand the caller that same
+// promise instead of opening a second connection. Deliberately narrow:
+//   - Only in-flight requests are shared. Nothing is ever cached, and the
+//     entry is dropped the moment the request settles, so a deliberate
+//     refetch (e.g. reloading attendance right after Mark Attendance) still
+//     goes to the network and never sees a stale body.
+//   - GET only. Mutations must never be collapsed into each other.
+//   - skipAuthExpiry callers (checkAuth's retry loop) are excluded, so the
+//     401/retry handling below stays exactly as it was.
+// Subsequent callers get a structural copy rather than the same object, so
+// two independent React state trees can never end up sharing — and mutating
+// — one array.
+const _inflightGets = new Map();
+
+function _isDedupableGet(options) {
+  return (options.method || 'GET').toUpperCase() === 'GET'
+    && !options.body
+    && !options.skipAuthExpiry;
+}
+
+function _copyResult(value) {
+  if (value === null || typeof value !== 'object') return value;
+  try {
+    return structuredClone(value);
+  } catch (e) {
+    // structuredClone chokes on anything non-cloneable; JSON bodies are
+    // always plain data, so this fallback is purely belt-and-braces.
+    return JSON.parse(JSON.stringify(value));
+  }
+}
+
 async function apiFetch(path, options = {}) {
+  if (!_isDedupableGet(options)) return _apiFetchOnce(path, options);
+  const inflight = _inflightGets.get(path);
+  if (inflight) return inflight.then(_copyResult);
+  const request = _apiFetchOnce(path, options);
+  _inflightGets.set(path, request);
+  try {
+    return await request;
+  } finally {
+    _inflightGets.delete(path);
+  }
+}
+
+async function _apiFetchOnce(path, options = {}) {
   options.headers = options.headers || {};
   const token = localStorage.getItem('orbit_token');
   if (token) {

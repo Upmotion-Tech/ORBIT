@@ -37,23 +37,33 @@ async def list_employees(
     sort_dir: str = "desc",
     page: int = 1,
     page_size: int = 100,
+    current_user: dict = Depends(get_current_user),
     persona: list = Depends(get_persona_roles),
     service: EmployeeService = Depends(get_employee_service),
 ):
+    # viewer_id lets _to_response tell "me" from "a colleague" — everyone can
+    # read the directory, but only HR/Owner/Finance (or you, about yourself)
+    # get the personal fields. See EmployeeService._to_response.
     return await service.list_employees(
         search=search, department=department, status_filter=status_filter,
         sort_by=sort_by, sort_dir=sort_dir,
         page=page, page_size=page_size, persona=persona,
+        viewer_id=current_user.get("user_id"),
     )
 
 
 @router.get("/{employee_id}", response_model=EmployeeResponse)
 async def get_employee(
     employee_id: str,
+    current_user: dict = Depends(get_current_user),
     persona: list = Depends(get_persona_roles),
     service: EmployeeService = Depends(get_employee_service),
 ):
-    employee = await service.get_employee(employee_id, persona=persona)
+    # Same rule as the list endpoint above — fetching one colleague by id must
+    # not hand back what the list now withholds.
+    employee = await service.get_employee(
+        employee_id, persona=persona, viewer_id=current_user.get("user_id")
+    )
     if not employee:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
